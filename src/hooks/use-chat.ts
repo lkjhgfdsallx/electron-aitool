@@ -267,7 +267,7 @@ export function useChat() {
       // 自动生成对话标题（当标题为默认的"新对话"时，根据首条消息内容生成）
       const currentConv = getConversation(convId)
       if (currentConv && currentConv.title === '新对话' && currentConv.messageCount === 0) {
-        const generatedTitle = generateTitleFromContent(content)
+        const generatedTitle = await generateTitleFromContent(content)
         if (generatedTitle !== '新对话') {
           renameConversation(convId, generatedTitle)
         }

@@ -1,11 +1,30 @@
 
 /**
- * 从消息内容生成简单的对话标题
- * 不依赖 AI，纯本地函数
+ * 从消息内容生成对话标题（异步）
+ * 使用主进程的 TextRank + jieba 分词算法，生成 5~10 字的提取式摘要标题
+ * 如果主进程不可用，回退到简单的截断方式
  */
-export function generateTitleFromContent(content: string): string {
+export async function generateTitleFromContent(content: string): Promise<string> {
   if (!content || !content.trim()) return '新对话'
 
+  try {
+    // 优先通过 IPC 调用主进程的 TextRank + jieba 分词标题生成
+    if (window.electronAPI?.title?.generate) {
+      const title = await window.electronAPI.title.generate(content)
+      if (title && title !== '新对话') return title
+    }
+  } catch {
+    // IPC 调用失败，回退到简单方式
+  }
+
+  // 回退方案：简单清理文本后截取前 10 字
+  return fallbackGenerateTitle(content)
+}
+
+/**
+ * 回退方案：简单清理文本后截取前 10 字作为标题
+ */
+function fallbackGenerateTitle(content: string): string {
   // 去除首尾空白
   let title = content.trim()
 
@@ -34,10 +53,10 @@ export function generateTitleFromContent(content: string): string {
 
   if (!firstLine) return '新对话'
 
-  // 限制标题长度
-  const MAX_LENGTH = 30
+  // 限制标题长度为 10 字
+  const MAX_LENGTH = 10
   if (firstLine.length > MAX_LENGTH) {
-    return firstLine.slice(0, MAX_LENGTH) + '...'
+    return firstLine.slice(0, MAX_LENGTH)
   }
 
   return firstLine

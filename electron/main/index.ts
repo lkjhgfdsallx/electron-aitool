@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { setupMCPHandlers } from './mcp-proxy'
+import { generateTitleFromContent } from './title-generator'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -68,6 +69,15 @@ app.on('window-all-closed', () => {
 })
 
 function setupIPCHandlers(): void {
+  // 标题生成（TextRank + jieba 分词）
+  ipcMain.handle('title:generate', (_event, content: string) => {
+    try {
+      return generateTitleFromContent(content)
+    } catch {
+      return '新对话'
+    }
+  })
+
   // 窗口控制
   ipcMain.on('window:minimize', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize()

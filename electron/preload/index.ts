@@ -11,6 +11,10 @@ export interface ElectronAPI {
       args: Record<string, unknown>
     ) => Promise<{ success: boolean; data?: unknown; error?: string }>
   }
+  // 标题生成（TextRank + jieba 分词）
+  title: {
+    generate: (content: string) => Promise<string>
+  }
   // 窗口控制
   window: {
     minimize: () => void
@@ -25,6 +29,9 @@ const electronAPI: ElectronAPI = {
     fetchTools: (serverUrl: string) => ipcRenderer.invoke('mcp:fetchTools', serverUrl),
     callTool: (serverUrl: string, toolName: string, args: Record<string, unknown>) =>
       ipcRenderer.invoke('mcp:callTool', serverUrl, toolName, args)
+  },
+  title: {
+    generate: (content: string) => ipcRenderer.invoke('title:generate', content)
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
