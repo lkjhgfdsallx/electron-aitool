@@ -1,0 +1,170 @@
+@import 'highlight.js/styles/github-dark.css';
+@import 'katex/dist/katex.min.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==================== 全局样式 ==================== */
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.5);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(156, 163, 175, 0.8);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(75, 85, 99, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(75, 85, 99, 0.8);
+}
+
+/* ==================== Prose 样式 (Markdown) ==================== */
+
+@layer base {
+  .prose {
+    --tw-prose-body: theme('colors.gray.700');
+    --tw-prose-headings: theme('colors.gray.900');
+    --tw-prose-links: theme('colors.primary.500');
+    --tw-prose-bold: theme('colors.gray.900');
+    --tw-prose-code: theme('colors.primary.600');
+    --tw-prose-pre-code: theme('colors.gray.200');
+    --tw-prose-pre-bg: theme('colors.gray.800');
+    --tw-prose-quotes: theme('colors.gray.600');
+    --tw-prose-quote-borders: theme('colors.gray.300');
+    --tw-prose-bullets: theme('colors.gray.400');
+    --tw-prose-hr: theme('colors.gray.200');
+    --tw-prose-th-borders: theme('colors.gray.200');
+    --tw-prose-td-borders: theme('colors.gray.100');
+  }
+
+  .dark .prose {
+    --tw-prose-body: theme('colors.gray.300');
+    --tw-prose-headings: theme('colors.gray.100');
+    --tw-prose-links: theme('colors.primary.400');
+    --tw-prose-bold: theme('colors.gray.100');
+    --tw-prose-code: theme('colors.primary.400');
+    --tw-prose-pre-code: theme('colors.gray.200');
+    --tw-prose-pre-bg: theme('colors.gray.800');
+    --tw-prose-quotes: theme('colors.gray.400');
+    --tw-prose-quote-borders: theme('colors.gray.600');
+    --tw-prose-bullets: theme('colors.gray.500');
+    --tw-prose-hr: theme('colors.gray.700');
+    --tw-prose-th-borders: theme('colors.gray.600');
+    --tw-prose-td-borders: theme('colors.gray.700');
+  }
+}
+
+/* Markdown 内容样式 */
+.prose h1 { @apply text-xl font-bold mt-4 mb-2; }
+.prose h2 { @apply text-lg font-bold mt-3 mb-2; }
+.prose h3 { @apply text-base font-semibold mt-3 mb-1; }
+.prose p { @apply my-1.5 leading-relaxed; }
+.prose ul { @apply list-disc pl-5 my-1.5; }
+.prose ol { @apply list-decimal pl-5 my-1.5; }
+.prose li { @apply my-0.5; }
+.prose blockquote { @apply border-l-4 pl-3 italic my-2; }
+.prose pre { @apply rounded-lg p-3 my-2 overflow-x-auto text-xs; }
+.prose code { @apply text-xs px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800; }
+.prose pre code { @apply bg-transparent p-0; }
+.prose table { @apply w-full border-collapse text-sm my-2; }
+.prose th { @apply border px-3 py-1.5 text-left font-medium bg-gray-50 dark:bg-gray-800; }
+.prose td { @apply border px-3 py-1.5; }
+.prose hr { @apply my-4 border-gray-200 dark:border-gray-700; }
+.prose a { @apply underline underline-offset-2; }
+.prose img { @apply max-w-full rounded-lg my-2; }
+
+/* KaTeX 样式 */
+.katex-display {
+  @apply my-3 overflow-x-auto;
+}
+
+.katex {
+  @apply text-sm;
+}
+
+/* ==================== Highlight.js 主题 ==================== */
+
+.hljs {
+  @apply bg-gray-800 text-gray-200;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  @apply text-purple-400;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-name,
+.hljs-type,
+.hljs-attribute,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-tag,
+.hljs-template-variable {
+  @apply text-green-400;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+  @apply text-gray-500;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-literal,
+.hljs-built_in {
+  @apply text-orange-400;
+}
+
+.hljs-params {
+  @apply text-gray-300;
+}
+
+/* ==================== 通用组件样式 ==================== */
+
+/* 输入框聚焦动画 */
+input:focus,
+textarea:focus,
+select:focus {
+  @apply outline-none ring-2 ring-primary-500 ring-opacity-50;
+}
+
+/* 按钮点击效果 */
+button:active {
+  transform: scale(0.98);
+}
+
+/* 平滑过渡 */
+* {
+  @apply transition-colors duration-150;
+}
+
+/* 排除动画元素 */
+.animate-spin,
+.animate-pulse {
+  transition: none;
+}

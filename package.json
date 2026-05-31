@@ -1,0 +1,50 @@
+{
+  "name": "electron-aitool",
+  "version": "1.0.0",
+  "description": "AI Chat Tool built with Electron + React",
+  "main": "./out/main/index.js",
+  "author": "electron-aitool",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node dev.cjs",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "electron-vite preview",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "pnpm run build && electron-builder --dir",
+    "build:win": "pnpm run build && electron-builder --win",
+    "build:mac": "pnpm run build && electron-builder --mac",
+    "build:linux": "pnpm run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.4.1",
+    "highlight.js": "^11.11.1",
+    "idb": "^8.0.2",
+    "katex": "^0.16.21",
+    "lucide-react": "^0.468.0",
+    "marked": "^15.0.6",
+    "marked-highlight": "^2.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "uuid": "^11.1.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@types/katex": "^0.16.7",
+    "@types/node": "^22.12.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}
