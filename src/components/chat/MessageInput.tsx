@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square, Paperclip, FileText, X, Image, FileIcon } from 'lucide-react'
+import { Send, Square, Paperclip, FileText, X, Image, FileIcon, Loader2 } from 'lucide-react'
 import { useSettingsStore, usePromptStore } from '../../stores'
+import { extractFileText } from '../../utils/file-extraction'
 import type { MessageAttachment } from '../../types'
 
 interface MessageInputProps {
@@ -63,6 +64,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<MessageAttachment[]>([])
   const [showPromptMenu, setShowPromptMenu] = useState(false)
+  const [isExtracting, setIsExtracting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { sendWithEnter } = useSettingsStore()
@@ -107,6 +109,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     const files = e.target.files
     if (!files) return
 
+    setIsExtracting(true)
     const newAttachments: MessageAttachment[] = []
 
     for (const file of Array.from(files)) {
@@ -137,12 +140,15 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
         } else if (isTextType(file.type) || isTextFileByName(file.name)) {
           // 文本文件读取文本内容
           content = await readFileAsText(file)
-        } else if (file.type === 'application/pdf') {
-          // PDF 读取为 base64
-          content = await readFileAsDataURL(file)
         } else {
-          // Word 等其他文件读取为 base64
-          content = await readFileAsDataURL(file)
+          // PDF、Word 等二进制文件：尝试提取文本内容
+          const extractedText = await extractFileText(file)
+          if (extractedText) {
+            content = extractedText
+          } else {
+            // 如果提取失败，回退到 base64（但标记为无法解析）
+            content = `[无法解析的文件: ${file.name}，类型: ${file.type}]`
+          }
         }
 
         newAttachments.push({
@@ -160,6 +166,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     if (newAttachments.length > 0) {
       setAttachments(prev => [...prev, ...newAttachments])
     }
+
+    setIsExtracting(false)
 
     // 重置 input 以允许重复选择同一文件
     if (fileInputRef.current) {
@@ -316,8 +324,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isStreaming ? 'AI 正在回复...' : '输入消息...'}
-            disabled={disabled || isStreaming}
+            placeholder={isExtracting ? '正在解析文件...' : isStreaming ? 'AI 正在回复...' : '输入消息...'}
+            disabled={disabled || isStreaming || isExtracting}
             rows={1}
             className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 py-2 max-h-[200px]"
           />
@@ -330,6 +338,14 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
               title="停止生成"
             >
               <Square size={18} />
+            </button>
+          ) : isExtracting ? (
+            <button
+              disabled
+              className="flex-shrink-0 p-2 bg-primary-400 text-white rounded-lg opacity-70 cursor-wait"
+              title="正在解析文件..."
+            >
+              <Loader2 size={18} className="animate-spin" />
             </button>
           ) : (
             <button

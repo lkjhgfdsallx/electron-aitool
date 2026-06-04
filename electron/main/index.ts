@@ -3,6 +3,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { setupMCPHandlers } from './mcp-proxy'
 import { generateTitleFromContent } from './title-generator'
+import { extractPdfText } from './pdf-extractor'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -75,6 +76,20 @@ function setupIPCHandlers(): void {
       return generateTitleFromContent(content)
     } catch {
       return '新对话'
+    }
+  })
+
+  // PDF 文本提取（在 Node.js 主进程中运行，避免渲染进程兼容性问题）
+  ipcMain.handle('file:extractPdfText', async (_event, filePath: string) => {
+    try {
+      const text = await extractPdfText(filePath)
+      return { success: true, text }
+    } catch (error) {
+      console.error('PDF 提取失败:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'PDF 提取失败'
+      }
     }
   })
 

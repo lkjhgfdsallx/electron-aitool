@@ -8,13 +8,24 @@ import {
   Bot,
   Wrench,
   AlertCircle,
-  Clock
+  Clock,
+  FileText,
+  Image,
+  FileIcon
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
+import { SelectionBoundary } from '../ui/SelectionBoundary'
 import { ThinkingSection } from './ThinkingSection'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { AgentStepDisplay } from './AgentStepDisplay'
 import type { Message } from '../../types'
+
+/** 格式化文件大小 */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 interface MessageItemProps {
   message: Message
@@ -68,13 +79,15 @@ export function MessageItem({
         <div className="flex-shrink-0 w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center">
           <Wrench size={14} className="text-white" />
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 selection-boundary-parent">
           <div className="text-xs text-gray-500 mb-1">
             工具结果: {message.toolName}
           </div>
-          <pre className="text-sm bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
-            {formatToolResult(message.content)}
-          </pre>
+          <SelectionBoundary>
+            <pre className="text-sm bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
+              {formatToolResult(message.content)}
+            </pre>
+          </SelectionBoundary>
         </div>
       </div>
     )
@@ -93,7 +106,7 @@ export function MessageItem({
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 selection-boundary-parent">
         {/* 头部信息 */}
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -121,51 +134,87 @@ export function MessageItem({
 
         {/* 思考过程 */}
         {message.reasoningContent && (
-          <ThinkingSection content={message.reasoningContent} />
+          <SelectionBoundary>
+            <ThinkingSection content={message.reasoningContent} />
+          </SelectionBoundary>
         )}
 
         {/* 工具调用 */}
         {message.toolCalls && message.toolCalls.length > 0 && (
-          <ToolCallDisplay toolCalls={message.toolCalls} />
+          <SelectionBoundary>
+            <ToolCallDisplay toolCalls={message.toolCalls} />
+          </SelectionBoundary>
         )}
 
         {/* Agent 执行步骤 */}
         {hasAgentSteps && (
-          <AgentStepDisplay
-            steps={message.agentSteps!}
-            isRunning={message.isStreaming}
-            onHumanInput={onHumanInput}
-            onResumeAgentTask={onResumeAgentTask ? () => onResumeAgentTask(message.id) : undefined}
-            isError={message.isError}
-          />
+          <SelectionBoundary>
+            <AgentStepDisplay
+              steps={message.agentSteps!}
+              isRunning={message.isStreaming}
+              onHumanInput={onHumanInput}
+              onResumeAgentTask={onResumeAgentTask ? () => onResumeAgentTask(message.id) : undefined}
+              isError={message.isError}
+            />
+          </SelectionBoundary>
         )}
 
         {/* 消息内容 */}
-        {isEditing ? (
-          <div className="space-y-2">
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y"
-              rows={4}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleSaveEdit}
-                className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
-              >
-                保存
-              </button>
-              <button
-                onClick={() => setIsEditing(false)}
-                className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-              >
-                取消
-              </button>
+        <SelectionBoundary>
+          {isEditing ? (
+            <div className="space-y-2">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y"
+                rows={4}
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
+                >
+                  保存
+                </button>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  取消
+                </button>
+              </div>
             </div>
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )}
+        </SelectionBoundary>
+
+        {/* 附件显示 */}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {message.attachments.map((att, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs border border-gray-200 dark:border-gray-700"
+              >
+                {att.type.startsWith('image/') ? (
+                  <Image size={14} className="text-blue-500 flex-shrink-0" />
+                ) : att.type === 'application/pdf' ? (
+                  <FileText size={14} className="text-red-500 flex-shrink-0" />
+                ) : att.type.includes('word') || att.type.includes('document') ? (
+                  <FileText size={14} className="text-blue-600 flex-shrink-0" />
+                ) : (
+                  <FileIcon size={14} className="text-gray-500 flex-shrink-0" />
+                )}
+                <span className="text-gray-700 dark:text-gray-300 max-w-[150px] truncate">
+                  {att.name}
+                </span>
+                <span className="text-gray-400">
+                  {formatFileSize(att.size)}
+                </span>
+              </div>
+            ))}
           </div>
-        ) : (
-          <MarkdownRenderer content={message.content} />
         )}
 
         {/* 操作按钮 */}

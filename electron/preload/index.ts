@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // 定义暴露给渲染进程的 API
 export interface ElectronAPI {
@@ -14,6 +14,18 @@ export interface ElectronAPI {
   // 标题生成（TextRank + jieba 分词）
   title: {
     generate: (content: string) => Promise<string>
+  }
+  // 文件操作
+  file: {
+    /**
+     * 获取 File 对象的文件系统路径（仅 Electron 环境可用）
+     */
+    getPathForFile: (file: File) => string
+    /**
+     * 在主进程中提取 PDF 文本（Node.js 环境，更可靠）
+     * @returns { success: boolean; text?: string; error?: string }
+     */
+    extractPdfText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
   }
   // 窗口控制
   window: {
@@ -32,6 +44,10 @@ const electronAPI: ElectronAPI = {
   },
   title: {
     generate: (content: string) => ipcRenderer.invoke('title:generate', content)
+  },
+  file: {
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    extractPdfText: (filePath: string) => ipcRenderer.invoke('file:extractPdfText', filePath)
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

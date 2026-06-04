@@ -82,30 +82,52 @@ export const aiService = {
           }))
         })
       } else if (msg.role === 'user') {
-        // 处理多模态消息
-        if (msg.attachments && msg.attachments.some(att => att.type.startsWith('image/'))) {
-          // 多模态格式
-          const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+        // 处理附件
+        if (msg.attachments && msg.attachments.length > 0) {
+          const hasImages = msg.attachments.some(att => att.type.startsWith('image/'))
           
-          // 添加文本
-          if (msg.content && typeof msg.content === 'string' && msg.content.trim()) {
-            content.push({ type: 'text', text: msg.content })
-          }
-          
-          // 添加图片
-          for (const att of msg.attachments) {
-            if (att.type.startsWith('image/')) {
-              content.push({
-                type: 'image_url',
-                image_url: { url: att.content }
-              })
+          if (hasImages) {
+            // 多模态格式（含图片）
+            const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+            
+            // 构建文本部分：用户消息 + 非图片附件内容
+            let textPart = msg.content || ''
+            for (const att of msg.attachments) {
+              if (!att.type.startsWith('image/') && att.content && !att.content.startsWith('data:')) {
+                textPart += `\n\n--- 文件: ${att.name} ---\n${att.content}\n--- 文件结束 ---`
+              }
             }
+            if (textPart.trim()) {
+              content.push({ type: 'text', text: textPart })
+            }
+            
+            // 添加图片
+            for (const att of msg.attachments) {
+              if (att.type.startsWith('image/')) {
+                content.push({
+                  type: 'image_url',
+                  image_url: { url: att.content }
+                })
+              }
+            }
+            
+            requestMessages.push({
+              role: 'user',
+              content
+            })
+          } else {
+            // 纯文本格式（含非图片附件的文本内容）
+            let fullContent = msg.content || ''
+            for (const att of msg.attachments) {
+              if (att.content && !att.content.startsWith('data:')) {
+                fullContent += `\n\n--- 文件: ${att.name} ---\n${att.content}\n--- 文件结束 ---`
+              }
+            }
+            requestMessages.push({
+              role: 'user',
+              content: fullContent
+            })
           }
-          
-          requestMessages.push({
-            role: 'user',
-            content
-          })
         } else {
           requestMessages.push({
             role: msg.role,

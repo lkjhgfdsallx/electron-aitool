@@ -144,6 +144,40 @@
   @apply text-gray-300;
 }
 
+/* ==================== 选择边界 ==================== */
+
+/* 选择边界父容器：禁止选择，作为边界隔离层 */
+.selection-boundary-parent {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* 隔离层的选区高亮设为透明，防止拖选经过时出现视觉高亮 */
+.selection-boundary-parent ::selection {
+  background: transparent;
+  color: inherit;
+}
+.selection-boundary-parent ::-moz-selection {
+  background: transparent;
+  color: inherit;
+}
+
+/* 选择边界子容器：允许自由选择文本 */
+.selection-boundary {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* 选择边界内的选区高亮使用主题色 */
+.selection-boundary ::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+.selection-boundary ::-moz-selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
 /* ==================== 通用组件样式 ==================== */
 
 /* 输入框聚焦动画 */

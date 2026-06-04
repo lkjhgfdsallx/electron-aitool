@@ -63,10 +63,21 @@ export function useChat() {
 
     const hasImages = attachments.some(att => att.type.startsWith('image/'))
 
+    // 收集非图片附件的文本内容
+    const nonImageTextParts: string[] = []
+    for (const att of attachments) {
+      if (!att.type.startsWith('image/') && att.content && !att.content.startsWith('data:')) {
+        nonImageTextParts.push(`\n--- 文件: ${att.name} ---\n${att.content}\n--- 文件结束 ---\n`)
+      }
+    }
+    const fileTextContent = nonImageTextParts.join('')
+
     if (hasImages) {
+      // 多模态格式：文本部分包含用户消息 + 文件文本，图片部分单独添加
       const parts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
-      if (content.trim()) {
-        parts.push({ type: 'text', text: content })
+      const textContent = (content.trim() + fileTextContent).trim()
+      if (textContent) {
+        parts.push({ type: 'text', text: textContent })
       }
       for (const att of attachments) {
         if (att.type.startsWith('image/')) {
@@ -76,32 +87,11 @@ export function useChat() {
           })
         }
       }
-      for (const att of attachments) {
-        if (!att.type.startsWith('image/')) {
-          const fileContent = att.content.startsWith('data:')
-            ? `[文件: ${att.name}]`
-            : `\n--- 文件: ${att.name} ---\n${att.content}\n--- 文件结束 ---\n`
-          if (parts.length === 0 || parts[0].type !== 'text') {
-            parts.unshift({ type: 'text', text: fileContent })
-          } else {
-            parts[0].text = fileContent + '\n' + (parts[0].text || '')
-          }
-        }
-      }
       return parts
     }
 
-    let fullContent = content
-    for (const att of attachments) {
-      if (!att.type.startsWith('image/')) {
-        const fileContent = att.content.startsWith('data:')
-          ? `\n[附件: ${att.name}]\n`
-          : `\n--- 文件: ${att.name} ---\n${att.content}\n--- 文件结束 ---\n`
-        fullContent += fileContent
-      }
-    }
-
-    return fullContent
+    // 纯文本格式：直接拼接用户消息和文件内容
+    return content + fileTextContent
   }, [])
 
   /**
@@ -116,14 +106,14 @@ export function useChat() {
     ) => {
       const convId = conversationId
 
-      // 添加用户消息（content 始终为字符串，多模态内容通过 attachments 传递给 AI 服务）
-      const userContent = buildMessageContent(content, attachments)
-      // 存储到 store 的 content 必须是纯字符串（用于显示）
-      const displayContent = typeof userContent === 'string' ? userContent : content
+      // 构建包含附件内容的完整消息（用于发送给 Agent 引擎）
+      const fullContent = buildMessageContent(content, attachments)
+      const agentMessage = typeof fullContent === 'string' ? fullContent : content
+      // 只存储用户原始文本，文件内容通过 attachments 隐式传递
       addMessage(convId, {
         conversationId: convId,
         role: 'user',
-        content: displayContent,
+        content: content,
         attachments,
         agentId: agent.id
       })
@@ -148,9 +138,10 @@ export function useChat() {
       let finalContent = ''
       let reasoningContent = ''
 
+      // 将包含附件内容的完整消息传递给 Agent 引擎
       await runAgent(
         agent,
-        content,
+        agentMessage,
         history,
         allTools,
         globalConfig,
@@ -289,13 +280,12 @@ export function useChat() {
       // 普通模式
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
 
-      // 添加用户消息（content 始终为字符串，多模态内容通过 attachments 传递给 AI 服务）
-      const userContent = buildMessageContent(content, attachments)
-      const displayContent = typeof userContent === 'string' ? userContent : content
+      // 添加用户消息：只存储用户原始文本，文件内容通过 attachments 传递给 AI 服务
+      // 这样用户消息气泡只显示用户输入的文字和附件指示器，不会显示完整的文件内容
       addMessage(convId, {
         conversationId: convId,
         role: 'user',
-        content: displayContent,
+        content: content,
         attachments
       })
 
