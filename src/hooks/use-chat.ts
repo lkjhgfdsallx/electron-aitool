@@ -292,8 +292,8 @@ export function useChat() {
       // 获取对话历史
       const history = getMessages(convId)
 
-      // 准备工具定义
-      const tools = getAvailableTools()
+      // 准备工具定义（普通模式只使用通用内置工具，不包含 Agent 专用工具）
+      const tools = BUILT_IN_TOOLS
       const toolDefs = toolService.toToolDefinitions(tools)
 
       // 创建 assistant 消息（流式更新）

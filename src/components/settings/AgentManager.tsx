@@ -19,7 +19,7 @@ import {
   Settings
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
-import { BUILT_IN_TOOLS } from '../../services/built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
 import { usePromptStore } from '../../stores/agent-store'
 import type {
   AgentProfile,
@@ -46,12 +46,15 @@ const PLANNING_STRATEGIES: { value: PlanningStrategy; label: string; description
   { value: 'trial-and-error', label: '试错重试', description: '大胆尝试，失败后回退重试' }
 ]
 
+// 新建 Agent 时默认选中所有工具的 ID
+const ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
+
 const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
   name: '',
   description: '',
   avatar: '🤖',
   systemPrompt: '',
-  enabledToolIds: [],
+  enabledToolIds: [...ALL_TOOL_IDS],
   planningStrategy: 'react',
   memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: true },
   termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
@@ -293,6 +296,8 @@ export function AgentManager({ onClose }: AgentManagerProps) {
               <Wrench size={14} /> 工具集
             </h3>
             <div className="space-y-2">
+              {/* 通用工具 */}
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 pt-1">通用工具</div>
               {BUILT_IN_TOOLS.map((tool) => (
                 <label
                   key={tool.id}
@@ -322,9 +327,37 @@ export function AgentManager({ onClose }: AgentManagerProps) {
                   </div>
                 </label>
               ))}
-              <div className="text-xs text-gray-400 px-2">
-                记忆工具（remember/recall）在启用长期记忆时自动可用
-              </div>
+              {/* Agent 专用工具 */}
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 pt-2">Agent 专用工具</div>
+              {AGENT_BUILTIN_TOOLS.map((tool) => (
+                <label
+                  key={tool.id}
+                  className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={agentForm.enabledToolIds.includes(tool.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setAgentForm({
+                          ...agentForm,
+                          enabledToolIds: [...agentForm.enabledToolIds, tool.id]
+                        })
+                      } else {
+                        setAgentForm({
+                          ...agentForm,
+                          enabledToolIds: agentForm.enabledToolIds.filter((id) => id !== tool.id)
+                        })
+                      }
+                    }}
+                    className="rounded text-primary-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{tool.name}</div>
+                    <div className="text-xs text-gray-500 truncate">{tool.description}</div>
+                  </div>
+                </label>
+              ))}
             </div>
           </section>
 

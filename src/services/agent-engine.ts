@@ -205,9 +205,9 @@ export async function runAgent(
   const startTime = Date.now()
   let stepIndex = 0
 
-  // 过滤出 Agent 启用的工具（Agent 内置工具始终可用，不需要手动启用）
+  // 过滤出 Agent 启用的工具（完全由 enabledToolIds 控制）
   const agentTools = allTools.filter(
-    (t) => (t.id.startsWith('agent-builtin:') || agent.enabledToolIds.includes(t.id)) && t.enabled
+    (t) => agent.enabledToolIds.includes(t.id) && t.enabled
   )
 
   // 获取记忆上下文

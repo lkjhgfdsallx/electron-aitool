@@ -10,12 +10,16 @@ import type {
   PromptUpdateInput
 } from '../types'
 import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT } from '../constants/default-agents'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
 
 // ==================== 默认 Agent 配置 ====================
 
+// 默认选中所有工具的 ID
+const DEFAULT_ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
+
 const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 'systemPrompt' | 'createdAt' | 'updatedAt'> = {
   avatar: '🤖',
-  enabledToolIds: ['agent-builtin:remember', 'agent-builtin:recall'],
+  enabledToolIds: [...DEFAULT_ALL_TOOL_IDS],
   planningStrategy: 'react',
   memoryConfig: {
     historyTurns: 10,
@@ -198,6 +202,18 @@ export const useAgentStore = create<AgentStore>()(
               const defaultAgent = createDefaultRequirementAnalyst()
               state.agents = [...state.agents, defaultAgent]
             }
+            // 迁移：确保所有已有 Agent 的 enabledToolIds 包含全部工具
+            // （之前 agent-builtin 工具是硬编码始终可用的，移除硬编码后需要补充到配置中）
+            const allIds = new Set(DEFAULT_ALL_TOOL_IDS)
+            state.agents = state.agents.map((agent) => {
+              const existingIds = new Set(agent.enabledToolIds)
+              const hasAllTools = [...allIds].every((id) => existingIds.has(id))
+              if (hasAllTools) return agent
+              return {
+                ...agent,
+                enabledToolIds: [...new Set([...agent.enabledToolIds, ...DEFAULT_ALL_TOOL_IDS])]
+              }
+            })
           }
         }
       }
