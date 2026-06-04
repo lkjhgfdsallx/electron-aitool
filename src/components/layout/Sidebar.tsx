@@ -1,4 +1,4 @@
-import { Plus, PanelLeftClose, PanelLeft, FileText, Settings, Bot } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeft, FileText, Settings, Bot, Plug } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
@@ -6,10 +6,11 @@ import { useSettingsStore } from '../../stores'
 interface SidebarProps {
   onOpenPromptManager?: () => void
   onOpenAgentManager?: () => void
+  onOpenMCP?: () => void
   onOpenSettings?: () => void
 }
 
-export function Sidebar({ onOpenPromptManager, onOpenAgentManager }: SidebarProps) {
+export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP }: SidebarProps) {
   const { createConversation } = useConversationStore()
   const { sidebarCollapsed, toggleSidebar } = useSettingsStore()
 
@@ -44,6 +45,13 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager }: SidebarProp
         >
           <FileText size={18} />
         </button>
+        <button
+          onClick={onOpenMCP}
+          className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          title="MCP 配置"
+        >
+          <Plug size={18} />
+        </button>
       </div>
     )
   }
@@ -74,6 +82,13 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager }: SidebarProp
             title="提示词管理"
           >
             <FileText size={16} />
+          </button>
+          <button
+            onClick={onOpenMCP}
+            className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            title="MCP 配置"
+          >
+            <Plug size={16} />
           </button>
           <button
             onClick={toggleSidebar}

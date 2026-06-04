@@ -4,12 +4,13 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 export interface ElectronAPI {
   // MCP 代理
   mcp: {
-    fetchTools: (serverUrl: string) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
+    fetchTools: (serverConfig: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
     callTool: (
-      serverUrl: string,
+      serverId: string,
       toolName: string,
       args: Record<string, unknown>
     ) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    stopServer: (serverId: string) => Promise<{ success: boolean }>
   }
   // 标题生成（TextRank + jieba 分词）
   title: {
@@ -38,9 +39,11 @@ export interface ElectronAPI {
 
 const electronAPI: ElectronAPI = {
   mcp: {
-    fetchTools: (serverUrl: string) => ipcRenderer.invoke('mcp:fetchTools', serverUrl),
-    callTool: (serverUrl: string, toolName: string, args: Record<string, unknown>) =>
-      ipcRenderer.invoke('mcp:callTool', serverUrl, toolName, args)
+    fetchTools: (serverConfig: Record<string, unknown>) =>
+      ipcRenderer.invoke('mcp:fetchTools', serverConfig),
+    callTool: (serverId: string, toolName: string, args: Record<string, unknown>) =>
+      ipcRenderer.invoke('mcp:callTool', serverId, toolName, args),
+    stopServer: (serverId: string) => ipcRenderer.invoke('mcp:stopServer', serverId)
   },
   title: {
     generate: (content: string) => ipcRenderer.invoke('title:generate', content)

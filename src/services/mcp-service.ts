@@ -2,11 +2,12 @@ import type { MCPServerConfig, Tool, ToolExecuteResult } from '../types'
 
 /**
  * MCP（Model Context Protocol）服务
- * 通过 Electron 主进程代理与 MCP 服务器通信
+ * 通过 Electron 主进程代理与 MCP 服务器通信（子进程 stdio JSON-RPC）
  */
 export const mcpService = {
   /**
    * 从 MCP 服务器获取工具列表
+   * 会启动子进程并执行 initialize + tools/list
    */
   async fetchTools(serverConfig: MCPServerConfig): Promise<Tool[]> {
     const api = window.electronAPI
@@ -14,7 +15,7 @@ export const mcpService = {
       throw new Error('Electron API 不可用')
     }
 
-    const result = await api.mcp.fetchTools(serverConfig.url)
+    const result = await api.mcp.fetchTools(serverConfig as unknown as Record<string, unknown>)
 
     if (!result.success || !result.data) {
       throw new Error(result.error ?? '获取 MCP 工具列表失败')
@@ -76,5 +77,14 @@ export const mcpService = {
       }
     }
     return tools
+  },
+
+  /**
+   * 停止 MCP 服务器进程
+   */
+  async stopServer(serverId: string): Promise<void> {
+    const api = window.electronAPI
+    if (!api) return
+    await api.mcp.stopServer(serverId)
   }
 }

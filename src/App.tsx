@@ -12,6 +12,7 @@ export default function App() {
       {/* 侧边栏 */}
       <Sidebar
         onOpenAgentManager={() => setActivePanel('agents')}
+        onOpenMCP={() => setActivePanel('mcp')}
       />
 
       {/* 主区域 */}

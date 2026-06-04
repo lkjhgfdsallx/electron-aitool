@@ -35,7 +35,14 @@ export type ToolCreateInput = Omit<Tool, 'id' | 'isBuiltIn' | 'isMCP' | 'mcpServ
 export interface MCPServerConfig {
   id: string
   name: string
-  url: string
+  /** 启动 MCP 服务器的命令，如 "npx" */
+  command: string
+  /** 命令参数，如 ["-y", "@upstash/context7-mcp"] */
+  args: string[]
+  /** 环境变量 */
+  env?: Record<string, string>
+  /** 自动允许的工具名称列表（无需用户确认） */
+  alwaysAllow?: string[]
   enabled: boolean
   description?: string
 }

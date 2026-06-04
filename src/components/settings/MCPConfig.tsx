@@ -13,23 +13,64 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
 
   const [servers, setServers] = useState<MCPServerConfig[]>(mcpServers)
   const [isAdding, setIsAdding] = useState(false)
-  const [newServer, setNewServer] = useState({ name: '', url: '', description: '' })
+  const [newServer, setNewServer] = useState({
+    name: '',
+    command: 'npx',
+    args: '',
+    env: '',
+    alwaysAllow: '',
+    description: ''
+  })
   const [testing, setTesting] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<{ id: string; success: boolean; message: string } | null>(null)
 
+  const parseArgs = (argsStr: string): string[] => {
+    return argsStr
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  const parseEnv = (envStr: string): Record<string, string> | undefined => {
+    const lines = envStr
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (lines.length === 0) return undefined
+    const env: Record<string, string> = {}
+    for (const line of lines) {
+      const eqIdx = line.indexOf('=')
+      if (eqIdx > 0) {
+        env[line.slice(0, eqIdx).trim()] = line.slice(eqIdx + 1).trim()
+      }
+    }
+    return Object.keys(env).length > 0 ? env : undefined
+  }
+
+  const parseAlwaysAllow = (str: string): string[] | undefined => {
+    const items = str
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return items.length > 0 ? items : undefined
+  }
+
   const handleAdd = () => {
-    if (!newServer.name.trim() || !newServer.url.trim()) return
+    if (!newServer.name.trim() || !newServer.command.trim()) return
 
     const server: MCPServerConfig = {
       id: `mcp:${Date.now()}`,
       name: newServer.name,
-      url: newServer.url,
+      command: newServer.command,
+      args: parseArgs(newServer.args),
+      env: parseEnv(newServer.env),
+      alwaysAllow: parseAlwaysAllow(newServer.alwaysAllow),
       enabled: true,
       description: newServer.description
     }
 
     setServers([...servers, server])
-    setNewServer({ name: '', url: '', description: '' })
+    setNewServer({ name: '', command: 'npx', args: '', env: '', alwaysAllow: '', description: '' })
     setIsAdding(false)
   }
 
@@ -83,7 +124,9 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
 
       <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
         <p className="text-xs text-gray-500 mb-2">
-          配置 MCP（Model Context Protocol）服务器，以获取额外的工具能力。
+          配置 MCP（Model Context Protocol）服务器，通过子进程 stdio 通信。
+          <br />
+          例如：<code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">npx -y @upstash/context7-mcp</code>
         </p>
         <button
           onClick={() => setIsAdding(true)}
@@ -101,14 +144,35 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
               type="text"
               value={newServer.name}
               onChange={(e) => setNewServer({ ...newServer, name: e.target.value })}
-              placeholder="服务器名称"
+              placeholder="服务器名称（如 context7）"
               className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             <input
               type="text"
-              value={newServer.url}
-              onChange={(e) => setNewServer({ ...newServer, url: e.target.value })}
-              placeholder="http://localhost:3000"
+              value={newServer.command}
+              onChange={(e) => setNewServer({ ...newServer, command: e.target.value })}
+              placeholder="命令（如 npx、node、python）"
+              className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+            <textarea
+              value={newServer.args}
+              onChange={(e) => setNewServer({ ...newServer, args: e.target.value })}
+              placeholder={"参数（每行一个）\n例如：\n-y\n@upstash/context7-mcp"}
+              rows={3}
+              className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y font-mono"
+            />
+            <textarea
+              value={newServer.env}
+              onChange={(e) => setNewServer({ ...newServer, env: e.target.value })}
+              placeholder={"环境变量（KEY=VALUE 每行一个，可选）\n例如：\nDEFAULT_MINIMUM_TOKENS=10000"}
+              rows={2}
+              className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y font-mono"
+            />
+            <input
+              type="text"
+              value={newServer.alwaysAllow}
+              onChange={(e) => setNewServer({ ...newServer, alwaysAllow: e.target.value })}
+              placeholder="自动允许的工具（逗号分隔，可选，如 query-docs, resolve-library-id）"
               className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             <input
@@ -121,7 +185,7 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
             <div className="flex gap-2">
               <button
                 onClick={handleAdd}
-                disabled={!newServer.name.trim() || !newServer.url.trim()}
+                disabled={!newServer.name.trim() || !newServer.command.trim()}
                 className="px-3 py-1.5 text-sm bg-primary-500 text-white rounded hover:bg-primary-600 disabled:opacity-50"
               >
                 添加
@@ -155,7 +219,19 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
                     <Server size={14} className="text-gray-400" />
                     <span className="text-sm font-medium">{server.name}</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate">{server.url}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 font-mono truncate">
+                    {server.command} {server.args.join(' ')}
+                  </p>
+                  {server.env && Object.keys(server.env).length > 0 && (
+                    <p className="text-xs text-gray-400 mt-0.5 truncate">
+                      环境变量: {Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join(', ')}
+                    </p>
+                  )}
+                  {server.alwaysAllow && server.alwaysAllow.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      自动允许: {server.alwaysAllow.join(', ')}
+                    </p>
+                  )}
                   {server.description && (
                     <p className="text-xs text-gray-400 mt-0.5">{server.description}</p>
                   )}
