@@ -1,26 +1,6 @@
 import type { Tool } from '../types'
 
 /**
- * 普通对话模式工具（安全、不会导致对话中断的工具）
- * 仅包含不会产生误导性错误结果的工具
- */
-export const NORMAL_MODE_TOOLS: Tool[] = [
-  {
-    id: 'builtin:get_current_time',
-    name: 'get_current_time',
-    description: '获取当前的日期和时间信息',
-    parameters: {
-      type: 'object',
-      properties: {},
-      required: []
-    },
-    isBuiltIn: true,
-    isMCP: false,
-    enabled: true
-  }
-]
-
-/**
  * 内置工具定义（符合 OpenAI Function Calling 格式）
  * 包含所有内置工具，供 Agent 模式使用
  */
@@ -41,7 +21,7 @@ export const BUILT_IN_TOOLS: Tool[] = [
   {
     id: 'builtin:calculate',
     name: 'calculate',
-    description: '执行数学计算。支持基本的四则运算、括号、幂运算等。',
+    description: '执行数学计算。支持四则运算、幂(^)、取模(%)、括号、科学计数法、常见数学函数(sin/cos/tan/sqrt/log/exp/pow/min/max/abs/ceil/floor/fact等)和常量(pi/e)。',
     parameters: {
       type: 'object',
       properties: {

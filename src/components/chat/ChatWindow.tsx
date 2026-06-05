@@ -1,13 +1,59 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { MessageSquareDashed } from 'lucide-react'
 import { MessageItem } from './MessageItem'
+import { AssistantGroupBubble } from './AssistantGroupBubble'
 import { MessageInput } from './MessageInput'
 import { AgentSelector } from './AgentSelector'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useChat } from '../../hooks/use-chat'
-import type { MessageAttachment } from '../../types'
+import type { Message, MessageAttachment } from '../../types'
+
+/** 消息渲染组：单条消息或多条合并的 assistant 组 */
+type RenderGroup =
+  | { type: 'single'; message: Message }
+  | { type: 'assistant-group'; messages: Message[] }
+
+/**
+ * 将消息列表分组：
+ * - user / system / Agent 模式的 assistant → 独立渲染
+ * - 普通模式下连续的 assistant + tool 消息 → 合并为一组
+ */
+function groupMessages(messages: Message[]): RenderGroup[] {
+  const groups: RenderGroup[] = []
+  let pendingGroup: Message[] = []
+
+  const flushGroup = () => {
+    if (pendingGroup.length === 0) return
+    if (pendingGroup.length === 1) {
+      groups.push({ type: 'single', message: pendingGroup[0] })
+    } else {
+      groups.push({ type: 'assistant-group', messages: [...pendingGroup] })
+    }
+    pendingGroup = []
+  }
+
+  for (const msg of messages) {
+    if (msg.role === 'user' || msg.role === 'system') {
+      flushGroup()
+      groups.push({ type: 'single', message: msg })
+    } else if (msg.role === 'tool') {
+      // 工具结果消息归入当前组
+      pendingGroup.push(msg)
+    } else if (msg.role === 'assistant') {
+      // Agent 模式消息（有 agentSteps）独立渲染
+      if (msg.agentSteps && msg.agentSteps.length > 0) {
+        flushGroup()
+        groups.push({ type: 'single', message: msg })
+      } else {
+        pendingGroup.push(msg)
+      }
+    }
+  }
+  flushGroup()
+  return groups
+}
 
 interface ChatWindowProps {
   onOpenPromptManager?: () => void
@@ -24,6 +70,9 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   // 使用可见消息（支持分支切换）
   const messages = currentConversationId ? getVisibleMessages(currentConversationId) : []
   const currentConversation = currentConversationId ? getConversation(currentConversationId) : undefined
+
+  // 将消息分组：普通模式下连续的 assistant+tool 消息合并为一个气泡
+  const renderGroups = useMemo(() => groupMessages(messages), [messages])
   const activeBranches = currentConversation?.activeBranches ?? {}
 
   // 获取当前对话关联的 Agent
@@ -118,20 +167,34 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
           </div>
         ) : (
           <div className="max-w-3xl mx-auto py-4">
-            {messages.map((msg) => (
-              <MessageItem
-                key={msg.id}
-                message={msg}
-                showTimestamp={showTimestamp}
-                showTokenUsage={showTokenUsage}
-                onRegenerate={regenerateMessage}
-                onEditAndResend={editAndResend}
-                onHumanInput={handleHumanInput}
-                onResumeAgentTask={resumeAgentTask}
-                activeBranchIndex={getActiveBranchIndex(msg.id)}
-                onSwitchBranch={handleSwitchBranch}
-              />
-            ))}
+            {renderGroups.map((group, idx) => {
+              if (group.type === 'assistant-group') {
+                return (
+                  <AssistantGroupBubble
+                    key={`group-${group.messages[0].id}`}
+                    messages={group.messages}
+                    showTimestamp={showTimestamp}
+                    showTokenUsage={showTokenUsage}
+                    onRegenerate={regenerateMessage}
+                  />
+                )
+              }
+              const msg = group.message
+              return (
+                <MessageItem
+                  key={msg.id}
+                  message={msg}
+                  showTimestamp={showTimestamp}
+                  showTokenUsage={showTokenUsage}
+                  onRegenerate={regenerateMessage}
+                  onEditAndResend={editAndResend}
+                  onHumanInput={handleHumanInput}
+                  onResumeAgentTask={resumeAgentTask}
+                  activeBranchIndex={getActiveBranchIndex(msg.id)}
+                  onSwitchBranch={handleSwitchBranch}
+                />
+              )
+            })}
             <div ref={messagesEndRef} />
           </div>
         )}

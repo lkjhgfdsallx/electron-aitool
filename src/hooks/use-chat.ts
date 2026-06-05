@@ -3,12 +3,12 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
-import { BUILT_IN_TOOLS, NORMAL_MODE_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
 import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
 import { generateTitleFromContent } from '../utils/conversation-utils'
-import type { Message, Tool, MessageAttachment, AgentStep, AgentProfile } from '../types'
+import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile } from '../types'
 
 /**
  * 聊天 Hook - 处理消息发送、工具调用、Agent 模式
@@ -304,9 +304,8 @@ export function useChat() {
       // 获取对话历史
       const history = getMessages(convId)
 
-      // 准备工具定义（普通模式只使用安全的通用工具，不包含可能误用的计算工具）
-      const tools = NORMAL_MODE_TOOLS
-      const toolDefs = toolService.toToolDefinitions(tools)
+      // 普通模式使用内置工具（get_current_time、calculate）
+      const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
 
       // 创建 assistant 消息（流式更新）
       const assistantMsg = addMessage(convId, {
@@ -360,7 +359,7 @@ export function useChat() {
                   status: 'pending' as const
                 }))
               })
-              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, tools, currentBranchIdx)
+              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, BUILT_IN_TOOLS, currentBranchIdx)
             } else {
               updateMessage(assistantMsg.id, {
                 content: fullContent,
@@ -398,8 +397,12 @@ export function useChat() {
     ]
   )
 
+  /** 普通模式工具调用最大迭代轮数，防止无限循环 */
+  const MAX_TOOL_ITERATIONS = 10
+
   /**
    * 处理工具调用（普通模式）
+   * 支持多轮工具调用循环：AI 调用工具 → 执行 → 将结果反馈给 AI → AI 可继续调用工具
    */
   const handleToolCalls = useCallback(
     async (
@@ -407,13 +410,27 @@ export function useChat() {
       assistantMsgId: string,
       toolCalls: Array<{ id: string; name: string; arguments: string }>,
       tools: Tool[],
-      branchIndex?: number
+      branchIndex?: number,
+      iteration: number = 1
     ) => {
+      // 超过最大迭代次数，停止工具调用循环
+      if (iteration > MAX_TOOL_ITERATIONS) {
+        addMessage(conversationId, {
+          conversationId,
+          role: 'system',
+          content: `工具调用已达最大迭代次数（${MAX_TOOL_ITERATIONS}轮），自动停止。`,
+          branchIndex
+        })
+        isStreamingRef.current = false
+        return
+      }
+
       const currentMsg = useConversationStore.getState().messages[conversationId]?.find(
         (m) => m.id === assistantMsgId
       )
       if (!currentMsg?.toolCalls) return
 
+      // 逐个执行工具调用，实时更新状态
       for (let i = 0; i < toolCalls.length; i++) {
         const tc = toolCalls[i]
 
@@ -437,6 +454,7 @@ export function useChat() {
         }
         updateMessage(assistantMsgId, { toolCalls: updatedToolCalls })
 
+        // 将工具结果作为 tool 消息添加到对话历史
         addMessage(conversationId, {
           conversationId,
           role: 'tool',
@@ -447,13 +465,17 @@ export function useChat() {
         })
       }
 
+      // 构建工具定义（保持工具可用，支持后续轮次继续调用）
+      const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-      // 使用可见消息作为历史（支持分支场景）
+
+      // 获取最新历史（包含本轮工具调用和结果）
       const history = branchIndex !== undefined
         ? getVisibleMessages(conversationId)
         : getMessages(conversationId)
 
-      const finalMsg = addMessage(conversationId, {
+      // 创建新的 assistant 消息用于本轮 AI 回复
+      const replyMsg = addMessage(conversationId, {
         conversationId,
         role: 'assistant',
         content: '',
@@ -462,34 +484,74 @@ export function useChat() {
       })
 
       let fullContent = ''
+      let reasoningContent = ''
+      let pendingToolCalls: Array<{ id: string; name: string; arguments: string }> = []
       const controller = new AbortController()
       abortControllerRef.current = controller
 
-      // 第二次 AI 调用不传入工具定义，避免 AI 再次尝试调用工具导致对话中断
-      // 工具执行结果已通过 role:'tool' 消息传回，AI 应基于结果生成纯文本回复
+      // 关键改动：传入工具定义（而非空数组），让 AI 在需要时可以继续调用工具
       await aiService.streamChat(
         history,
         globalConfig,
         prompt?.content ?? null,
-        [],
+        toolDefs,
         controller.signal,
         {
           onToken: (token) => {
             fullContent += token
-            updateMessage(finalMsg.id, { content: fullContent })
+            updateMessage(replyMsg.id, { content: fullContent })
+          },
+          onReasoningToken: (token) => {
+            reasoningContent += token
+            updateMessage(replyMsg.id, {
+              content: fullContent,
+              reasoningContent
+            })
+          },
+          onToolCalls: (toolCalls) => {
+            pendingToolCalls = toolCalls
           },
           onUsage: (usage) => {
-            updateMessage(finalMsg.id, { tokenUsage: usage })
+            updateMessage(replyMsg.id, { tokenUsage: usage })
           },
-          onDone: () => {
-            updateMessage(finalMsg.id, { content: fullContent, isStreaming: false })
-            isStreamingRef.current = false
+          onDone: async () => {
+            if (pendingToolCalls.length > 0) {
+              // AI 又发起了工具调用 → 更新消息显示工具调用状态
+              updateMessage(replyMsg.id, {
+                content: fullContent,
+                isStreaming: false,
+                reasoningContent: reasoningContent || undefined,
+                toolCalls: pendingToolCalls.map((tc) => ({
+                  ...tc,
+                  arguments: tc.arguments,
+                  status: 'pending' as const
+                }))
+              })
+              // 递归进入下一轮工具调用（带迭代计数）
+              await handleToolCalls(
+                conversationId,
+                replyMsg.id,
+                pendingToolCalls,
+                tools,
+                branchIndex,
+                iteration + 1
+              )
+            } else {
+              // AI 返回纯文本，工具调用循环结束
+              updateMessage(replyMsg.id, {
+                content: fullContent,
+                isStreaming: false,
+                reasoningContent: reasoningContent || undefined
+              })
+              isStreamingRef.current = false
+            }
           },
           onError: (error) => {
-            updateMessage(finalMsg.id, {
+            updateMessage(replyMsg.id, {
               content: fullContent || error,
               isStreaming: false,
-              isError: true
+              isError: true,
+              reasoningContent: reasoningContent || undefined
             })
             isStreamingRef.current = false
           }
@@ -630,8 +692,8 @@ export function useChat() {
       } else {
         // 普通模式重新生成
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        const tools = NORMAL_MODE_TOOLS
-        const toolDefs = toolService.toToolDefinitions(tools)
+        // 普通模式使用内置工具
+        const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
 
         const assistantMsg = addMessage(currentConversationId, {
           conversationId: currentConversationId,
@@ -673,7 +735,7 @@ export function useChat() {
                   isStreaming: false,
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, tools, currentBranchIdx)
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, BUILT_IN_TOOLS, currentBranchIdx)
               } else {
                 updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
               }
@@ -1025,8 +1087,8 @@ export function useChat() {
       } else {
         // 普通模式
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        const tools = NORMAL_MODE_TOOLS
-        const toolDefs = toolService.toToolDefinitions(tools)
+        // 普通模式使用内置工具
+        const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
 
         const assistantMsg = addMessage(currentConversationId, {
           conversationId: currentConversationId,
@@ -1068,7 +1130,7 @@ export function useChat() {
                   isStreaming: false,
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, tools, newBranchIndex)
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, BUILT_IN_TOOLS, newBranchIndex)
               } else {
                 updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
               }
