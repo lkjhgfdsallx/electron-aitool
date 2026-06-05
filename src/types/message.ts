@@ -44,6 +44,10 @@ export interface Message {
   agentSteps?: AgentStep[]
   /** 关联的 Agent ID */
   agentId?: string
+  /** 分支索引（对话分支功能，0 为主分支） */
+  branchIndex?: number
+  /** 分支总数（仅在分支点用户消息上设置，表示该处分叉的数量） */
+  branchCount?: number
 }
 
 export type MessageCreateInput = Omit<Message, 'id' | 'timestamp'>

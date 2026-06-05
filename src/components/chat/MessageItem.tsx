@@ -11,7 +11,10 @@ import {
   Clock,
   FileText,
   Image,
-  FileIcon
+  FileIcon,
+  ChevronLeft,
+  ChevronRight,
+  GitBranch
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { SelectionBoundary } from '../ui/SelectionBoundary'
@@ -33,9 +36,15 @@ interface MessageItemProps {
   showTokenUsage?: boolean
   onRegenerate?: (messageId: string) => void
   onEdit?: (messageId: string, content: string) => void
+  /** 编辑并重新发送（创建对话分支） */
+  onEditAndResend?: (messageId: string, content: string) => void
   onHumanInput?: (stepId: string, value: string | string[]) => void
   /** 继续执行出错的 Agent 任务 */
   onResumeAgentTask?: (messageId: string) => void
+  /** 当前激活的分支索引（仅分支点消息有效） */
+  activeBranchIndex?: number
+  /** 切换分支回调 */
+  onSwitchBranch?: (forkMessageId: string, branchIndex: number) => void
 }
 
 const roleConfig = {
@@ -51,8 +60,11 @@ export function MessageItem({
   showTokenUsage = true,
   onRegenerate,
   onEdit,
+  onEditAndResend,
   onHumanInput,
-  onResumeAgentTask
+  onResumeAgentTask,
+  activeBranchIndex = 0,
+  onSwitchBranch
 }: MessageItemProps) {
   const [copied, setCopied] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -71,6 +83,11 @@ export function MessageItem({
     onEdit?.(message.id, editContent)
     setIsEditing(false)
   }, [message.id, editContent, onEdit])
+
+  const handleEditAndResend = useCallback(() => {
+    onEditAndResend?.(message.id, editContent)
+    setIsEditing(false)
+  }, [message.id, editContent, onEditAndResend])
 
   // 工具消息特殊显示
   if (message.role === 'tool') {
@@ -95,6 +112,9 @@ export function MessageItem({
 
   // 是否为 Agent 模式消息
   const hasAgentSteps = message.agentSteps && message.agentSteps.length > 0
+
+  // 是否为分支点（用户消息且有多个分支）
+  const isForkPoint = message.role === 'user' && (message.branchCount ?? 0) > 1
 
   return (
     <div className={`flex gap-3 px-4 py-3 group ${message.isError ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
@@ -170,12 +190,22 @@ export function MessageItem({
                 rows={4}
               />
               <div className="flex gap-2">
-                <button
-                  onClick={handleSaveEdit}
-                  className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
-                >
-                  保存
-                </button>
+                {onEditAndResend && (
+                  <button
+                    onClick={handleEditAndResend}
+                    className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
+                  >
+                    保存并重新发送
+                  </button>
+                )}
+                {onEdit && !onEditAndResend && (
+                  <button
+                    onClick={handleSaveEdit}
+                    className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
+                  >
+                    保存
+                  </button>
+                )}
                 <button
                   onClick={() => setIsEditing(false)}
                   className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
@@ -185,7 +215,13 @@ export function MessageItem({
               </div>
             </div>
           ) : (
-            <MarkdownRenderer content={message.content} />
+            <>
+              <MarkdownRenderer content={message.content} />
+              {/* 已编辑标记 */}
+              {message.isEdited && (
+                <span className="text-xs text-gray-400 italic ml-1">(已编辑)</span>
+              )}
+            </>
           )}
         </SelectionBoundary>
 
@@ -217,6 +253,32 @@ export function MessageItem({
           </div>
         )}
 
+        {/* 分支导航（仅分支点用户消息显示） */}
+        {isForkPoint && !isEditing && (
+          <div className="flex items-center gap-1.5 mt-2">
+            <GitBranch size={12} className="text-gray-400" />
+            <button
+              onClick={() => onSwitchBranch?.(message.id, Math.max(0, activeBranchIndex - 1))}
+              disabled={activeBranchIndex <= 0}
+              className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+              title="上一个分支"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-xs text-gray-500 tabular-nums">
+              {activeBranchIndex + 1} / {message.branchCount}
+            </span>
+            <button
+              onClick={() => onSwitchBranch?.(message.id, Math.min((message.branchCount ?? 1) - 1, activeBranchIndex + 1))}
+              disabled={activeBranchIndex >= (message.branchCount ?? 1) - 1}
+              className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
+              title="下一个分支"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+
         {/* 操作按钮 */}
         {!message.isStreaming && !isEditing && (
           <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -228,7 +290,7 @@ export function MessageItem({
               {copied ? <Check size={12} /> : <Copy size={12} />}
               {copied ? '已复制' : '复制'}
             </button>
-            {message.role === 'user' && onEdit && (
+            {message.role === 'user' && (onEdit || onEditAndResend) && (
               <button
                 onClick={() => {
                   setEditContent(message.content)

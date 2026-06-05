@@ -20,6 +20,9 @@ export function useChat() {
     addMessage,
     updateMessage,
     getMessages,
+    getVisibleMessages,
+    switchBranch,
+    getCurrentBranchIndex,
     currentConversationId,
     getConversation,
     renameConversation
@@ -106,6 +109,9 @@ export function useChat() {
     ) => {
       const convId = conversationId
 
+      // 获取当前分支索引，确保新消息继承正确的分支
+      const currentBranchIdx = getCurrentBranchIndex(convId)
+
       // 构建包含附件内容的完整消息（用于发送给 Agent 引擎）
       const fullContent = buildMessageContent(content, attachments)
       const agentMessage = typeof fullContent === 'string' ? fullContent : content
@@ -115,7 +121,8 @@ export function useChat() {
         role: 'user',
         content: content,
         attachments,
-        agentId: agent.id
+        agentId: agent.id,
+        branchIndex: currentBranchIdx
       })
 
       // 获取对话历史（不含当前消息）
@@ -127,7 +134,8 @@ export function useChat() {
         role: 'assistant',
         content: '',
         isStreaming: true,
-        agentId: agent.id
+        agentId: agent.id,
+        branchIndex: currentBranchIdx
       })
 
       // 获取所有工具（Agent 启用的 + Agent 内置工具）
@@ -237,7 +245,7 @@ export function useChat() {
         }
       )
     },
-    [globalConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent]
+    [globalConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex]
   )
 
   /**
@@ -280,13 +288,17 @@ export function useChat() {
       // 普通模式
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
 
+      // 获取当前分支索引，确保新消息继承正确的分支
+      const currentBranchIdx = getCurrentBranchIndex(convId)
+
       // 添加用户消息：只存储用户原始文本，文件内容通过 attachments 传递给 AI 服务
       // 这样用户消息气泡只显示用户输入的文字和附件指示器，不会显示完整的文件内容
       addMessage(convId, {
         conversationId: convId,
         role: 'user',
         content: content,
-        attachments
+        attachments,
+        branchIndex: currentBranchIdx
       })
 
       // 获取对话历史
@@ -301,7 +313,8 @@ export function useChat() {
         conversationId: convId,
         role: 'assistant',
         content: '',
-        isStreaming: true
+        isStreaming: true,
+        branchIndex: currentBranchIdx
       })
 
       // 发送 AI 请求
@@ -347,7 +360,7 @@ export function useChat() {
                   status: 'pending' as const
                 }))
               })
-              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, tools)
+              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, tools, currentBranchIdx)
             } else {
               updateMessage(assistantMsg.id, {
                 content: fullContent,
@@ -380,7 +393,8 @@ export function useChat() {
       getMessages,
       getAvailableTools,
       buildMessageContent,
-      sendMessageWithAgent
+      sendMessageWithAgent,
+      getCurrentBranchIndex
     ]
   )
 
@@ -392,7 +406,8 @@ export function useChat() {
       conversationId: string,
       assistantMsgId: string,
       toolCalls: Array<{ id: string; name: string; arguments: string }>,
-      tools: Tool[]
+      tools: Tool[],
+      branchIndex?: number
     ) => {
       const currentMsg = useConversationStore.getState().messages[conversationId]?.find(
         (m) => m.id === assistantMsgId
@@ -427,18 +442,23 @@ export function useChat() {
           role: 'tool',
           content: result.success ? result.data : result.error ?? '工具执行失败',
           toolCallId: tc.id,
-          toolName: tc.name
+          toolName: tc.name,
+          branchIndex
         })
       }
 
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-      const history = getMessages(conversationId)
+      // 使用可见消息作为历史（支持分支场景）
+      const history = branchIndex !== undefined
+        ? getVisibleMessages(conversationId)
+        : getMessages(conversationId)
 
       const finalMsg = addMessage(conversationId, {
         conversationId,
         role: 'assistant',
         content: '',
-        isStreaming: true
+        isStreaming: true,
+        branchIndex
       })
 
       let fullContent = ''
@@ -476,7 +496,7 @@ export function useChat() {
         }
       )
     },
-    [globalConfig, selectedPromptId, getPrompt, addMessage, updateMessage, getMessages]
+    [globalConfig, selectedPromptId, getPrompt, addMessage, updateMessage, getMessages, getVisibleMessages]
   )
 
   /**
@@ -490,27 +510,197 @@ export function useChat() {
   }, [])
 
   /**
-   * 重新生成消息
+   * 重新生成消息（不重新添加用户消息）
+   * 仅删除目标助手消息，然后基于当前可见历史重新请求 AI
    */
   const regenerateMessage = useCallback(
     async (messageId: string) => {
       if (!currentConversationId || isStreamingRef.current) return
 
-      const messages = getMessages(currentConversationId)
-      const msgIndex = messages.findIndex((m) => m.id === messageId)
+      // 使用可见消息列表来确定要删除的范围
+      const visibleMessages = getVisibleMessages(currentConversationId)
+      const msgIndex = visibleMessages.findIndex((m) => m.id === messageId)
       if (msgIndex < 0) return
 
-      for (let i = messages.length - 1; i >= msgIndex; i--) {
-        useConversationStore.getState().deleteMessage(currentConversationId, messages[i].id)
+      // 删除目标消息及其之后的所有可见消息
+      for (let i = visibleMessages.length - 1; i >= msgIndex; i--) {
+        useConversationStore.getState().deleteMessage(currentConversationId, visibleMessages[i].id)
       }
 
-      const updatedMessages = getMessages(currentConversationId)
-      const lastUserMsg = [...updatedMessages].reverse().find((m) => m.role === 'user')
-      if (lastUserMsg) {
-        await sendMessage(lastUserMsg.content, currentConversationId, lastUserMsg.attachments)
+      // 获取当前分支索引
+      const currentBranchIdx = getCurrentBranchIndex(currentConversationId)
+
+      // 检查是否为 Agent 模式
+      const agent = (() => {
+        const conversation = getConversation(currentConversationId)
+        if (!conversation?.agentId) return undefined
+        return getAgent(conversation.agentId)
+      })()
+
+      isStreamingRef.current = true
+      abortControllerRef.current = new AbortController()
+
+      // 获取删除后的可见历史作为上下文
+      const history = useConversationStore.getState().getVisibleMessages(currentConversationId)
+
+      if (agent && agent.enabled) {
+        // Agent 模式重新生成
+        const assistantMsg = addMessage(currentConversationId, {
+          conversationId: currentConversationId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+          agentId: agent.id,
+          branchIndex: currentBranchIdx
+        })
+
+        const allTools = getAvailableTools()
+        const agentSteps: AgentStep[] = []
+        let finalContent = ''
+        let reasoningContent = ''
+
+        await runAgent(
+          agent,
+          '', // 空 prompt，Agent 从历史中恢复上下文
+          history,
+          allTools,
+          globalConfig,
+          abortControllerRef.current.signal,
+          {
+            onStep: (step) => {
+              agentSteps.push(step)
+              updateMessage(assistantMsg.id, { agentSteps: [...agentSteps], isStreaming: true })
+            },
+            onToken: (token) => {
+              finalContent += token
+              updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
+            },
+            onReasoningToken: (token) => {
+              reasoningContent += token
+              updateMessage(assistantMsg.id, { content: finalContent, reasoningContent, agentSteps: [...agentSteps], isStreaming: true })
+            },
+            onStatusChange: (status) => {
+              if (status === 'completed' || status === 'error' || status === 'stopped') {
+                updateMessage(assistantMsg.id, {
+                  content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
+                  isStreaming: false,
+                  isError: status === 'error',
+                  reasoningContent: reasoningContent || undefined,
+                  agentSteps: [...agentSteps]
+                })
+                isStreamingRef.current = false
+              }
+            },
+            onError: (error) => {
+              updateMessage(assistantMsg.id, { content: finalContent || error, isStreaming: false, isError: true, agentSteps: [...agentSteps] })
+              isStreamingRef.current = false
+            },
+            onDone: (doneContent) => {
+              updateMessage(assistantMsg.id, { content: doneContent || finalContent || '', isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined })
+              isStreamingRef.current = false
+            },
+            onHumanInput: async (step) => {
+              return new Promise<string | string[]>((resolve, reject) => {
+                humanInputResolversRef.current.set(step.id, resolve)
+                const timeoutId = setTimeout(() => {
+                  if (humanInputResolversRef.current.has(step.id)) {
+                    humanInputResolversRef.current.delete(step.id)
+                    const firstOption = step.humanChoice?.options[0]?.value ?? ''
+                    const defaultValue = step.humanChoice?.allowMultiple ? [firstOption] : firstOption
+                    resolve(defaultValue)
+                  }
+                }, 60_000)
+                const signal = abortControllerRef.current?.signal
+                if (signal?.aborted) {
+                  clearTimeout(timeoutId)
+                  humanInputResolversRef.current.delete(step.id)
+                  reject(new Error('aborted'))
+                  return
+                }
+                const onAbort = () => {
+                  clearTimeout(timeoutId)
+                  humanInputResolversRef.current.delete(step.id)
+                  reject(new Error('aborted'))
+                }
+                signal?.addEventListener('abort', onAbort, { once: true })
+              })
+            }
+          }
+        )
+      } else {
+        // 普通模式重新生成
+        const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
+        const tools = NORMAL_MODE_TOOLS
+        const toolDefs = toolService.toToolDefinitions(tools)
+
+        const assistantMsg = addMessage(currentConversationId, {
+          conversationId: currentConversationId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+          branchIndex: currentBranchIdx
+        })
+
+        let fullContent = ''
+        let reasoningContent = ''
+        let pendingToolCalls: Array<{ id: string; name: string; arguments: string }> = []
+
+        await aiService.streamChat(
+          history,
+          globalConfig,
+          prompt?.content ?? null,
+          toolDefs,
+          abortControllerRef.current.signal,
+          {
+            onToken: (token) => {
+              fullContent += token
+              updateMessage(assistantMsg.id, { content: fullContent })
+            },
+            onReasoningToken: (token) => {
+              reasoningContent += token
+              updateMessage(assistantMsg.id, { content: fullContent, reasoningContent })
+            },
+            onToolCalls: (toolCalls) => {
+              pendingToolCalls = toolCalls
+            },
+            onUsage: (usage) => {
+              updateMessage(assistantMsg.id, { content: fullContent, tokenUsage: usage })
+            },
+            onDone: async () => {
+              if (pendingToolCalls.length > 0) {
+                updateMessage(assistantMsg.id, {
+                  content: fullContent,
+                  isStreaming: false,
+                  toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
+                })
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, tools, currentBranchIdx)
+              } else {
+                updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
+              }
+              isStreamingRef.current = false
+            },
+            onError: (error) => {
+              updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
+              isStreamingRef.current = false
+            }
+          }
+        )
       }
     },
-    [currentConversationId, getMessages, sendMessage]
+    [
+      currentConversationId,
+      globalConfig,
+      selectedPromptId,
+      getPrompt,
+      getAgent,
+      getConversation,
+      addMessage,
+      updateMessage,
+      getVisibleMessages,
+      getCurrentBranchIndex,
+      getAvailableTools,
+      handleToolCalls
+    ]
   )
 
   /**
@@ -670,10 +860,251 @@ export function useChat() {
     [currentConversationId, globalConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent]
   )
 
+  /**
+   * 编辑用户消息并重新发送（创建对话分支）
+   * 1. 更新用户消息内容，标记为已编辑，设置分支计数
+   * 2. 切换 activeBranches 到新分支
+   * 3. 基于可见历史发送新请求，新消息使用新的 branchIndex
+   */
+  const editAndResend = useCallback(
+    async (messageId: string, newContent: string) => {
+      if (!currentConversationId || isStreamingRef.current) return
+
+      const allMessages = getMessages(currentConversationId)
+      const msgIndex = allMessages.findIndex((m) => m.id === messageId)
+      if (msgIndex < 0) return
+
+      const targetMsg = allMessages[msgIndex]
+      if (targetMsg.role !== 'user') return
+
+      // 1. 确定新的分支索引：找到该分支点之后所有消息的最大 branchIndex
+      let maxBranchIndex = -1
+      for (let i = msgIndex + 1; i < allMessages.length; i++) {
+        const bi = allMessages[i].branchIndex ?? 0
+        if (bi > maxBranchIndex) maxBranchIndex = bi
+      }
+      const newBranchIndex = maxBranchIndex + 1
+
+      // 2. 更新用户消息：内容、编辑标记、分支计数
+      const newBranchCount = Math.max(targetMsg.branchCount ?? 1, newBranchIndex + 1)
+      updateMessage(messageId, {
+        content: newContent,
+        isEdited: true,
+        branchCount: newBranchCount
+      })
+
+      // 3. 更新 activeBranches 指向新分支
+      switchBranch(currentConversationId, messageId, newBranchIndex)
+
+      // 4. 手动构建可见历史（因为 store 更新可能还未生效）
+      const updatedActiveBranches: Record<string, number> = {
+        ...(getConversation(currentConversationId)?.activeBranches ?? {}),
+        [messageId]: newBranchIndex
+      }
+
+      let currentBranch = 0
+      const visibleHistory: Message[] = []
+      for (const msg of allMessages) {
+        const isCurrentFork = msg.id === messageId && newBranchCount > 1
+        const isOtherFork = msg.id !== messageId && msg.role === 'user' && (msg.branchCount ?? 0) > 1
+        const isFork = isCurrentFork || isOtherFork
+
+        if (isFork) {
+          currentBranch = updatedActiveBranches[msg.id] ?? 0
+          if (msg.id === messageId) {
+            visibleHistory.push({ ...msg, content: newContent, isEdited: true, branchCount: newBranchCount })
+          } else {
+            visibleHistory.push(msg)
+          }
+        } else if (msg.branchIndex === undefined || msg.branchIndex === currentBranch) {
+          if (msg.id === messageId) {
+            visibleHistory.push({ ...msg, content: newContent, isEdited: true, branchCount: newBranchCount })
+          } else {
+            visibleHistory.push(msg)
+          }
+        }
+      }
+
+      // 5. 检查是否为 Agent 模式
+      const agent = (() => {
+        const conversation = getConversation(currentConversationId)
+        if (!conversation?.agentId) return undefined
+        return getAgent(conversation.agentId)
+      })()
+
+      isStreamingRef.current = true
+      abortControllerRef.current = new AbortController()
+
+      if (agent && agent.enabled) {
+        // Agent 模式
+        const fullContent = buildMessageContent(newContent, targetMsg.attachments)
+        const agentMessage = typeof fullContent === 'string' ? fullContent : newContent
+
+        const assistantMsg = addMessage(currentConversationId, {
+          conversationId: currentConversationId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+          agentId: agent.id,
+          branchIndex: newBranchIndex
+        })
+
+        const allTools = getAvailableTools()
+        const agentSteps: AgentStep[] = []
+        let finalContent = ''
+        let reasoningContent = ''
+
+        await runAgent(
+          agent,
+          agentMessage,
+          visibleHistory.slice(0, -1),
+          allTools,
+          globalConfig,
+          abortControllerRef.current.signal,
+          {
+            onStep: (step) => {
+              agentSteps.push(step)
+              updateMessage(assistantMsg.id, { agentSteps: [...agentSteps], isStreaming: true })
+            },
+            onToken: (token) => {
+              finalContent += token
+              updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
+            },
+            onReasoningToken: (token) => {
+              reasoningContent += token
+              updateMessage(assistantMsg.id, { content: finalContent, reasoningContent, agentSteps: [...agentSteps], isStreaming: true })
+            },
+            onStatusChange: (status) => {
+              if (status === 'completed' || status === 'error' || status === 'stopped') {
+                updateMessage(assistantMsg.id, {
+                  content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
+                  isStreaming: false,
+                  isError: status === 'error',
+                  reasoningContent: reasoningContent || undefined,
+                  agentSteps: [...agentSteps]
+                })
+                isStreamingRef.current = false
+              }
+            },
+            onError: (error) => {
+              updateMessage(assistantMsg.id, { content: finalContent || error, isStreaming: false, isError: true, agentSteps: [...agentSteps] })
+              isStreamingRef.current = false
+            },
+            onDone: (doneContent) => {
+              updateMessage(assistantMsg.id, { content: doneContent || finalContent || '', isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined })
+              isStreamingRef.current = false
+            },
+            onHumanInput: async (step) => {
+              return new Promise<string | string[]>((resolve, reject) => {
+                humanInputResolversRef.current.set(step.id, resolve)
+                const timeoutId = setTimeout(() => {
+                  if (humanInputResolversRef.current.has(step.id)) {
+                    humanInputResolversRef.current.delete(step.id)
+                    const firstOption = step.humanChoice?.options[0]?.value ?? ''
+                    const defaultValue = step.humanChoice?.allowMultiple ? [firstOption] : firstOption
+                    resolve(defaultValue)
+                  }
+                }, 60_000)
+                const signal = abortControllerRef.current?.signal
+                if (signal?.aborted) {
+                  clearTimeout(timeoutId)
+                  humanInputResolversRef.current.delete(step.id)
+                  reject(new Error('aborted'))
+                  return
+                }
+                const onAbort = () => {
+                  clearTimeout(timeoutId)
+                  humanInputResolversRef.current.delete(step.id)
+                  reject(new Error('aborted'))
+                }
+                signal?.addEventListener('abort', onAbort, { once: true })
+              })
+            }
+          }
+        )
+      } else {
+        // 普通模式
+        const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
+        const tools = NORMAL_MODE_TOOLS
+        const toolDefs = toolService.toToolDefinitions(tools)
+
+        const assistantMsg = addMessage(currentConversationId, {
+          conversationId: currentConversationId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+          branchIndex: newBranchIndex
+        })
+
+        let fullContent = ''
+        let reasoningContent = ''
+        let pendingToolCalls: Array<{ id: string; name: string; arguments: string }> = []
+
+        await aiService.streamChat(
+          visibleHistory,
+          globalConfig,
+          prompt?.content ?? null,
+          toolDefs,
+          abortControllerRef.current.signal,
+          {
+            onToken: (token) => {
+              fullContent += token
+              updateMessage(assistantMsg.id, { content: fullContent })
+            },
+            onReasoningToken: (token) => {
+              reasoningContent += token
+              updateMessage(assistantMsg.id, { content: fullContent, reasoningContent })
+            },
+            onToolCalls: (toolCalls) => {
+              pendingToolCalls = toolCalls
+            },
+            onUsage: (usage) => {
+              updateMessage(assistantMsg.id, { content: fullContent, tokenUsage: usage })
+            },
+            onDone: async () => {
+              if (pendingToolCalls.length > 0) {
+                updateMessage(assistantMsg.id, {
+                  content: fullContent,
+                  isStreaming: false,
+                  toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
+                })
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, tools, newBranchIndex)
+              } else {
+                updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
+              }
+              isStreamingRef.current = false
+            },
+            onError: (error) => {
+              updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
+              isStreamingRef.current = false
+            }
+          }
+        )
+      }
+    },
+    [
+      currentConversationId,
+      globalConfig,
+      selectedPromptId,
+      getPrompt,
+      getAgent,
+      getConversation,
+      switchBranch,
+      addMessage,
+      updateMessage,
+      getMessages,
+      getAvailableTools,
+      buildMessageContent,
+      handleToolCalls,
+      sendMessageWithAgent
+    ]
+  )
+
   return {
     sendMessage,
     stopGeneration,
     regenerateMessage,
+    editAndResend,
     isStreaming: isStreamingRef.current,
     handleHumanInput,
     resumeAgentTask

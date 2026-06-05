@@ -16,15 +16,17 @@ interface ChatWindowProps {
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { currentConversationId, getMessages, getConversation, setConversationAgent } = useConversationStore()
+  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent } = useConversationStore()
   const { showTimestamp, showTokenUsage } = useSettingsStore()
   const { getAgent } = useAgentStore()
-  const { sendMessage, stopGeneration, regenerateMessage, handleHumanInput, resumeAgentTask } = useChat()
+  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask } = useChat()
 
-  const messages = currentConversationId ? getMessages(currentConversationId) : []
+  // 使用可见消息（支持分支切换）
+  const messages = currentConversationId ? getVisibleMessages(currentConversationId) : []
+  const currentConversation = currentConversationId ? getConversation(currentConversationId) : undefined
+  const activeBranches = currentConversation?.activeBranches ?? {}
 
   // 获取当前对话关联的 Agent
-  const currentConversation = currentConversationId ? getConversation(currentConversationId) : undefined
   const currentAgent = currentConversation?.agentId ? getAgent(currentConversation.agentId) : undefined
 
   // 自动滚动到底部
@@ -46,6 +48,24 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
       }
     },
     [currentConversationId, setConversationAgent]
+  )
+
+  /** 切换分支 */
+  const handleSwitchBranch = useCallback(
+    (forkMessageId: string, branchIndex: number) => {
+      if (currentConversationId) {
+        switchBranch(currentConversationId, forkMessageId, branchIndex)
+      }
+    },
+    [currentConversationId, switchBranch]
+  )
+
+  /** 获取分支点消息的当前激活分支索引 */
+  const getActiveBranchIndex = useCallback(
+    (forkMessageId: string): number => {
+      return activeBranches[forkMessageId] ?? 0
+    },
+    [activeBranches]
   )
 
   // 空状态
@@ -105,8 +125,11 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                 showTimestamp={showTimestamp}
                 showTokenUsage={showTokenUsage}
                 onRegenerate={regenerateMessage}
+                onEditAndResend={editAndResend}
                 onHumanInput={handleHumanInput}
                 onResumeAgentTask={resumeAgentTask}
+                activeBranchIndex={getActiveBranchIndex(msg.id)}
+                onSwitchBranch={handleSwitchBranch}
               />
             ))}
             <div ref={messagesEndRef} />

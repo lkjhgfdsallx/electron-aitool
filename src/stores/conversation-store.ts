@@ -24,6 +24,12 @@ interface ConversationStore {
   getMessages: (conversationId: string) => Message[]
   clearMessages: (conversationId: string) => void
 
+  // Branch Actions
+  switchBranch: (conversationId: string, forkMessageId: string, branchIndex: number) => void
+  getVisibleMessages: (conversationId: string) => Message[]
+  /** 获取当前对话末尾的活跃分支索引（基于最后一个分支点的 activeBranches） */
+  getCurrentBranchIndex: (conversationId: string) => number
+
   // Search
   searchConversations: (query: string) => Conversation[]
 }
@@ -164,6 +170,71 @@ export const useConversationStore = create<ConversationStore>()(
             c.id === conversationId ? { ...c, messageCount: 0 } : c
           )
         }))
+      },
+
+      // ==================== Branch Actions ====================
+
+      switchBranch: (conversationId, forkMessageId, branchIndex) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === conversationId
+              ? {
+                  ...c,
+                  activeBranches: {
+                    ...(c.activeBranches ?? {}),
+                    [forkMessageId]: branchIndex
+                  },
+                  updatedAt: Date.now()
+                }
+              : c
+          )
+        }))
+      },
+
+      /**
+       * 获取当前激活分支路径上的可见消息列表
+       * 遍历消息数组，在每个分支点根据 activeBranches 决定走哪条分支
+       */
+      getVisibleMessages: (conversationId) => {
+        const allMessages = get().messages[conversationId] ?? []
+        const conversation = get().conversations.find((c) => c.id === conversationId)
+        const activeBranches = conversation?.activeBranches ?? {}
+
+        let currentBranch = 0
+        const visible: Message[] = []
+
+        for (const msg of allMessages) {
+          const isFork = msg.role === 'user' && (msg.branchCount ?? 0) > 1
+
+          if (isFork) {
+            // 分支点用户消息：根据 activeBranches 确定当前分支
+            currentBranch = activeBranches[msg.id] ?? 0
+            visible.push(msg)
+          } else if (msg.branchIndex === undefined || msg.branchIndex === currentBranch) {
+            // 非分支点消息或分支匹配的消息
+            visible.push(msg)
+          }
+        }
+
+        return visible
+      },
+
+      /**
+       * 获取当前对话末尾的活跃分支索引
+       * 遍历所有消息，跟踪最后一个分支点的 activeBranch
+       */
+      getCurrentBranchIndex: (conversationId) => {
+        const allMessages = get().messages[conversationId] ?? []
+        const conversation = get().conversations.find((c) => c.id === conversationId)
+        const activeBranches = conversation?.activeBranches ?? {}
+
+        let currentBranch = 0
+        for (const msg of allMessages) {
+          if (msg.role === 'user' && (msg.branchCount ?? 0) > 1) {
+            currentBranch = activeBranches[msg.id] ?? 0
+          }
+        }
+        return currentBranch
       },
 
       // ==================== Search ====================
