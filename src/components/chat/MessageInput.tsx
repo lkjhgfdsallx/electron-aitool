@@ -192,7 +192,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto rounded-xl border border-transparent focus-within:border-primary-300 dark:focus-within:border-primary-600 focus-within:ring-1 focus-within:ring-primary-200/50 dark:focus-within:ring-primary-500/30 transition-colors p-1">
         {/* 附件预览区 */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
@@ -229,95 +229,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
           </div>
         )}
 
-        <div className="flex items-end gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent p-2">
-          {/* 附件按钮 */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-            title="上传文件（图片、PDF、Word、TXT等）"
-          >
-            <Paperclip size={18} />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,.txt,.md,.csv,.json,.js,.ts,.css,.html,.pdf,.doc,.docx"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-
-          {/* 提示词按钮 */}
-          <div className="relative">
-            <button
-              onClick={() => setShowPromptMenu(!showPromptMenu)}
-              className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              title="插入提示词"
-            >
-              <FileText size={18} />
-            </button>
-
-            {/* 提示词下拉菜单 */}
-            {showPromptMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowPromptMenu(false)}
-                />
-                <div className="absolute left-0 bottom-full z-20 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[240px] max-h-[300px] overflow-y-auto">
-                  <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-                    <span>选择提示词</span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowPromptMenu(false)
-                        onOpenPromptManager?.()
-                      }}
-                      className="text-primary-500 hover:text-primary-600 text-xs"
-                    >
-                      管理
-                    </button>
-                  </div>
-                  {prompts.length === 0 ? (
-                    <div className="px-3 py-4 text-center text-gray-400 text-sm">
-                      <p>暂无提示词</p>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setShowPromptMenu(false)
-                          onOpenPromptManager?.()
-                        }}
-                        className="text-primary-500 hover:text-primary-600 text-xs mt-1"
-                      >
-                        去创建
-                      </button>
-                    </div>
-                  ) : (
-                    prompts.map((prompt) => (
-                      <button
-                        key={prompt.id}
-                        onClick={() => handleSelectPrompt(prompt.content)}
-                        className="flex flex-col w-full px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
-                      >
-                        <span className="font-medium text-gray-800 dark:text-gray-200">
-                          {prompt.name}
-                        </span>
-                        {prompt.description && (
-                          <span className="text-xs text-gray-400 truncate">
-                            {prompt.description}
-                          </span>
-                        )}
-                        <span className="text-xs text-gray-400 mt-0.5 truncate">
-                          {prompt.content.slice(0, 60)}{prompt.content.length > 60 ? '...' : ''}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-2">
           {/* 输入框 */}
           <textarea
             ref={textareaRef}
@@ -327,36 +239,131 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             placeholder={isExtracting ? '正在解析文件...' : isStreaming ? 'AI 正在回复...' : '输入消息...'}
             disabled={disabled || isStreaming || isExtracting}
             rows={1}
-            className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 py-2 max-h-[200px]"
+            className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 py-2 max-h-[200px]"
           />
 
-          {/* 发送/停止按钮 */}
-          {isStreaming ? (
-            <button
-              onClick={onStop}
-              className="flex-shrink-0 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              title="停止生成"
-            >
-              <Square size={18} />
-            </button>
-          ) : isExtracting ? (
-            <button
-              disabled
-              className="flex-shrink-0 p-2 bg-primary-400 text-white rounded-lg opacity-70 cursor-wait"
-              title="正在解析文件..."
-            >
-              <Loader2 size={18} className="animate-spin" />
-            </button>
-          ) : (
-            <button
-              onClick={handleSend}
-              disabled={(!content.trim() && attachments.length === 0) || disabled}
-              className="flex-shrink-0 p-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="发送"
-            >
-              <Send size={18} />
-            </button>
-          )}
+          {/* 底部工具栏 */}
+          <div className="flex items-center justify-between pt-1 border-t border-gray-200/50 dark:border-gray-700/50 mt-1">
+            <div className="flex items-center gap-1">
+              {/* 附件按钮 */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-shrink-0 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                title="上传文件（图片、PDF、Word、TXT等）"
+              >
+                <Paperclip size={18} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.txt,.md,.csv,.json,.js,.ts,.css,.html,.pdf,.doc,.docx"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
+              {/* 提示词按钮 */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowPromptMenu(!showPromptMenu)}
+                  className="flex-shrink-0 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  title="插入提示词"
+                >
+                  <FileText size={18} />
+                </button>
+
+                {/* 提示词下拉菜单 */}
+                {showPromptMenu && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={() => setShowPromptMenu(false)}
+                    />
+                    <div className="absolute left-0 bottom-full z-20 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[240px] max-h-[300px] overflow-y-auto">
+                      <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                        <span>选择提示词</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setShowPromptMenu(false)
+                            onOpenPromptManager?.()
+                          }}
+                          className="text-primary-500 hover:text-primary-600 text-xs"
+                        >
+                          管理
+                        </button>
+                      </div>
+                      {prompts.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-gray-400 text-sm">
+                          <p>暂无提示词</p>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setShowPromptMenu(false)
+                              onOpenPromptManager?.()
+                            }}
+                            className="text-primary-500 hover:text-primary-600 text-xs mt-1"
+                          >
+                            去创建
+                          </button>
+                        </div>
+                      ) : (
+                        prompts.map((prompt) => (
+                          <button
+                            key={prompt.id}
+                            onClick={() => handleSelectPrompt(prompt.content)}
+                            className="flex flex-col w-full px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
+                          >
+                            <span className="font-medium text-gray-800 dark:text-gray-200">
+                              {prompt.name}
+                            </span>
+                            {prompt.description && (
+                              <span className="text-xs text-gray-400 truncate">
+                                {prompt.description}
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-400 mt-0.5 truncate">
+                              {prompt.content.slice(0, 60)}{prompt.content.length > 60 ? '...' : ''}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 发送/停止按钮 */}
+            <div>
+              {isStreaming ? (
+                <button
+                  onClick={onStop}
+                  className="flex-shrink-0 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  title="停止生成"
+                >
+                  <Square size={18} />
+                </button>
+              ) : isExtracting ? (
+                <button
+                  disabled
+                  className="flex-shrink-0 p-1.5 bg-primary-400 text-white rounded-lg opacity-70 cursor-wait"
+                  title="正在解析文件..."
+                >
+                  <Loader2 size={18} className="animate-spin" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSend}
+                  disabled={(!content.trim() && attachments.length === 0) || disabled}
+                  className="flex-shrink-0 p-1.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="发送"
+                >
+                  <Send size={18} />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* 提示文字 */}

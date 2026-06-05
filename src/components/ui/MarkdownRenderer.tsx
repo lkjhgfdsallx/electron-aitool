@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback, type MouseEvent } from 'react'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
@@ -26,6 +26,39 @@ marked.use({
  * 对 marked 输出的 HTML 进行 LaTeX 后处理
  * 避免在 renderer 中覆盖 paragraph/code 方法（marked v15 兼容性问题）
  */
+/**
+ * 在 markdown 解析前，将 LaTeX 分隔符转换为 KaTeX 可识别的格式
+ * 因为 marked 会将 \( 转义为 (，导致 LaTeX 公式丢失
+ */
+function normalizeLatexDelimiters(markdown: string): string {
+  let result = markdown
+
+  // \[ ... \] → $$...$$（块级公式）
+  result = result.replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula: string) => {
+    return `\n$$${formula}$$\n`
+  })
+
+  // \( ... \) → $...$（行内公式）
+  result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula: string) => {
+    return `$${formula}$`
+  })
+
+  return result
+}
+
+/**
+ * 将 KaTeX 渲染结果包裹在可复制的容器中
+ * 悬停时显示边框，点击容器即可复制 LaTeX 源码
+ * @param katexHtml KaTeX 渲染后的 HTML 字符串
+ * @param source 原始 LaTeX 源码
+ * @param displayMode 是否为块级公式
+ */
+function wrapFormula(katexHtml: string, source: string, displayMode: boolean): string {
+  const escapedSource = source.replace(/&/g, '&').replace(/"/g, '"')
+  const displayClass = displayMode ? 'katex-formula-block' : 'katex-formula-inline'
+  return `<span class="katex-formula-wrapper ${displayClass}" data-source="${escapedSource}" data-copy-formula="true" title="双击复制公式">${katexHtml}</span>`
+}
+
 function processLatex(html: string): string {
   let result = html
 
@@ -34,10 +67,12 @@ function processLatex(html: string): string {
     /<pre><code class="language-(?:latex|tex)">([\s\S]*?)<\/code><\/pre>/g,
     (_match, formula: string) => {
       try {
-        return katex.renderToString(decodeHtmlEntities(formula.trim()), {
+        const source = formula.trim()
+        const katexHtml = katex.renderToString(decodeHtmlEntities(source), {
           displayMode: true,
           throwOnError: false
         })
+        return wrapFormula(katexHtml, source, true)
       } catch {
         return `<pre><code>${formula}</code></pre>`
       }
@@ -47,7 +82,9 @@ function processLatex(html: string): string {
   // 2. 处理 $$...$$ 块级公式
   result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula: string) => {
     try {
-      return katex.renderToString(formula.trim(), { displayMode: true, throwOnError: false })
+      const source = formula.trim()
+      const katexHtml = katex.renderToString(source, { displayMode: true, throwOnError: false })
+      return wrapFormula(katexHtml, source, true)
     } catch {
       return `<pre>${formula}</pre>`
     }
@@ -58,7 +95,9 @@ function processLatex(html: string): string {
     // 跳过已经是 KaTeX 渲染的内容
     if (formula.includes('katex') || formula.includes('class=')) return _match
     try {
-      return katex.renderToString(formula.trim(), { displayMode: false, throwOnError: false })
+      const source = formula.trim()
+      const katexHtml = katex.renderToString(source, { displayMode: false, throwOnError: false })
+      return wrapFormula(katexHtml, source, false)
     } catch {
       return `<code>${formula}</code>`
     }
@@ -111,7 +150,9 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   const html = useMemo(() => {
     if (!content) return ''
     try {
-      const result = marked.parse(content)
+      // 先将 LaTeX 分隔符标准化，避免 marked 消费反斜杠导致公式丢失
+      const normalized = normalizeLatexDelimiters(content)
+      const result = marked.parse(normalized)
 
       // 处理 marked v15 可能返回 Promise 的情况
       if (typeof result !== 'string') {
@@ -132,10 +173,42 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     }
   }, [content])
 
+  // 事件委托：点击公式容器直接复制 LaTeX 源码
+  const handleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    const wrapper = target.closest<HTMLElement>('[data-copy-formula]')
+    if (!wrapper) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    const source = wrapper.dataset.source
+    if (!source) return
+
+    const showSuccess = () => {
+      wrapper.classList.add('katex-copy-success')
+      setTimeout(() => wrapper.classList.remove('katex-copy-success'), 1500)
+    }
+
+    navigator.clipboard.writeText(source).then(showSuccess).catch(() => {
+      // 降级方案：使用 textarea 复制
+      const textarea = document.createElement('textarea')
+      textarea.value = source
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      showSuccess()
+    })
+  }, [])
+
   return (
     <div
       className={`prose prose-sm dark:prose-invert max-w-none break-words ${className}`}
       dangerouslySetInnerHTML={{ __html: html }}
+      onDoubleClick={handleClick}
     />
   )
 }

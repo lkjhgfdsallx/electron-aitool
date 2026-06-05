@@ -95,7 +95,87 @@
 }
 
 .katex {
-  @apply text-sm;
+  @apply text-lg;
+}
+
+/* 公式可复制容器 */
+.katex-formula-wrapper {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border: 1.5px solid transparent;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.katex-formula-wrapper.katex-formula-block {
+  display: block;
+  text-align: center;
+  padding: 8px 12px;
+  margin: 4px -12px;
+}
+
+/* 悬停时显示边框 */
+.katex-formula-wrapper:hover {
+  border-color: #93c5fd;
+  background-color: rgba(59, 130, 246, 0.04);
+}
+
+.dark .katex-formula-wrapper:hover {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+/* 点击反馈 */
+.katex-formula-wrapper:active {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+/* 复制成功状态 */
+.katex-formula-wrapper.katex-copy-success {
+  border-color: #10b981;
+  background-color: rgba(16, 185, 129, 0.06);
+}
+
+.dark .katex-formula-wrapper.katex-copy-success {
+  border-color: #34d399;
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* 复制成功提示文字 */
+.katex-formula-wrapper.katex-copy-success::after {
+  content: '已复制 ✓';
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #10b981;
+  background: white;
+  border: 1px solid #d1fae5;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: katex-copy-toast 1.5s ease forwards;
+}
+
+.dark .katex-formula-wrapper.katex-copy-success::after {
+  background: #065f46;
+  border-color: #059669;
+  color: #a7f3d0;
+}
+
+@keyframes katex-copy-toast {
+  0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
 }
 
 /* ==================== Highlight.js 主题 ==================== */
