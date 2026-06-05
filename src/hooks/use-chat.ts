@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import { BUILT_IN_TOOLS, NORMAL_MODE_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
 import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
@@ -292,8 +292,8 @@ export function useChat() {
       // 获取对话历史
       const history = getMessages(convId)
 
-      // 准备工具定义（普通模式只使用通用内置工具，不包含 Agent 专用工具）
-      const tools = BUILT_IN_TOOLS
+      // 准备工具定义（普通模式只使用安全的通用工具，不包含可能误用的计算工具）
+      const tools = NORMAL_MODE_TOOLS
       const toolDefs = toolService.toToolDefinitions(tools)
 
       // 创建 assistant 消息（流式更新）
@@ -433,7 +433,6 @@ export function useChat() {
 
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
       const history = getMessages(conversationId)
-      const toolDefs = toolService.toToolDefinitions(tools)
 
       const finalMsg = addMessage(conversationId, {
         conversationId,
@@ -446,11 +445,13 @@ export function useChat() {
       const controller = new AbortController()
       abortControllerRef.current = controller
 
+      // 第二次 AI 调用不传入工具定义，避免 AI 再次尝试调用工具导致对话中断
+      // 工具执行结果已通过 role:'tool' 消息传回，AI 应基于结果生成纯文本回复
       await aiService.streamChat(
         history,
         globalConfig,
         prompt?.content ?? null,
-        toolDefs,
+        [],
         controller.signal,
         {
           onToken: (token) => {

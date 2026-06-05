@@ -1,7 +1,28 @@
 import type { Tool } from '../types'
 
 /**
+ * 普通对话模式工具（安全、不会导致对话中断的工具）
+ * 仅包含不会产生误导性错误结果的工具
+ */
+export const NORMAL_MODE_TOOLS: Tool[] = [
+  {
+    id: 'builtin:get_current_time',
+    name: 'get_current_time',
+    description: '获取当前的日期和时间信息',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  }
+]
+
+/**
  * 内置工具定义（符合 OpenAI Function Calling 格式）
+ * 包含所有内置工具，供 Agent 模式使用
  */
 export const BUILT_IN_TOOLS: Tool[] = [
   {
