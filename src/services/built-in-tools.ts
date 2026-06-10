@@ -35,6 +35,212 @@ export const BUILT_IN_TOOLS: Tool[] = [
     isBuiltIn: true,
     isMCP: false,
     enabled: true
+  },
+
+  // ==================== 高级数学工具 ====================
+  // 让小模型也能在 Agent 模式下解答复杂数学问题
+
+  {
+    id: 'builtin:math_analyze',
+    name: 'math_analyze',
+    description: '数学分析工具。支持：极限计算(limit)、级数求和与收敛判断(series)、数值微分(derivative)、数值积分(integrate)、Taylor展开(taylor)。用于分析学、微积分相关问题。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['limit', 'series', 'derivative', 'integrate', 'taylor'],
+          description: '分析操作类型'
+        },
+        params: {
+          type: 'object',
+          description: '操作参数。limit:{expression,approach,direction?}; series:{expression,N?}; derivative:{expression,x0,order?}; integrate:{expression,a,b,n?}; taylor:{expression,x0?,order?}',
+          properties: {
+            expression: { type: 'string', description: '数学表达式，如 "sin(x)/x", "1/n^2"' },
+            approach: { type: 'number', description: '极限趋近值' },
+            direction: { type: 'string', enum: ['both', 'left', 'right'], description: '极限方向' },
+            x0: { type: 'number', description: '求导/展开点' },
+            order: { type: 'number', description: '导数阶数或Taylor展开阶数' },
+            a: { type: 'number', description: '积分下限' },
+            b: { type: 'number', description: '积分上限' },
+            n: { type: 'number', description: '级数/积分项数' },
+            N: { type: 'number', description: '级数求和项数' }
+          }
+        }
+      },
+      required: ['operation', 'params']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'builtin:math_algebra',
+    name: 'math_algebra',
+    description: '代数运算工具。支持：矩阵行列式(matrix_det)、特征值(matrix_eigenvalues)、逆矩阵(matrix_inverse)、矩阵乘法(matrix_multiply)、多项式求根(polynomial_roots)。用于线性代数、多项式等问题。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['matrix_det', 'matrix_eigenvalues', 'matrix_inverse', 'matrix_multiply', 'polynomial_roots'],
+          description: '代数操作类型'
+        },
+        params: {
+          type: 'object',
+          description: '操作参数。matrix_*:{matrix/matrix_a/matrix_b}; polynomial_roots:{coefficients}',
+          properties: {
+            matrix: { type: 'array', items: { type: 'array', items: { type: 'number' } }, description: '矩阵(二维数组)' },
+            matrix_a: { type: 'array', items: { type: 'array', items: { type: 'number' } }, description: '矩阵A' },
+            matrix_b: { type: 'array', items: { type: 'array', items: { type: 'number' } }, description: '矩阵B' },
+            coefficients: { type: 'array', items: { type: 'number' }, description: '多项式系数(从高次到低次)，如[1,-3,2]表示x²-3x+2' }
+          }
+        }
+      },
+      required: ['operation', 'params']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'builtin:math_geometry',
+    name: 'math_geometry',
+    description: '几何计算工具。支持：距离(distance)、三角形面积(triangle_area)、多边形面积(polygon_area)、曲率(curvature)、Euler示性数(euler_characteristic)、向量运算(vector_ops)。用于几何、拓扑相关问题。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['distance', 'triangle_area', 'polygon_area', 'curvature', 'euler_characteristic', 'vector_ops'],
+          description: '几何操作类型'
+        },
+        params: {
+          type: 'object',
+          description: '操作参数。各操作参数不同，详见各operation说明',
+          properties: {
+            point1: { type: 'array', items: { type: 'number' }, description: '点1坐标' },
+            point2: { type: 'array', items: { type: 'number' }, description: '点2坐标' },
+            a: { type: 'number', description: '三角形边长a' },
+            b: { type: 'number', description: '三角形边长b' },
+            c: { type: 'number', description: '三角形边长c' },
+            vertices: { type: 'array', items: { type: 'array', items: { type: 'number' } }, description: '多边形顶点列表' },
+            expression: { type: 'string', description: '曲线表达式(用于曲率计算)' },
+            x: { type: 'number', description: '曲率计算点' },
+            V: { type: 'number', description: '顶点数' },
+            E: { type: 'number', description: '边数' },
+            F: { type: 'number', description: '面数' },
+            vector_a: { type: 'array', items: { type: 'number' }, description: '向量A' },
+            vector_b: { type: 'array', items: { type: 'number' }, description: '向量B' },
+            vec_op: { type: 'string', enum: ['dot', 'cross'], description: '向量运算类型' }
+          }
+        }
+      },
+      required: ['operation', 'params']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'builtin:math_number',
+    name: 'math_number',
+    description: '数论计算工具。支持：素性测试(prime_test)、素数筛(prime_sieve)、素因子分解(factorize)、Euler函数(euler_phi)、Möbius函数(mobius)、模运算(mod_arithmetic)、Legendre符号(legendre)、Jacobi符号(jacobi)、原根(primitive_root)、狄利克雷特征(dirichlet_chars)、L函数计算(l_function)、L函数欧拉乘积(l_function_euler)、L函数乘积分析(product_l)、正交性验证(orthogonality)。这是解决数论和解析数论问题的核心工具。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['prime_test', 'prime_sieve', 'factorize', 'euler_phi', 'mobius', 'mod_arithmetic', 'legendre', 'jacobi', 'primitive_root', 'dirichlet_chars', 'l_function', 'l_function_euler', 'product_l', 'orthogonality'],
+          description: '数论操作类型'
+        },
+        params: {
+          type: 'object',
+          description: '操作参数。各操作参数不同',
+          properties: {
+            n: { type: 'number', description: '输入整数' },
+            a: { type: 'number', description: '运算数a' },
+            b: { type: 'number', description: '运算数b' },
+            m: { type: 'number', description: '模数' },
+            p: { type: 'number', description: '素数(用于Legendre符号)' },
+            q: { type: 'number', description: '模数(用于狄利克雷特征/L函数)' },
+            s: { type: 'number', description: 'L函数的s值' },
+            chi_index: { type: 'number', description: '特征索引' },
+            N: { type: 'number', description: '求和项数' },
+            max_prime: { type: 'number', description: '欧拉乘积最大素数' },
+            mod_op: { type: 'string', enum: ['power', 'inverse', 'crt'], description: '模运算子类型' },
+            remainders: { type: 'array', items: { type: 'number' }, description: '中国剩余定理余数' },
+            moduli: { type: 'array', items: { type: 'number' }, description: '中国剩余定理模数' }
+          }
+        }
+      },
+      required: ['operation', 'params']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'builtin:math_symbolic',
+    name: 'math_symbolic',
+    description: '符号数学工具。支持：符号微分(derivative)、表达式展开(expand)、表达式化简(simplify)。用于符号运算和公式推导。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['derivative', 'expand', 'simplify'],
+          description: '符号操作类型'
+        },
+        params: {
+          type: 'object',
+          description: '操作参数',
+          properties: {
+            expression: { type: 'string', description: '数学表达式，如 "x^3 + 2*x^2 - x + 1"' },
+            variable: { type: 'string', description: '求导变量，默认"x"' },
+            x0: { type: 'number', description: '数值验证点' }
+          }
+        }
+      },
+      required: ['operation', 'params']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'builtin:math_verify',
+    name: 'math_verify',
+    description: '数学验证工具。支持：等式验证(equality)、不等式验证(inequality)、数论命题验证(number_theory)、反例搜索(counter_example)、L函数非零验证(l_function_nonzero)。核心功能：通过大量随机数值检验来验证数学命题的正确性，或寻找反例。l_function_nonzero是专门验证L(1,χ)≠0的工具，使用乘积论证法。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operation: {
+          type: 'string',
+          enum: ['equality', 'inequality', 'number_theory', 'counter_example', 'l_function_nonzero'],
+          description: '验证操作类型'
+        },
+        params: {
+          type: 'object',
+          description: '操作参数',
+          properties: {
+            lhs: { type: 'string', description: '等式/不等式左边表达式' },
+            rhs: { type: 'string', description: '等式/不等式右边表达式' },
+            variables: { type: 'array', items: { type: 'string' }, description: '变量列表，如["x","y"]' },
+            tolerance: { type: 'number', description: '容差，默认1e-6' },
+            test_count: { type: 'number', description: '测试次数，默认1000' },
+            predicate: { type: 'string', description: '数论命题表达式或反例搜索谓词' },
+            range: { type: 'array', items: { type: 'number' }, description: '数论验证范围[min,max]' },
+            q: { type: 'number', description: 'L函数非零验证的模数q' },
+            N: { type: 'number', description: 'L函数计算项数' }
+          }
+        }
+      },
+      required: ['operation', 'params']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
   }
 ]
 

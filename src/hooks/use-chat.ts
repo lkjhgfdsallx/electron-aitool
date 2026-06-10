@@ -157,7 +157,14 @@ export function useChat() {
         {
           onStep: (step) => {
             agentSteps.push(step)
+            // 当中间步骤（思考/行动）产生时，说明之前的流式内容是中间推理
+            // 重置 finalContent，让下一轮 LLM 调用的流式内容从头开始
+            if (step.type === 'thinking' || step.type === 'action') {
+              finalContent = ''
+              reasoningContent = ''
+            }
             updateMessage(assistantMsg.id, {
+              content: finalContent,
               agentSteps: [...agentSteps],
               isStreaming: true
             })
@@ -631,7 +638,11 @@ export function useChat() {
           {
             onStep: (step) => {
               agentSteps.push(step)
-              updateMessage(assistantMsg.id, { agentSteps: [...agentSteps], isStreaming: true })
+              if (step.type === 'thinking' || step.type === 'action') {
+                finalContent = ''
+                reasoningContent = ''
+              }
+              updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
             },
             onToken: (token) => {
               finalContent += token
@@ -835,7 +846,12 @@ export function useChat() {
         {
           onStep: (step) => {
             agentSteps.push(step)
+            if (step.type === 'thinking' || step.type === 'action') {
+              finalContent = ''
+              reasoningContent = ''
+            }
             updateMessage(messageId, {
+              content: finalContent,
               agentSteps: [...agentSteps],
               isStreaming: true
             })
@@ -1026,7 +1042,11 @@ export function useChat() {
           {
             onStep: (step) => {
               agentSteps.push(step)
-              updateMessage(assistantMsg.id, { agentSteps: [...agentSteps], isStreaming: true })
+              if (step.type === 'thinking' || step.type === 'action') {
+                finalContent = ''
+                reasoningContent = ''
+              }
+              updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
             },
             onToken: (token) => {
               finalContent += token

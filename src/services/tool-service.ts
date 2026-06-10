@@ -1,6 +1,7 @@
 import type { Tool, ToolDefinition, ToolExecuteResult } from '../types'
 import { mcpService } from './mcp-service'
 import { memoryService } from './memory-service'
+import { executeMathTool } from './math-tools'
 
 // ==================== 安全数学表达式求值器 ====================
 // 递归下降解析器，支持：四则运算、幂运算、括号、常见数学函数和常量
@@ -296,6 +297,15 @@ export const toolService = {
           return { success: true, data: `没有找到关于 "${key}" 的记忆` }
         }
         return { success: true, data: `${key} = ${value}` }
+      }
+
+      case 'math_analyze':
+      case 'math_algebra':
+      case 'math_geometry':
+      case 'math_number':
+      case 'math_symbolic':
+      case 'math_verify': {
+        return executeMathTool(toolName, args)
       }
 
       case 'ask_self':

@@ -23,6 +23,7 @@ import type {
 import { aiService } from './ai-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
+import { executeMathTool } from './math-tools'
 
 /** Agent 引擎回调 */
 export interface AgentEngineCallbacks {
@@ -71,7 +72,9 @@ function buildAgentSystemPrompt(
       prompt += `\n### ${tool.name}\n描述：${tool.description}\n参数：${JSON.stringify(tool.parameters, null, 2)}\n`
     }
     prompt += `\n要调用工具，请使用提供的 function calling 功能。\n`
-    prompt += `\n### 重要：多步执行规则\n`
+    prompt += `\n### 重要：工具使用规则\n`
+    prompt += `- 当任务涉及计算、数学推导、数据分析、或需要精确结果时，你必须调用相关工具来完成，不要尝试自行计算或推导。\n`
+    prompt += `- 工具提供的结果是精确的，你的推理和最终回答应基于工具返回的结果。\n`
     prompt += `- 你可以且应该连续调用多个工具来完成复杂任务，不要在第一步之后就停止。\n`
     prompt += `- 每次收到工具执行结果后，分析结果并判断任务是否完成。\n`
     prompt += `- 如果任务尚未完成，请继续调用下一个需要的工具。\n`
@@ -507,9 +510,13 @@ export async function runAgent(
         {
           onToken: (token) => {
             fullContent += token
+            // 实时转发 token 到 UI，实现流式输出
+            callbacks.onToken(token)
           },
           onReasoningToken: (token) => {
             reasoningContent += token
+            // 实时转发推理 token 到 UI
+            callbacks.onReasoningToken(token)
           },
           onToolCalls: (toolCalls) => {
             // 捕获原生 function calling 返回的工具调用
@@ -637,6 +644,8 @@ export async function runAgent(
           result = handleReviewRequirementsTool(args)
         } else if (tc.name === 'ask_human') {
           result = await handleAskHumanTool(args)
+        } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
+          result = executeMathTool(tc.name, args)
         } else {
           result = await toolService.executeTool(tc.name, args, agentTools)
         }
@@ -691,7 +700,7 @@ export async function runAgent(
       }
       steps.push(finalStep)
       callbacks.onStep(finalStep)
-      callbacks.onToken(finalText)
+      // 注意：token 已在 LLM 调用过程中实时转发，此处无需再次调用 callbacks.onToken
       callbacks.onStatusChange('completed')
       callbacks.onDone(finalText)
       return
@@ -740,6 +749,8 @@ export async function runAgent(
         result = handleReviewRequirementsTool(tc.arguments)
       } else if (tc.name === 'ask_human') {
         result = await handleAskHumanTool(tc.arguments)
+      } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
+        result = executeMathTool(tc.name, tc.arguments)
       } else {
         result = await toolService.executeTool(tc.name, tc.arguments, agentTools)
       }
@@ -1232,9 +1243,13 @@ export async function resumeAgent(
         {
           onToken: (token) => {
             fullContent += token
+            // 实时转发 token 到 UI，实现流式输出
+            callbacks.onToken(token)
           },
           onReasoningToken: (token) => {
             reasoningContent += token
+            // 实时转发推理 token 到 UI
+            callbacks.onReasoningToken(token)
           },
           onToolCalls: (toolCalls) => {
             nativeToolCalls = toolCalls
@@ -1356,6 +1371,8 @@ export async function resumeAgent(
           result = handleReviewRequirementsTool(args)
         } else if (tc.name === 'ask_human') {
           result = await handleAskHumanTool(args)
+        } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
+          result = executeMathTool(tc.name, args)
         } else {
           result = await toolService.executeTool(tc.name, args, agentTools)
         }
@@ -1405,7 +1422,7 @@ export async function resumeAgent(
       }
       steps.push(finalStep)
       callbacks.onStep(finalStep)
-      callbacks.onToken(finalText)
+      // 注意：token 已在 LLM 调用过程中实时转发，此处无需再次调用 callbacks.onToken
       callbacks.onStatusChange('completed')
       callbacks.onDone(finalText)
       return
@@ -1450,6 +1467,8 @@ export async function resumeAgent(
         result = handleReviewRequirementsTool(tc.arguments)
       } else if (tc.name === 'ask_human') {
         result = await handleAskHumanTool(tc.arguments)
+      } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
+        result = executeMathTool(tc.name, tc.arguments)
       } else {
         result = await toolService.executeTool(tc.name, tc.arguments, agentTools)
       }

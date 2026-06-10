@@ -23,27 +23,53 @@ marked.use({
 })
 
 /**
- * 对 marked 输出的 HTML 进行 LaTeX 后处理
- * 避免在 renderer 中覆盖 paragraph/code 方法（marked v15 兼容性问题）
+ * 在 marked 解析前，将所有 LaTeX 公式提取为占位符
+ * 避免 marked v15 GFM 内置数学公式支持干扰我们的 LaTeX 处理
  */
-/**
- * 在 markdown 解析前，将 LaTeX 分隔符转换为 KaTeX 可识别的格式
- * 因为 marked 会将 \( 转义为 (，导致 LaTeX 公式丢失
- */
-function normalizeLatexDelimiters(markdown: string): string {
+function extractLatex(markdown: string): {
+  protectedMarkdown: string
+  formulas: Array<{ placeholder: string; source: string; displayMode: boolean }>
+} {
+  const formulas: Array<{ placeholder: string; source: string; displayMode: boolean }> = []
+  let counter = 0
   let result = markdown
 
-  // \[ ... \] → $$...$$（块级公式）
+  // 1. 提取 latex/tex 代码块 → 块级公式
+  result = result.replace(/```(?:latex|tex)\s*\n([\s\S]*?)```/g, (_match, formula: string) => {
+    const placeholder = `%%LATEX_BLOCK_${counter++}%%`
+    formulas.push({ placeholder, source: formula.trim(), displayMode: true })
+    return `\n${placeholder}\n`
+  })
+
+  // 2. 提取 \[ ... \] 块级公式
   result = result.replace(/\\\[([\s\S]*?)\\\]/g, (_match, formula: string) => {
-    return `\n$$${formula}$$\n`
+    const placeholder = `%%LATEX_BLOCK_${counter++}%%`
+    formulas.push({ placeholder, source: formula.trim(), displayMode: true })
+    return `\n${placeholder}\n`
   })
 
-  // \( ... \) → $...$（行内公式）
+  // 3. 提取 $$ ... $$ 块级公式
+  result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula: string) => {
+    const placeholder = `%%LATEX_BLOCK_${counter++}%%`
+    formulas.push({ placeholder, source: formula.trim(), displayMode: true })
+    return `\n${placeholder}\n`
+  })
+
+  // 4. 提取 \( ... \) 行内公式
   result = result.replace(/\\\(([\s\S]*?)\\\)/g, (_match, formula: string) => {
-    return `$${formula}$`
+    const placeholder = `%%LATEX_INLINE_${counter++}%%`
+    formulas.push({ placeholder, source: formula.trim(), displayMode: false })
+    return placeholder
   })
 
-  return result
+  // 5. 提取 $...$ 行内公式（避免匹配 $$）
+  result = result.replace(/(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)/g, (_match, formula: string) => {
+    const placeholder = `%%LATEX_INLINE_${counter++}%%`
+    formulas.push({ placeholder, source: formula.trim(), displayMode: false })
+    return placeholder
+  })
+
+  return { protectedMarkdown: result, formulas }
 }
 
 /**
@@ -59,49 +85,44 @@ function wrapFormula(katexHtml: string, source: string, displayMode: boolean): s
   return `<span class="katex-formula-wrapper ${displayClass}" data-source="${escapedSource}" data-copy-formula="true" title="双击复制公式">${katexHtml}</span>`
 }
 
-function processLatex(html: string): string {
+/**
+ * 将 marked 输出 HTML 中的占位符替换为 KaTeX 渲染结果
+ */
+function restoreLatex(
+  html: string,
+  formulas: Array<{ placeholder: string; source: string; displayMode: boolean }>
+): string {
   let result = html
 
-  // 1. 处理 latex/tex 代码块 → 块级公式
-  result = result.replace(
-    /<pre><code class="language-(?:latex|tex)">([\s\S]*?)<\/code><\/pre>/g,
-    (_match, formula: string) => {
-      try {
-        const source = formula.trim()
-        const katexHtml = katex.renderToString(decodeHtmlEntities(source), {
-          displayMode: true,
-          throwOnError: false
-        })
-        return wrapFormula(katexHtml, source, true)
-      } catch {
-        return `<pre><code>${formula}</code></pre>`
+  for (const { placeholder, source, displayMode } of formulas) {
+    const trimmedSource = source.trim()
+    if (!trimmedSource) continue
+
+    try {
+      const katexHtml = katex.renderToString(trimmedSource, {
+        displayMode,
+        throwOnError: false
+      })
+      const wrapped = wrapFormula(katexHtml, trimmedSource, displayMode)
+
+      if (displayMode) {
+        // 块级公式：marked 可能将占位符包裹在 <p> 标签中，需要整行替换
+        const escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        result = result.replace(
+          new RegExp(`<p>\\s*${escapedPlaceholder}\\s*</p>`, 'g'),
+          wrapped
+        )
       }
-    }
-  )
-
-  // 2. 处理 $$...$$ 块级公式
-  result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_match, formula: string) => {
-    try {
-      const source = formula.trim()
-      const katexHtml = katex.renderToString(source, { displayMode: true, throwOnError: false })
-      return wrapFormula(katexHtml, source, true)
+      // 行内公式或块级公式的回退：直接替换占位符文本
+      result = result.split(placeholder).join(wrapped)
     } catch {
-      return `<pre>${formula}</pre>`
+      // 渲染失败时保留原始源码
+      const fallback = displayMode
+        ? `<pre><code>${trimmedSource}</code></pre>`
+        : `<code>${trimmedSource}</code>`
+      result = result.split(placeholder).join(fallback)
     }
-  })
-
-  // 3. 处理 $...$ 行内公式（避免匹配到已渲染的 KaTeX span）
-  result = result.replace(/(?<!\$)\$(?!\$)([^\$\n]+?)\$(?!\$)/g, (_match, formula: string) => {
-    // 跳过已经是 KaTeX 渲染的内容
-    if (formula.includes('katex') || formula.includes('class=')) return _match
-    try {
-      const source = formula.trim()
-      const katexHtml = katex.renderToString(source, { displayMode: false, throwOnError: false })
-      return wrapFormula(katexHtml, source, false)
-    } catch {
-      return `<code>${formula}</code>`
-    }
-  })
+  }
 
   return result
 }
@@ -150,16 +171,19 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
   const html = useMemo(() => {
     if (!content) return ''
     try {
-      // 先将 LaTeX 分隔符标准化，避免 marked 消费反斜杠导致公式丢失
-      const normalized = normalizeLatexDelimiters(content)
-      const result = marked.parse(normalized)
+      // 1. 在 marked 解析前，提取所有 LaTeX 公式为安全占位符
+      const { protectedMarkdown, formulas } = extractLatex(content)
+
+      // 2. marked 解析（不会干扰 LaTeX，因为已替换为占位符）
+      const result = marked.parse(protectedMarkdown)
 
       // 处理 marked v15 可能返回 Promise 的情况
       if (typeof result !== 'string') {
         return plainTextToHtml(content)
       }
 
-      const processed = processLatex(result)
+      // 3. 将占位符替换为 KaTeX 渲染结果
+      const processed = restoreLatex(result, formulas)
 
       // 如果 marked 输出为空但内容不为空，使用纯文本回退
       if (!processed || processed.trim() === '') {
