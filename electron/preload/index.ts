@@ -27,6 +27,11 @@ export interface ElectronAPI {
      * @returns { success: boolean; text?: string; error?: string }
      */
     extractPdfText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
+    /**
+     * 打开保存文件对话框并保存内容
+     * @returns { success: boolean; filePath?: string; error?: string }
+     */
+    saveFile: (defaultName: string, content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
   }
   // 窗口控制
   window: {
@@ -50,7 +55,8 @@ const electronAPI: ElectronAPI = {
   },
   file: {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
-    extractPdfText: (filePath: string) => ipcRenderer.invoke('file:extractPdfText', filePath)
+    extractPdfText: (filePath: string) => ipcRenderer.invoke('file:extractPdfText', filePath),
+    saveFile: (defaultName: string, content: string) => ipcRenderer.invoke('file:saveFile', defaultName, content)
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

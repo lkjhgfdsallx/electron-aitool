@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import {
   Search,
   Pin,
@@ -6,11 +6,12 @@ import {
   MessageSquare,
   Bot,
   MoreHorizontal,
-  PenLine
+  PenLine,
+  Download
 } from 'lucide-react'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
-import { formatConversationTime } from '../../utils/conversation-utils'
+import { formatConversationTime, exportConversationToJson } from '../../utils/conversation-utils'
 
 export function ConversationList() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -24,7 +25,8 @@ export function ConversationList() {
     selectConversation,
     deleteConversation,
     renameConversation,
-    togglePin
+    togglePin,
+    getMessages
   } = useConversationStore()
 
   const { getAgent } = useAgentStore()
@@ -49,6 +51,36 @@ export function ConversationList() {
     }
     setEditingId(null)
   }
+
+  const handleExportRaw = useCallback(async (conv: typeof conversations[0]) => {
+    const messages = getMessages(conv.id)
+    const jsonContent = exportConversationToJson(conv, messages as unknown as Array<Record<string, unknown>>)
+    const safeTitle = conv.title.replace(/[<>:"/\\|?*]/g, '_').slice(0, 50)
+    const defaultName = `${safeTitle}_原始对话.json`
+
+    try {
+      if (window.electronAPI?.file?.saveFile) {
+        const result = await window.electronAPI.file.saveFile(defaultName, jsonContent)
+        if (result.success) {
+          console.log('导出成功:', result.filePath)
+        } else if (result.error !== '用户取消') {
+          console.error('导出失败:', result.error)
+        }
+      } else {
+        // 非 Electron 环境回退：浏览器下载
+        const blob = new Blob([jsonContent], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = defaultName
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      console.error('导出失败:', error)
+    }
+    setContextMenuId(null)
+  }, [getMessages])
 
   return (
     <div className="flex flex-col h-full">
@@ -162,6 +194,12 @@ export function ConversationList() {
                       className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                       <Pin size={14} /> {conv.isPinned ? '取消置顶' : '置顶'}
+                    </button>
+                    <button
+                      onClick={() => handleExportRaw(conv)}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <Download size={14} /> 导出原始对话
                     </button>
                     <button
                       onClick={() => {

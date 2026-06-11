@@ -92,3 +92,45 @@ export function formatConversationTime(timestamp: number): string {
 
   return fullDateStr
 }
+
+/**
+ * 导出对话原始数据为 JSON 字符串
+ * @param conversation 对话元数据
+ * @param messages 该对话的所有消息
+ * @returns 格式化的 JSON 字符串
+ */
+export function exportConversationToJson(
+  conversation: { id: string; title: string; createdAt: number; updatedAt: number; agentId?: string },
+  messages: Array<Record<string, unknown>>
+): string {
+  const exportData = {
+    conversation: {
+      id: conversation.id,
+      title: conversation.title,
+      createdAt: new Date(conversation.createdAt).toISOString(),
+      updatedAt: new Date(conversation.updatedAt).toISOString(),
+      agentId: conversation.agentId ?? null,
+      messageCount: messages.length
+    },
+    messages: messages.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      reasoningContent: msg.reasoningContent ?? null,
+      timestamp: msg.timestamp ? new Date(msg.timestamp as number).toISOString() : null,
+      toolCalls: msg.toolCalls ?? null,
+      toolCallId: msg.toolCallId ?? null,
+      toolName: msg.toolName ?? null,
+      isError: msg.isError ?? false,
+      isEdited: msg.isEdited ?? false,
+      parentId: msg.parentId ?? null,
+      attachments: msg.attachments ?? null,
+      agentSteps: msg.agentSteps ?? null,
+      agentId: msg.agentId ?? null,
+      branchIndex: msg.branchIndex ?? null,
+      branchCount: msg.branchCount ?? null
+    }))
+  }
+
+  return JSON.stringify(exportData, null, 2)
+}

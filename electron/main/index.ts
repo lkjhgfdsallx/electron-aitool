@@ -1,5 +1,6 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { writeFile } from 'fs/promises'
 import { is } from '@electron-toolkit/utils'
 import { setupMCPHandlers } from './mcp-proxy'
 import { generateTitleFromContent } from './title-generator'
@@ -89,6 +90,34 @@ function setupIPCHandlers(): void {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'PDF 提取失败'
+      }
+    }
+  })
+
+  // 导出对话原始数据到文件
+  ipcMain.handle('file:saveFile', async (_event, defaultName: string, content: string) => {
+    try {
+      const win = BrowserWindow.fromWebContents(_event.sender)
+      if (!win) return { success: false, error: '无法获取窗口' }
+
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: '导出原始对话',
+        defaultPath: defaultName,
+        filters: [
+          { name: 'JSON 文件', extensions: ['json'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      })
+
+      if (canceled || !filePath) return { success: false, error: '用户取消' }
+
+      await writeFile(filePath, content, 'utf-8')
+      return { success: true, filePath }
+    } catch (error) {
+      console.error('保存文件失败:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '保存文件失败'
       }
     }
   })
