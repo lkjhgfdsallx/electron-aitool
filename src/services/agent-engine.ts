@@ -24,6 +24,7 @@ import { aiService } from './ai-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
+import { siteAnalyzerService } from './site-analyzer-service'
 
 /** Agent 引擎回调 */
 export interface AgentEngineCallbacks {
@@ -380,6 +381,105 @@ export async function runAgent(
   }
 
 
+  // ==================== 网站分析工具处理 ====================
+
+  // 当前活跃的分析任务ID
+  let activeSiteAnalyzerTaskId: string | null = null
+
+  // 处理 site_analyzer_start 工具调用
+  const handleSiteAnalyzerStartTool = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    const targetUrl = String(args.target_url ?? '')
+    if (!targetUrl) {
+      return { success: false, data: '', error: 'site_analyzer_start 工具需要 target_url 参数' }
+    }
+
+    // 构建配置
+    const taskId = `sa-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
+    const loginType = String(args.login_type ?? 'manual') as 'manual' | 'password' | 'cookie'
+
+    const config: Record<string, unknown> = {
+      targetUrl,
+      loginType,
+      loginCredential: {},
+      aiConfig: {
+        baseUrl: String(args.ai_base_url ?? globalConfig.baseUrl ?? ''),
+        apiKey: String(args.ai_api_key ?? globalConfig.apiKey ?? ''),
+        modelId: String(args.ai_model_id ?? globalConfig.defaultModel ?? '')
+      },
+      taskId
+    }
+
+    // 填充登录凭证
+    const cred = config.loginCredential as Record<string, unknown>
+    if (args.username) cred.username = String(args.username)
+    if (args.password) cred.password = String(args.password)
+    if (args.cookie) cred.cookie = String(args.cookie)
+    if (args.token) cred.token = String(args.token)
+
+    // 填充爬取规则
+    const crawlRules: Record<string, unknown> = {}
+    if (args.max_depth) crawlRules.maxDepth = Number(args.max_depth)
+    if (args.max_pages) crawlRules.maxPages = Number(args.max_pages)
+    if (args.url_include_patterns) crawlRules.urlIncludePatterns = args.url_include_patterns
+    if (args.url_exclude_patterns) crawlRules.urlExcludePatterns = args.url_exclude_patterns
+    if (args.crawl_delay) crawlRules.crawlDelay = Number(args.crawl_delay)
+    if (Object.keys(crawlRules).length > 0) config.crawlRules = crawlRules
+
+    // 填充代理和反爬虫配置
+    if (args.proxy_server) {
+      config.proxy = { server: String(args.proxy_server) }
+    }
+    const antiBot: Record<string, unknown> = {}
+    if (args.user_agent) antiBot.userAgent = String(args.user_agent)
+    if (args.simulate_human) antiBot.simulateHuman = Boolean(args.simulate_human)
+    if (Object.keys(antiBot).length > 0) config.antiBot = antiBot
+
+    activeSiteAnalyzerTaskId = taskId
+
+    // 注册进度监听器，将进度转为观察步骤
+    const progressMessages: string[] = []
+    siteAnalyzerService.addProgressListener('agent-engine', (progress) => {
+      progressMessages.push(progress.message)
+    })
+
+    try {
+      // 启动分析
+      const result = await siteAnalyzerService.startAnalysis(config as unknown as Parameters<typeof siteAnalyzerService.startAnalysis>[0])
+
+      // 移除监听器
+      siteAnalyzerService.removeProgressListener('agent-engine')
+      activeSiteAnalyzerTaskId = null
+
+      // 生成摘要
+      const summary = siteAnalyzerService.generateSummary(result)
+
+      return {
+        success: true,
+        data: summary
+      }
+    } catch (error) {
+      siteAnalyzerService.removeProgressListener('agent-engine')
+      activeSiteAnalyzerTaskId = null
+      const errorMsg = error instanceof Error ? error.message : '网站分析失败'
+      return { success: false, data: '', error: errorMsg }
+    }
+  }
+
+  // 处理 site_analyzer_cancel 工具调用
+  const handleSiteAnalyzerCancelTool = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    const taskId = String(args.task_id ?? activeSiteAnalyzerTaskId ?? '')
+    if (!taskId) {
+      return { success: false, data: '', error: '没有活跃的分析任务可取消' }
+    }
+
+    const cancelled = await siteAnalyzerService.cancelAnalysis(taskId)
+    if (cancelled) {
+      activeSiteAnalyzerTaskId = null
+      return { success: true, data: `分析任务 ${taskId} 已取消` }
+    }
+    return { success: false, data: '', error: `无法取消任务 ${taskId}，任务可能已完成或不存在` }
+  }
+
   // 处理 ask_human 工具调用（异步，需等待用户输入）
   const handleAskHumanTool = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
     const question = String(args.question ?? '')
@@ -644,6 +744,10 @@ export async function runAgent(
           result = handleReviewRequirementsTool(args)
         } else if (tc.name === 'ask_human') {
           result = await handleAskHumanTool(args)
+        } else if (tc.name === 'site_analyzer_start') {
+          result = await handleSiteAnalyzerStartTool(args)
+        } else if (tc.name === 'site_analyzer_cancel') {
+          result = await handleSiteAnalyzerCancelTool(args)
         } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
           result = executeMathTool(tc.name, args)
         } else {
@@ -749,6 +853,10 @@ export async function runAgent(
         result = handleReviewRequirementsTool(tc.arguments)
       } else if (tc.name === 'ask_human') {
         result = await handleAskHumanTool(tc.arguments)
+      } else if (tc.name === 'site_analyzer_start') {
+        result = await handleSiteAnalyzerStartTool(tc.arguments)
+      } else if (tc.name === 'site_analyzer_cancel') {
+        result = await handleSiteAnalyzerCancelTool(tc.arguments)
       } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
         result = executeMathTool(tc.name, tc.arguments)
       } else {

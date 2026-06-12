@@ -4,10 +4,13 @@ import { MessageItem } from './MessageItem'
 import { AssistantGroupBubble } from './AssistantGroupBubble'
 import { MessageInput } from './MessageInput'
 import { AgentSelector } from './AgentSelector'
+import { SiteAnalyzerForm } from './SiteAnalyzerForm'
+import type { SiteAnalyzerFormData } from './SiteAnalyzerForm'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useChat } from '../../hooks/use-chat'
+import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
 import type { Message, MessageAttachment } from '../../types'
 
 /** 消息渲染组：单条消息或多条合并的 assistant 组 */
@@ -83,6 +86,56 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // 判断是否为网站分析 Agent 且对话为空（显示表单）
+  const isWebsiteAnalyzer = currentConversation?.agentId === WEBSITE_ANALYZER_AGENT_ID
+  const showAnalyzerForm = isWebsiteAnalyzer && messages.length === 0
+
+  /** 将表单数据格式化为消息并发送 */
+  const handleAnalyzerFormSubmit = useCallback(
+    (formData: SiteAnalyzerFormData) => {
+      const lines: string[] = [
+        `请分析以下网站：`,
+        ``,
+        `**目标网址**：${formData.targetUrl}`,
+        `**登录方式**：${formData.loginType}`
+      ]
+
+      // 登录凭证
+      if (formData.loginType === 'password') {
+        lines.push(`**用户名**：${formData.username}`)
+        lines.push(`**密码**：${formData.password}`)
+      } else if (formData.loginType === 'cookie') {
+        if (formData.cookie) lines.push(`**Cookie**：${formData.cookie}`)
+        if (formData.token) lines.push(`**Token**：${formData.token}`)
+      }
+
+      // 分析范围
+      lines.push(``, `**分析范围**：`)
+      lines.push(`- 爬取深度：${formData.maxDepth}`)
+      lines.push(`- 最大页面数：${formData.maxPages}`)
+      lines.push(`- 爬取间隔：${formData.crawlDelay}ms`)
+
+      // 高级配置（仅在非默认值时显示）
+      const advancedParts: string[] = []
+      if (formData.urlIncludePatterns) advancedParts.push(`- URL包含规则：\`${formData.urlIncludePatterns}\``)
+      if (formData.urlExcludePatterns) advancedParts.push(`- URL排除规则：\`${formData.urlExcludePatterns}\``)
+      if (formData.proxyServer) advancedParts.push(`- 代理服务器：${formData.proxyServer}`)
+      if (formData.userAgent) advancedParts.push(`- 自定义UA：${formData.userAgent}`)
+      if (formData.simulateHuman) advancedParts.push(`- 模拟人类行为：是`)
+
+      if (advancedParts.length > 0) {
+        lines.push(``, `**高级配置**：`)
+        lines.push(...advancedParts)
+      }
+
+      lines.push(``, `请使用这些配置启动网站分析。如果AI配置未提供，请使用当前对话的AI配置。`)
+
+      const content = lines.join('\n')
+      sendMessage(content)
+    },
+    [sendMessage]
+  )
+
   const handleSend = useCallback(
     (content: string, attachments?: MessageAttachment[]) => {
       sendMessage(content, undefined, attachments)
@@ -152,19 +205,25 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <div className="text-center">
-              <MessageSquareDashed size={36} className="mx-auto mb-3" />
-              {currentAgent ? (
-                <>
-                  <p className="font-medium">与 Agent "{currentAgent.name}" 对话</p>
-                  <p className="text-sm mt-1">{currentAgent.description || '发送消息开始对话'}</p>
-                </>
-              ) : (
-                <p>发送消息开始对话</p>
-              )}
+          showAnalyzerForm ? (
+            <div className="flex-1 overflow-y-auto p-4">
+              <SiteAnalyzerForm onSubmit={handleAnalyzerFormSubmit} />
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="text-center">
+                <MessageSquareDashed size={36} className="mx-auto mb-3" />
+                {currentAgent ? (
+                  <>
+                    <p className="font-medium">与 Agent "{currentAgent.name}" 对话</p>
+                    <p className="text-sm mt-1">{currentAgent.description || '发送消息开始对话'}</p>
+                  </>
+                ) : (
+                  <p>发送消息开始对话</p>
+                )}
+              </div>
+            </div>
+          )
         ) : (
           <div className="max-w-3xl mx-auto py-4">
             {renderGroups.map((group, idx) => {

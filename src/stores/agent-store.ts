@@ -9,7 +9,7 @@ import type {
   PromptCreateInput,
   PromptUpdateInput
 } from '../types'
-import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT } from '../constants/default-agents'
+import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT } from '../constants/default-agents'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
 
 // ==================== 默认 Agent 配置 ====================
@@ -44,6 +44,20 @@ function createDefaultRequirementAnalyst(): AgentProfile {
     description: '用户提出需求，你分析需求并反问，直到完全理清楚需求',
     avatar: '🔍',
     systemPrompt: REQUIREMENT_ANALYST_PROMPT,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+}
+
+/** 创建默认的网站分析 Agent */
+function createDefaultWebsiteAnalyzer(): AgentProfile {
+  return {
+    ...DEFAULT_AGENT_PROFILE,
+    id: WEBSITE_ANALYZER_AGENT_ID,
+    name: '网站分析',
+    description: '自动化分析网站功能模块、API接口，生成交互式报告',
+    avatar: '🌐',
+    systemPrompt: WEBSITE_ANALYZER_PROMPT,
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -201,6 +215,11 @@ export const useAgentStore = create<AgentStore>()(
             if (!state.agents.some((a) => a.id === DEFAULT_AGENT_ID)) {
               const defaultAgent = createDefaultRequirementAnalyst()
               state.agents = [...state.agents, defaultAgent]
+            }
+            // 确保网站分析 Agent 存在
+            if (!state.agents.some((a) => a.id === WEBSITE_ANALYZER_AGENT_ID)) {
+              const websiteAnalyzer = createDefaultWebsiteAnalyzer()
+              state.agents = [...state.agents, websiteAnalyzer]
             }
             // 迁移：确保所有已有 Agent 的 enabledToolIds 包含全部工具
             // （之前 agent-builtin 工具是硬编码始终可用的，移除硬编码后需要补充到配置中）

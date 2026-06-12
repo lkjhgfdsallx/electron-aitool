@@ -6,7 +6,11 @@ import autoprefixer from 'autoprefixer'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({
+      // playwright-core 是 playwright 的传递依赖，不在 package.json 直接依赖中，
+      // 需要显式外部化以避免 dynamic require 错误
+      include: ['playwright', 'playwright-core', 'chromium-bidi']
+    })],
     build: {
       rollupOptions: {
         input: {

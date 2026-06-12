@@ -5,6 +5,7 @@ import { is } from '@electron-toolkit/utils'
 import { setupMCPHandlers } from './mcp-proxy'
 import { generateTitleFromContent } from './title-generator'
 import { extractPdfText } from './pdf-extractor'
+import { setupSiteAnalyzerHandlers } from './site-analyzer-handler'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -52,6 +53,9 @@ app.whenReady().then(() => {
 
   // 设置 MCP 代理
   setupMCPHandlers()
+
+  // 设置网站分析器
+  setupSiteAnalyzerHandlers()
 
   const mainWindow = createWindow()
 

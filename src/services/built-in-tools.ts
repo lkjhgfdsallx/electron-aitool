@@ -418,5 +418,112 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
     isBuiltIn: true,
     isMCP: false,
     enabled: true
+  },
+
+  // ==================== 网站分析工具 ====================
+  // 用于自动化分析网站功能模块和API接口
+
+  {
+    id: 'agent-builtin:site_analyzer_start',
+    name: 'site_analyzer_start',
+    description: '启动网站功能分析。使用Playwright浏览器自动化爬取目标网站，捕获网络请求，并通过AI分析识别功能模块和API接口。分析完成后会生成可交互的HTML报告。需要提供目标网址和AI服务配置。登录方式支持：manual(手动登录,默认)、password(账号密码自动登录)、cookie(导入Cookie/Token)。',
+    parameters: {
+      type: 'object',
+      properties: {
+        target_url: {
+          type: 'string',
+          description: '目标网站URL，如 "https://example.com"'
+        },
+        login_type: {
+          type: 'string',
+          enum: ['manual', 'password', 'cookie'],
+          description: '登录方式。manual=手动登录(默认,浏览器打开后用户自己登录)、password=自动账号密码登录、cookie=通过Cookie/Token登录'
+        },
+        username: {
+          type: 'string',
+          description: '登录用户名（仅password模式需要）'
+        },
+        password: {
+          type: 'string',
+          description: '登录密码（仅password模式需要）'
+        },
+        cookie: {
+          type: 'string',
+          description: 'Cookie字符串（仅cookie模式需要）'
+        },
+        token: {
+          type: 'string',
+          description: 'Bearer Token（仅cookie模式，与cookie二选一）'
+        },
+        ai_base_url: {
+          type: 'string',
+          description: 'AI服务地址，如 "https://api.openai.com"。如不提供则使用当前对话的AI配置'
+        },
+        ai_api_key: {
+          type: 'string',
+          description: 'AI服务API Key。如不提供则使用当前对话的AI配置'
+        },
+        ai_model_id: {
+          type: 'string',
+          description: 'AI模型ID，如 "gpt-4o"。如不提供则使用当前对话的AI配置'
+        },
+        max_depth: {
+          type: 'number',
+          description: '最大爬取深度，默认3。首页深度为0'
+        },
+        max_pages: {
+          type: 'number',
+          description: '最大爬取页面数，默认100'
+        },
+        url_include_patterns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'URL包含过滤规则（正则表达式），只爬取匹配的URL'
+        },
+        url_exclude_patterns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'URL排除过滤规则（正则表达式），排除匹配的URL'
+        },
+        crawl_delay: {
+          type: 'number',
+          description: '爬取间隔（毫秒），默认1000。增大此值可降低对目标服务器的压力'
+        },
+        proxy_server: {
+          type: 'string',
+          description: '代理服务器地址，如 "http://proxy:8080" 或 "socks5://proxy:1080"'
+        },
+        user_agent: {
+          type: 'string',
+          description: '自定义User-Agent'
+        },
+        simulate_human: {
+          type: 'boolean',
+          description: '是否模拟人类行为（随机滚动、鼠标移动等），默认false'
+        }
+      },
+      required: ['target_url']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'agent-builtin:site_analyzer_cancel',
+    name: 'site_analyzer_cancel',
+    description: '取消正在进行的网站分析任务。',
+    parameters: {
+      type: 'object',
+      properties: {
+        task_id: {
+          type: 'string',
+          description: '要取消的分析任务ID'
+        }
+      },
+      required: ['task_id']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
   }
 ]

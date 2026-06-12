@@ -40,6 +40,25 @@ export interface ElectronAPI {
     close: () => void
     isMaximized: () => Promise<boolean>
   }
+  // 网站分析器
+  siteAnalyzer: {
+    /**
+     * 启动网站分析任务
+     */
+    start: (config: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>
+    /**
+     * 取消分析任务
+     */
+    cancel: (taskId: string) => Promise<{ success: boolean }>
+    /**
+     * 获取活跃任务列表
+     */
+    getActiveTasks: () => Promise<{ success: boolean; data?: string[] }>
+    /**
+     * 监听分析进度
+     */
+    onProgress: (callback: (progress: unknown) => void) => () => void
+  }
 }
 
 const electronAPI: ElectronAPI = {
@@ -63,6 +82,21 @@ const electronAPI: ElectronAPI = {
     maximize: () => ipcRenderer.send('window:maximize'),
     close: () => ipcRenderer.send('window:close'),
     isMaximized: () => ipcRenderer.invoke('window:isMaximized')
+  },
+  siteAnalyzer: {
+    start: (config: Record<string, unknown>) =>
+      ipcRenderer.invoke('siteAnalyzer:start', config),
+    cancel: (taskId: string) =>
+      ipcRenderer.invoke('siteAnalyzer:cancel', taskId),
+    getActiveTasks: () =>
+      ipcRenderer.invoke('siteAnalyzer:getActiveTasks'),
+    onProgress: (callback: (progress: unknown) => void) => {
+      const handler = (_event: unknown, progress: unknown) => callback(progress)
+      ipcRenderer.on('siteAnalyzer:progress', handler)
+      return () => {
+        ipcRenderer.removeListener('siteAnalyzer:progress', handler)
+      }
+    }
   }
 }
 

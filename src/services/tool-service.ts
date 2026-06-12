@@ -312,6 +312,8 @@ export const toolService = {
       case 'define_requirement':
       case 'review_requirements':
       case 'ask_human':
+      case 'site_analyzer_start':
+      case 'site_analyzer_cancel':
         // 这些工具由 agent-engine 内部处理，不应走到这里
         return { success: true, data: '此工具由 Agent 引擎内部处理，请通过 Agent 模式使用。' }
 
