@@ -57,6 +57,76 @@ export interface SiteAnalyzerProgress {
   data?: unknown
 }
 
+/** UI组件类型 */
+export type UIComponentType =
+  | 'table' | 'form' | 'input' | 'select' | 'datepicker' | 'modal' | 'drawer'
+  | 'tabs' | 'tree' | 'upload' | 'chart' | 'menu' | 'breadcrumb' | 'pagination'
+  | 'search' | 'button' | 'card' | 'list' | 'dropdown' | 'steps' | 'transfer'
+  | 'editor' | 'switch' | 'radio' | 'checkbox' | 'tag' | 'tooltip' | 'popover' | 'other'
+
+/** UI组件属性 */
+export interface UIComponentProp {
+  name: string
+  type: string
+  description: string
+}
+
+/** UI组件操作 */
+export interface UIComponentAction {
+  name: string
+  type: string
+  description: string
+  targetApi?: string
+  targetComponent?: string
+}
+
+/** UI组件 */
+export interface UIComponent {
+  type: UIComponentType
+  name: string
+  description: string
+  apiUrls: string[]
+  props?: UIComponentProp[]
+  actions?: UIComponentAction[]
+  children?: UIComponent[]
+}
+
+/** 页面分析结果 */
+export interface PageAnalysis {
+  url: string
+  title: string
+  pageType: string
+  uiDescription: string
+  layoutSummary: string
+  components: UIComponent[]
+  exclusiveApis: string[]
+  sharedComponentRefs: string[]
+  sharedApiRefs: string[]
+  depth: number
+}
+
+/** 公共组件 */
+export interface SharedComponent {
+  name: string
+  type: UIComponentType
+  description: string
+  pages: string[]
+  apiUrls: string[]
+  commonProps?: UIComponentProp[]
+}
+
+/** 公用接口 */
+export interface SharedApi {
+  url: string
+  method: string
+  description: string
+  params?: Array<{ name: string; type: string; required: boolean; description?: string }>
+  returnValue?: string
+  pages: string[]
+  exampleBody?: string
+  exampleResponse?: string
+}
+
 /** 分析结果 */
 export interface SiteAnalyzerResult {
   taskId: string
@@ -79,10 +149,17 @@ export interface SiteAnalyzerResult {
     returnValue?: string
     frequency?: number
   }>
+  /** 页面分析结果（前端开发者视角） */
+  pageAnalyses: PageAnalysis[]
+  /** 公共组件 */
+  sharedComponents: SharedComponent[]
+  /** 公用接口 */
+  sharedApis: SharedApi[]
   startTime: number
   endTime?: number
   status: string
   error?: string
+  reportHtml?: string
 }
 
 class SiteAnalyzerService {

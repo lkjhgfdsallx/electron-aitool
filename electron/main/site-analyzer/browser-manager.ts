@@ -3,22 +3,173 @@
  * 使用 Playwright 管理 Chromium 浏览器实例
  */
 
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { chromium, type Browser, type BrowserContext, type Page, type Cookie } from 'playwright'
 import type { SiteAnalyzerConfig, ProxyConfig, AntiBotConfig } from './types'
 
 export class BrowserManager {
   private browser: Browser | null = null
   private context: BrowserContext | null = null
   private pages: Map<string, Page> = new Map()
+  private _isAlive = false
+  private _launchConfig: SiteAnalyzerConfig | null = null
+  /** 浏览器断开连接时的回调 */
+  private onBrowserDisconnected?: () => void
+  /** 保存的认证状态（cookies），用于浏览器重连后恢复登录态 */
+  private savedCookies: Cookie[] = []
+  /** 保存的 localStorage 数据，用于浏览器重连后恢复 */
+  private savedLocalStorage: Array<{ origin: string; items: Record<string, string> }> = []
+
+  /**
+   * 检查浏览器是否仍然存活
+   */
+  isAlive(): boolean {
+    return this._isAlive && !!this.browser?.isConnected()
+  }
+
+  /**
+   * 设置浏览器断开回调
+   */
+  setDisconnectCallback(callback: () => void): void {
+    this.onBrowserDisconnected = callback
+  }
+
+  /**
+   * 保存当前浏览器上下文的认证状态（cookies 和 localStorage）
+   * 应在登录成功后调用，以便浏览器重连后恢复登录态
+   */
+  async saveAuthState(page?: Page): Promise<void> {
+    try {
+      if (this.context) {
+        this.savedCookies = await this.context.cookies()
+        console.log(`[BrowserManager] 已保存 ${this.savedCookies.length} 个 cookies`)
+      }
+
+      // 保存 localStorage（如果提供了页面）
+      if (page && !page.isClosed()) {
+        try {
+          const storage = await page.evaluate(() => {
+            const items: Record<string, string> = {}
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i)
+              if (key) {
+                items[key] = localStorage.getItem(key) || ''
+              }
+            }
+            return items
+          })
+          const origin = new URL(page.url()).origin
+          this.savedLocalStorage = [{ origin, items: storage }]
+          console.log(`[BrowserManager] 已保存 localStorage (${origin}): ${Object.keys(storage).length} 项`)
+       } catch {
+         // localStorage 保存失败不影响整体流程
+         console.warn('[BrowserManager] 保存 localStorage 失败')
+        }
+      }
+    } catch (e) {
+      console.error('[BrowserManager] 保存认证状态失败:', e)
+    }
+  }
+
+  /**
+   * 恢复之前保存的认证状态到当前浏览器上下文
+   */
+  async restoreAuthState(): Promise<void> {
+    if (!this.context) return
+
+    // 恢复 cookies
+    if (this.savedCookies.length > 0) {
+      try {
+        await this.context.addCookies(this.savedCookies)
+       console.log(`[BrowserManager] 已恢复 ${this.savedCookies.length} 个 cookies`)
+     } catch (e) {
+       console.error('[BrowserManager] 恢复 cookies 失败:', e)
+      }
+    }
+
+    // 恢复 localStorage（需要先导航到对应 origin）
+    if (this.savedLocalStorage.length > 0) {
+      for (const { origin, items } of this.savedLocalStorage) {
+        if (Object.keys(items).length === 0) continue
+        try {
+          const page = await this.context.newPage()
+          await page.goto(origin, { waitUntil: 'commit', timeout: 10000 }).catch(() => {})
+          await page.evaluate((data: Record<string, string>) => {
+            for (const [key, value] of Object.entries(data)) {
+              try { localStorage.setItem(key, value) } catch { /* ignore */ }
+            }
+          }, items)
+          await page.close()
+          console.log(`[BrowserManager] 已恢复 localStorage (${origin}): ${Object.keys(items).length} 项`)
+       } catch {
+         console.warn(`[BrowserManager] 恢复 localStorage 失败 (${origin})`)
+        }
+      }
+    }
+  }
+
+  /**
+   * 尝试重启浏览器（如果已断开）
+   * 返回是否重启成功
+   * 重启后会自动恢复之前保存的认证状态（cookies/localStorage）
+   */
+  async tryReconnect(): Promise<boolean> {
+    if (this.isAlive()) return true
+    if (!this._launchConfig) return false
+    
+    console.log('[BrowserManager] 检测到浏览器断开，尝试重启...')
+    try {
+      // 清理旧资源
+      this.pages.clear()
+      this.context = null
+      this.browser = null
+      this._isAlive = false
+      
+      // 重新启动
+      await this.launch(this._launchConfig)
+
+      // 恢复认证状态（cookies + localStorage）
+      await this.restoreAuthState()
+
+      console.log('[BrowserManager] 浏览器重启成功，认证状态已恢复')
+      return true
+    } catch (e) {
+      console.error('[BrowserManager] 浏览器重启失败:', e)
+      return false
+    }
+  }
 
   /**
    * 启动浏览器
    */
   async launch(config: SiteAnalyzerConfig): Promise<void> {
+    // 保存配置以便重连时使用
+    this._launchConfig = config
+
     const launchOptions: Record<string, unknown> = {
       headless: false, // 非无头模式，方便手动登录
-      channel: 'chromium',
-      args: ['--disable-blink-features=AutomationControlled']
+      args: [
+        // 反自动化检测
+        '--disable-blink-features=AutomationControlled',
+        // 防止 GPU 崩溃（GPU 驱动不兼容时 Chromium 会直接崩溃）
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        // 防止共享内存问题（/dev/shm 不足时会崩溃）
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        // 限制渲染进程内存，防止 OOM 崩溃
+        '--js-flags=--max-old-space-size=512',
+        // 禁用可能导致崩溃的后台功能
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        // 禁用崩溃报告弹窗（避免干扰用户）
+        '--disable-crash-reporter',
+        // 禁用默认浏览器检查
+        '--no-first-run',
+        '--no-default-browser-check',
+      ]
     }
 
     // 代理配置
@@ -31,6 +182,21 @@ export class BrowserManager {
     }
 
     this.browser = await chromium.launch(launchOptions)
+
+    // 监听浏览器断开连接事件
+    this.browser.on('disconnected', () => {
+      // 检测是否是异常崩溃（而非正常调用 close()）
+      if (this._isAlive) {
+        console.error('[BrowserManager] 浏览器异常崩溃！可能原因: 内存耗尽/渲染进程崩溃/GPU崩溃')
+        console.error('[BrowserManager] 崩溃前状态: browser.isConnected()=', this.browser?.isConnected())
+      } else {
+        console.warn('[BrowserManager] 浏览器连接断开（正常关闭）')
+      }
+      this._isAlive = false
+      if (this.onBrowserDisconnected) {
+        this.onBrowserDisconnected()
+      }
+    })
 
     // 创建上下文
     const contextOptions: Record<string, unknown> = {
@@ -58,6 +224,8 @@ export class BrowserManager {
         get: () => ['zh-CN', 'zh', 'en-US', 'en']
       })
     })
+
+    this._isAlive = true
   }
 
   /**
@@ -81,7 +249,29 @@ export class BrowserManager {
    * 导航到指定URL
    */
   async navigateTo(page: Page, url: string, timeout = 30000): Promise<void> {
-    await page.goto(url, { waitUntil: 'networkidle', timeout })
+    // 先检查浏览器是否存活
+    if (!this.isAlive()) {
+      const reconnected = await this.tryReconnect()
+      if (!reconnected) {
+        throw new Error('浏览器已断开连接且无法恢复')
+      }
+    }
+    try {
+      await page.goto(url, { waitUntil: 'networkidle', timeout })
+    } catch (err) {
+      // 如果导航失败是因为浏览器断开，尝试重连后重试
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (errMsg.includes('Target closed') || errMsg.includes('Browser closed') ||
+          errMsg.includes('Connection closed') || errMsg.includes('Session closed')) {
+        // console.warn('[BrowserManager] 导航时检测到浏览器断开，尝试重连...')
+        const reconnected = await this.tryReconnect()
+        if (reconnected) {
+          // 重连后需要使用新页面
+          throw new Error('BROWSER_RECONNECTED')
+        }
+      }
+      throw err
+    }
   }
 
   /**
@@ -155,22 +345,50 @@ export class BrowserManager {
    */
   async getPageLinks(page: Page, baseUrl: string): Promise<string[]> {
     const links = await page.evaluate(() => {
+      // 收集所有链接来源：<a>标签、有onclick的元素、router-link等
+      const allLinks: string[] = []
+
+      // 1. 标准 <a href> 标签
       const anchors = Array.from(document.querySelectorAll('a[href]'))
-      return anchors.map((a) => (a as HTMLAnchorElement).href)
+      for (const a of anchors) {
+        const href = (a as HTMLAnchorElement).href
+        if (href && !href.startsWith('javascript:') && !href.startsWith('#')) {
+          allLinks.push(href)
+        }
+      }
+
+      // 2. SPA 路由链接（#/path 形式）
+      const hashAnchors = Array.from(document.querySelectorAll('a[href^="#"]'))
+      for (const a of hashAnchors) {
+        const hash = (a as HTMLAnchorElement).hash
+        if (hash && hash.length > 1) {
+          allLinks.push(window.location.origin + window.location.pathname + hash)
+        }
+      }
+
+      return allLinks
     })
 
     // 过滤和规范化链接
     const base = new URL(baseUrl)
     const uniqueLinks = new Set<string>()
 
+    // 检测是否是 SPA hash 路由（如果页面上有 hash 路由链接）
+    const hasHashRouting = links.some(l => l.includes('#/'))
+
     for (const link of links) {
       try {
         const url = new URL(link)
         // 只保留同域名的链接
         if (url.hostname === base.hostname) {
-          // 去除hash
-          url.hash = ''
-          uniqueLinks.add(url.href)
+          if (hasHashRouting) {
+            // SPA hash 路由：保留 hash 作为唯一标识
+            uniqueLinks.add(url.href)
+          } else {
+            // 传统路由：去除 hash
+            url.hash = ''
+            uniqueLinks.add(url.href)
+          }
         }
       } catch {
         // 无效URL，跳过
@@ -241,13 +459,14 @@ export class BrowserManager {
    * 关闭浏览器
    */
   async close(): Promise<void> {
+    this._isAlive = false
     this.pages.clear()
     if (this.context) {
-      await this.context.close()
+      try { await this.context.close() } catch { /* 忽略 */ }
       this.context = null
     }
     if (this.browser) {
-      await this.browser.close()
+      try { await this.browser.close() } catch { /* 忽略 */ }
       this.browser = null
     }
   }

@@ -9,21 +9,61 @@ import type { CapturedRequest } from './types'
 export class RequestCapture {
   private capturedRequests: CapturedRequest[] = []
   private isCapturing = false
+  /** 当前监听的页面引用，用于 stopCapture 时清理 */
+  private capturedPage: Page | null = null
+
+  /**
+   * 停止当前页面的请求捕获（浏览器恢复前调用）
+   */
+  stopCapture(): void {
+    if (this.capturedPage) {
+      try {
+        this.capturedPage.removeAllListeners('request')
+        this.capturedPage.removeAllListeners('response')
+      } catch {
+        // 页面可能已关闭，忽略
+      }
+      this.capturedPage = null
+    }
+    this.isCapturing = false
+    // console.log('[RequestCapture] 已停止捕获网络请求')
+  }
 
   /**
    * 在页面上开始捕获网络请求
    */
   startCapture(page: Page): void {
-    if (this.isCapturing) return
+    if (this.isCapturing) {
+      // 如果已在捕获但页面不同，先清理旧监听器
+      if (this.capturedPage && this.capturedPage !== page) {
+        // console.log('[RequestCapture] 检测到页面变更，重新注册监听器')
+        this.stopCapture()
+      } else {
+        // console.log('[RequestCapture] 已在捕获中，跳过重复注册')
+        return
+      }
+    }
     this.isCapturing = true
+    this.capturedPage = page
+    // console.log('[RequestCapture] 开始捕获网络请求')
 
     // 捕获请求和响应
+    let requestCount = 0
+    let apiCount = 0
     page.on('request', (request) => {
       const resourceType = request.resourceType()
       const isApi = ['xhr', 'fetch'].includes(resourceType)
 
       // 只记录 XHR/Fetch 请求和文档请求
       if (!isApi && resourceType !== 'document') return
+
+      requestCount++
+      if (isApi) {
+        apiCount++
+        if (apiCount <= 20) {
+          // console.log(`[RequestCapture] 捕获API请求 #${apiCount}: ${request.method()} ${request.url()}`)
+        }
+      }
 
       const entry: CapturedRequest = {
         url: request.url(),
@@ -228,13 +268,6 @@ export class RequestCapture {
 
       return sanitized
     })
-  }
-
-  /**
-   * 停止捕获
-   */
-  stopCapture(): void {
-    this.isCapturing = false
   }
 
   /**

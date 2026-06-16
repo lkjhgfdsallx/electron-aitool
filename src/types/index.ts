@@ -19,7 +19,8 @@ export type {
   MessageCreateInput,
   MessageAttachment,
   ToolCall,
-  TokenUsage
+  TokenUsage,
+  SiteAnalyzerLiveProgress
 } from './message'
 export type { Conversation, ConversationCreateInput } from './conversation'
 export type {

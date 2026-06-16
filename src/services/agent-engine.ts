@@ -42,6 +42,10 @@ export interface AgentEngineCallbacks {
   onDone: (finalContent: string) => void
   /** 需要用户输入时回调（返回用户选择的值，单选为字符串，多选为字符串数组） */
   onHumanInput?: (step: AgentStep) => Promise<string | string[]>
+  /** 网站分析报告生成完成时回调（传递自包含的 HTML 报告） */
+  onReportReady?: (reportHtml: string) => void
+  /** 网站分析实时进度回调 */
+  onSiteAnalyzerProgress?: (progress: { taskId: string; type: string; message: string; pagesCrawled?: number; totalPages?: number; apisFound?: number; pagesAnalyzed?: number; currentUrl?: string; error?: string }) => void
 }
 
 /** Agent 内部消息格式（支持工具调用） */
@@ -438,8 +442,25 @@ export async function runAgent(
 
     // 注册进度监听器，将进度转为观察步骤
     const progressMessages: string[] = []
+    let capturedReportHtml = ''
     siteAnalyzerService.addProgressListener('agent-engine', (progress) => {
       progressMessages.push(progress.message)
+      // 捕获报告HTML内容
+      if (progress.reportHtml) {
+        capturedReportHtml = progress.reportHtml
+      }
+      // 实时转发进度到UI层
+      callbacks.onSiteAnalyzerProgress?.({
+        taskId: progress.taskId,
+        type: progress.type,
+        message: progress.message,
+        pagesCrawled: progress.pagesCrawled,
+        totalPages: progress.totalPages,
+        apisFound: progress.apisFound,
+        pagesAnalyzed: progress.pagesAnalyzed,
+        currentUrl: progress.currentUrl,
+        error: progress.error
+      })
     })
 
     try {
@@ -453,9 +474,35 @@ export async function runAgent(
       // 生成摘要
       const summary = siteAnalyzerService.generateSummary(result)
 
+      // 将详细数据包含在结果中（不包含完整HTML报告，太大了）
+      let fullData = summary
+
+      // 附加API接口和模块的详细JSON数据，供AI生成报告
+      const analysisData = {
+        modules: result.modules,
+        apis: result.apis.map(a => ({
+          url: a.url,
+          method: a.method,
+          description: a.description,
+          params: a.params,
+          returnValue: a.returnValue,
+          frequency: a.frequency
+        })),
+        pagesCount: result.pages.length,
+        requestsCount: result.requests.length,
+        reportAvailable: !!(capturedReportHtml || result.reportHtml)
+      }
+      fullData += `\n\n[ANALYSIS_DATA]\n${JSON.stringify(analysisData, null, 2)}\n[/ANALYSIS_DATA]`
+
+      // 将报告HTML通过回调传递给UI层
+      const reportHtml = capturedReportHtml || result.reportHtml
+      if (reportHtml && callbacks.onReportReady) {
+        callbacks.onReportReady(reportHtml)
+      }
+
       return {
         success: true,
-        data: summary
+        data: fullData
       }
     } catch (error) {
       siteAnalyzerService.removeProgressListener('agent-engine')

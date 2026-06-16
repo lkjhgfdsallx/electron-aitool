@@ -2,6 +2,28 @@
 
 import type { AgentStep } from './agent'
 
+/** 网站分析实时进度 */
+export interface SiteAnalyzerLiveProgress {
+  /** 当前阶段 */
+  phase: 'browser' | 'login' | 'crawling' | 'analyzing' | 'report' | 'completed' | 'error'
+  /** 进度消息 */
+  message: string
+  /** 已爬取页面数 */
+  pagesCrawled?: number
+  /** 总页面数（估计） */
+  totalPages?: number
+  /** 已发现API数 */
+  apisFound?: number
+  /** 已分析页面数 */
+  pagesAnalyzed?: number
+  /** 当前正在处理的URL */
+  currentUrl?: string
+  /** 分析开始时间 */
+  startTime: number
+  /** 错误信息 */
+  error?: string
+}
+
 export interface ToolCall {
   id: string
   name: string
@@ -40,6 +62,10 @@ export interface Message {
   isEdited?: boolean
   parentId?: string     // 重新生成时关联的原始消息 ID
   attachments?: MessageAttachment[] // 附件列表
+  /** 是否存在网站分析报告（报告 HTML 存储在 IndexedDB 中） */
+  hasReport?: boolean
+  /** 网站分析实时进度（分析进行中时填充，完成后清除） */
+  siteAnalyzerProgress?: SiteAnalyzerLiveProgress
   /** Agent 执行步骤（Agent 模式下的思考链、工具调用等） */
   agentSteps?: AgentStep[]
   /** 关联的 Agent ID */

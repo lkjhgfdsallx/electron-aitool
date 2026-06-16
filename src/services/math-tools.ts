@@ -65,7 +65,7 @@ function executeAnalyze(args: Record<string, unknown>): ToolExecuteResult {
       const approach = Number(params.approach ?? 0)
       const direction = String(params.direction ?? 'both') as 'both' | 'left' | 'right'
       const fn = parseExpression(expr)
-      const result = computeLimit(fn, approach, direction)
+      const result = computeLimit((x) => fn({ x }), approach, direction)
       return {
         success: true,
         data: `极限计算: lim(x→${approach}${direction !== 'both' ? direction[0] : ''}) ${expr}
@@ -100,7 +100,7 @@ function executeAnalyze(args: Record<string, unknown>): ToolExecuteResult {
       const x0 = Number(params.x0 ?? 0)
       const order = Number(params.order ?? 1)
       const fn = parseExpression(expr)
-      const result = numericalDerivative(fn, x0, order)
+      const result = numericalDerivative((x) => fn({ x }), x0, order)
       return {
         success: true,
         data: `数值微分: d${order > 1 ? '^' + order : ''}/dx${order > 1 ? '^' + order : ''} [${expr}] 在 x=${x0}
@@ -114,7 +114,7 @@ function executeAnalyze(args: Record<string, unknown>): ToolExecuteResult {
       const b = Number(params.b ?? 1)
       const n = Number(params.n ?? 10000)
       const fn = parseExpression(expr)
-      const result = numericalIntegrate(fn, a, b, n)
+      const result = numericalIntegrate((x) => fn({ x }), a, b, n)
       return {
         success: true,
         data: `数值积分: ∫[${a},${b}] ${expr} dx
@@ -128,7 +128,7 @@ function executeAnalyze(args: Record<string, unknown>): ToolExecuteResult {
       const x0 = Number(params.x0 ?? 0)
       const order = Number(params.order ?? 6)
       const fn = parseExpression(expr)
-      const result = taylorExpand(fn, x0, order)
+      const result = taylorExpand((x) => fn({ x }), x0, order)
       return {
         success: true,
         data: `Taylor 展开: ${expr} 在 x=${x0} 处，阶数=${order}
@@ -542,7 +542,7 @@ function executeSymbolic(args: Record<string, unknown>): ToolExecuteResult {
       const fn = parseExpression(expr)
       // 数值验证导数
       const x0 = Number(params.x0 ?? 1)
-      const numDeriv = numericalDerivative(fn, x0)
+      const numDeriv = numericalDerivative((x) => fn({ x }), x0)
       return {
         success: true,
         data: `符号微分: d/d${varName} [${expr}]

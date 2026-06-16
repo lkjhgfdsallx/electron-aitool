@@ -226,11 +226,11 @@ export const useAgentStore = create<AgentStore>()(
             const allIds = new Set(DEFAULT_ALL_TOOL_IDS)
             state.agents = state.agents.map((agent) => {
               const existingIds = new Set(agent.enabledToolIds)
-              const hasAllTools = [...allIds].every((id) => existingIds.has(id))
+              const hasAllTools = Array.from(allIds).every((id) => existingIds.has(id))
               if (hasAllTools) return agent
               return {
                 ...agent,
-                enabledToolIds: [...new Set([...agent.enabledToolIds, ...DEFAULT_ALL_TOOL_IDS])]
+                enabledToolIds: Array.from(new Set([...agent.enabledToolIds, ...DEFAULT_ALL_TOOL_IDS]))
               }
             })
           }

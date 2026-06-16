@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import {
   Copy,
   Pencil,
@@ -14,13 +14,20 @@ import {
   FileIcon,
   ChevronLeft,
   ChevronRight,
-  GitBranch
+  GitBranch,
+  Eye,
+  Download,
+  X,
+  Maximize2,
+  Minimize2
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { SelectionBoundary } from '../ui/SelectionBoundary'
 import { ThinkingSection } from './ThinkingSection'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { AgentStepDisplay } from './AgentStepDisplay'
+import { SiteAnalyzerProgressPanel } from './SiteAnalyzerProgressPanel'
+import { reportStore } from '../../services/report-store'
 import type { Message } from '../../types'
 
 /** 格式化文件大小 */
@@ -69,6 +76,9 @@ export function MessageItem({
   const [copied, setCopied] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
+  const [showReport, setShowReport] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [loadedReportHtml, setLoadedReportHtml] = useState<string | null>(null)
 
   const role = roleConfig[message.role]
   const RoleIcon = role.icon
@@ -88,6 +98,29 @@ export function MessageItem({
     onEditAndResend?.(message.id, editContent)
     setIsEditing(false)
   }, [message.id, editContent, onEditAndResend])
+
+  // 打开报告弹窗（从 IndexedDB 加载）
+  const handleOpenReport = useCallback(async () => {
+    const html = await reportStore.getReport(message.id)
+    if (html) {
+      setLoadedReportHtml(html)
+      setShowReport(true)
+    }
+  }, [message.id])
+
+  // 下载报告为HTML文件
+  const handleDownloadReport = useCallback(() => {
+    if (!loadedReportHtml) return
+    const blob = new Blob([loadedReportHtml], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `网站分析报告-${new Date().toISOString().slice(0, 10)}.html`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [loadedReportHtml])
 
   // 工具消息特殊显示
   if (message.role === 'tool') {
@@ -157,6 +190,11 @@ export function MessageItem({
           <SelectionBoundary>
             <ThinkingSection content={message.reasoningContent} />
           </SelectionBoundary>
+        )}
+
+        {/* 网站分析实时进度面板 */}
+        {message.siteAnalyzerProgress && (
+          <SiteAnalyzerProgressPanel progress={message.siteAnalyzerProgress} />
         )}
 
         {/* 工具调用 */}
@@ -277,9 +315,22 @@ export function MessageItem({
               <ChevronRight size={14} />
             </button>
           </div>
-        )}
-
-        {/* 操作按钮 */}
+          )}
+  
+          {/* 网站分析报告查看按钮 */}
+          {!message.isStreaming && message.hasReport && (
+            <div className="mt-3">
+              <button
+                onClick={handleOpenReport}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg hover:from-blue-600 hover:to-indigo-700 shadow-sm transition-all hover:shadow-md"
+              >
+                <Eye size={16} />
+                查看交互式分析报告
+              </button>
+            </div>
+          )}
+  
+          {/* 操作按钮 */}
         {!message.isStreaming && !isEditing && (
           <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
@@ -316,6 +367,17 @@ export function MessageItem({
           </div>
         )}
       </div>
+
+      {/* 网站分析报告弹窗 */}
+      {showReport && loadedReportHtml && (
+        <ReportModal
+          reportHtml={loadedReportHtml}
+          isFullscreen={isFullscreen}
+          onClose={() => { setShowReport(false); setIsFullscreen(false) }}
+          onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
+          onDownload={handleDownloadReport}
+        />
+      )}
     </div>
   )
 }
@@ -342,4 +404,103 @@ function formatToolResult(content: string): string {
   } catch {
     return content
   }
+}
+
+/** 报告弹窗组件 */
+interface ReportModalProps {
+  reportHtml: string
+  isFullscreen: boolean
+  onClose: () => void
+  onToggleFullscreen: () => void
+  onDownload: () => void
+}
+
+function ReportModal({ reportHtml, isFullscreen, onClose, onToggleFullscreen, onDownload }: ReportModalProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const blobUrlRef = useRef<string | null>(null)
+
+  // 使用 Blob URL 加载 HTML（比 srcdoc 更快，浏览器可流式处理）
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    // 清理上一个 Blob URL
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current)
+    }
+
+    const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    blobUrlRef.current = url
+    iframe.src = url
+
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current)
+        blobUrlRef.current = null
+      }
+    }
+  }, [reportHtml])
+
+  // ESC 关闭
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className={`bg-white dark:bg-gray-900 rounded-xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ${
+        isFullscreen
+          ? 'fixed inset-0 z-50 rounded-none'
+          : 'w-[95vw] h-[90vh] max-w-[1600px]'
+      }`}>
+        {/* 弹窗头部 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+            <FileText size={18} className="text-blue-500" />
+            网站分析交互式报告
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
+              title="下载HTML报告"
+            >
+              <Download size={14} />
+              下载报告
+            </button>
+            <button
+              onClick={onToggleFullscreen}
+              className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              title={isFullscreen ? '退出全屏' : '全屏'}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              title="关闭"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* 报告内容 */}
+        <iframe
+          ref={iframeRef}
+          className="flex-1 w-full border-0 bg-white"
+          title="网站分析报告"
+          sandbox="allow-scripts allow-same-origin"
+        />
+      </div>
+    </div>
+  )
 }

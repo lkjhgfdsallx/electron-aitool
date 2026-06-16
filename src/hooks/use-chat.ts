@@ -4,17 +4,40 @@ import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import { reportStore } from '../services/report-store'
 import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
 import { generateTitleFromContent } from '../utils/conversation-utils'
-import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile } from '../types'
+import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress } from '../types'
+
+/** 将进度事件类型映射到阶段 */
+function mapProgressTypeToPhase(type: string): SiteAnalyzerLiveProgress['phase'] {
+  switch (type) {
+    case 'started': return 'browser'
+    case 'logging_in':
+    case 'login_success':
+    case 'login_failed': return 'login'
+    case 'crawling':
+    case 'page_crawled': return 'crawling'
+    case 'analyzing':
+    case 'ai_analyzing_page':
+    case 'ai_analysis_done': return 'analyzing'
+    case 'generating_report':
+    case 'report_ready': return 'report'
+    case 'completed': return 'completed'
+    case 'error': return 'error'
+    default: return 'crawling'
+  }
+}
 
 /**
  * 聊天 Hook - 处理消息发送、工具调用、Agent 模式
  */
 export function useChat() {
   const abortControllerRef = useRef<AbortController | null>(null)
+  // 网站分析开始时间（用于在进度面板中显示耗时）
+  const siteAnalyzerStartTimeRef = useRef<number>(0)
 
   const {
     addMessage,
@@ -248,6 +271,37 @@ export function useChat() {
               }
               signal?.addEventListener('abort', onAbort, { once: true })
             })
+          },
+          onReportReady: (reportHtml) => {
+            // 网站分析报告生成完成，立即标记并后台存储到 IndexedDB
+            updateMessage(assistantMsg.id, { hasReport: true })
+            reportStore.saveReport(assistantMsg.id, reportHtml).catch(console.error)
+          },
+          onSiteAnalyzerProgress: (progress) => {
+            // 实时更新网站分析进度到消息状态
+            if (progress.type === 'started') {
+              siteAnalyzerStartTimeRef.current = Date.now()
+            }
+            const phase = mapProgressTypeToPhase(progress.type)
+            updateMessage(assistantMsg.id, {
+              siteAnalyzerProgress: {
+                phase,
+                message: progress.message,
+                pagesCrawled: progress.pagesCrawled,
+                totalPages: progress.totalPages,
+                apisFound: progress.apisFound,
+                pagesAnalyzed: progress.pagesAnalyzed,
+                currentUrl: progress.currentUrl,
+                startTime: siteAnalyzerStartTimeRef.current,
+                error: progress.error
+              }
+            })
+            // 分析完成或出错时清除进度状态
+            if (phase === 'completed' || phase === 'error') {
+              setTimeout(() => {
+                updateMessage(assistantMsg.id, { siteAnalyzerProgress: undefined })
+              }, 3000)
+            }
           }
         }
       )
@@ -697,6 +751,34 @@ export function useChat() {
                 }
                 signal?.addEventListener('abort', onAbort, { once: true })
               })
+            },
+            onReportReady: (reportHtml) => {
+              updateMessage(assistantMsg.id, { hasReport: true })
+              reportStore.saveReport(assistantMsg.id, reportHtml).catch(console.error)
+            },
+            onSiteAnalyzerProgress: (progress) => {
+              if (progress.type === 'started') {
+                siteAnalyzerStartTimeRef.current = Date.now()
+              }
+              const phase = mapProgressTypeToPhase(progress.type)
+              updateMessage(assistantMsg.id, {
+                siteAnalyzerProgress: {
+                  phase,
+                  message: progress.message,
+                  pagesCrawled: progress.pagesCrawled,
+                  totalPages: progress.totalPages,
+                  apisFound: progress.apisFound,
+                  pagesAnalyzed: progress.pagesAnalyzed,
+                  currentUrl: progress.currentUrl,
+                  startTime: siteAnalyzerStartTimeRef.current,
+                  error: progress.error
+                }
+              })
+              if (phase === 'completed' || phase === 'error') {
+                setTimeout(() => {
+                  updateMessage(assistantMsg.id, { siteAnalyzerProgress: undefined })
+                }, 3000)
+              }
             }
           }
         )
@@ -931,6 +1013,30 @@ export function useChat() {
               }
               signal?.addEventListener('abort', onAbort, { once: true })
             })
+          },
+          onSiteAnalyzerProgress: (progress) => {
+            if (progress.type === 'started') {
+              siteAnalyzerStartTimeRef.current = Date.now()
+            }
+            const phase = mapProgressTypeToPhase(progress.type)
+            updateMessage(messageId, {
+              siteAnalyzerProgress: {
+                phase,
+                message: progress.message,
+                pagesCrawled: progress.pagesCrawled,
+                totalPages: progress.totalPages,
+                apisFound: progress.apisFound,
+                pagesAnalyzed: progress.pagesAnalyzed,
+                currentUrl: progress.currentUrl,
+                startTime: siteAnalyzerStartTimeRef.current,
+                error: progress.error
+              }
+            })
+            if (phase === 'completed' || phase === 'error') {
+              setTimeout(() => {
+                updateMessage(messageId, { siteAnalyzerProgress: undefined })
+              }, 3000)
+            }
           }
         }
       )
@@ -1101,6 +1207,34 @@ export function useChat() {
                 }
                 signal?.addEventListener('abort', onAbort, { once: true })
               })
+            },
+            onReportReady: (reportHtml) => {
+              updateMessage(assistantMsg.id, { hasReport: true })
+              reportStore.saveReport(assistantMsg.id, reportHtml).catch(console.error)
+            },
+            onSiteAnalyzerProgress: (progress) => {
+              if (progress.type === 'started') {
+                siteAnalyzerStartTimeRef.current = Date.now()
+              }
+              const phase = mapProgressTypeToPhase(progress.type)
+              updateMessage(assistantMsg.id, {
+                siteAnalyzerProgress: {
+                  phase,
+                  message: progress.message,
+                  pagesCrawled: progress.pagesCrawled,
+                  totalPages: progress.totalPages,
+                  apisFound: progress.apisFound,
+                  pagesAnalyzed: progress.pagesAnalyzed,
+                  currentUrl: progress.currentUrl,
+                  startTime: siteAnalyzerStartTimeRef.current,
+                  error: progress.error
+                }
+              })
+              if (phase === 'completed' || phase === 'error') {
+                setTimeout(() => {
+                  updateMessage(assistantMsg.id, { siteAnalyzerProgress: undefined })
+                }, 3000)
+              }
             }
           }
         )

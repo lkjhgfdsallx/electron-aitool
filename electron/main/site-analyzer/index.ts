@@ -16,6 +16,7 @@ export type {
   AntiBotConfig,
   CapturedRequest,
   SitePage,
+  PageInteractionResult,
   FunctionModule,
   ApiInterface,
   ApiParam
