@@ -1,24 +1,17 @@
 /**
- * 报告生成服务（v2 - 前端开发者视角）
- * 以页面为核心，展示UI组件树和接口映射
- * 生成自包含的交互式HTML报告
+ * 报告生成服务（v3 - 侧边栏导航 + 组件下钻）
+ * 左侧固定侧边栏展示页面→组件树形结构
+ * 右侧内容区展示详情，支持三级下钻
+ * API区分触发时机：自动加载 / 操作触发 / 级联触发
  */
 
 import type {
   SiteAnalyzerResult,
-  FunctionModule,
   ApiInterface,
-  CapturedRequest,
   PageAnalysis,
   UIComponent,
   SharedComponent,
-  SharedApi,
-  UIComponentType,
-  SitePage,
-  PageStructure,
-  TableStructure,
-  FormStructure,
-  SidebarMenuItem
+  SharedApi
 } from './types'
 
 /** UI组件类型对应的图标和中文名 */
@@ -46,12 +39,19 @@ const COMPONENT_META: Record<string, { icon: string; label: string }> = {
   transfer: { icon: '↔️', label: '穿梭框' },
   editor: { icon: '🖊️', label: '编辑器' },
   switch: { icon: '🔀', label: '开关' },
-  radio: { icon: '⭕', label: '单选' }, 
+  radio: { icon: '🔴', label: '单选' },
   checkbox: { icon: '☑️', label: '多选' },
   tag: { icon: '🏷️', label: '标签' },
   tooltip: { icon: '💡', label: '提示' },
   popover: { icon: '🗯️', label: '气泡卡片' },
   other: { icon: '📦', label: '其他' }
+}
+
+/** API触发时机标签 */
+const TRIGGER_META: Record<string, { icon: string; label: string; color: string }> = {
+  auto_load: { icon: '🚀', label: '自动加载', color: '#22c55e' },
+  action_trigger: { icon: '🖱️', label: '操作触发', color: '#3b82f6' },
+  cascade: { icon: '🔄', label: '级联触发', color: '#f97316' }
 }
 
 export class ReportGenerator {
@@ -65,7 +65,6 @@ export class ReportGenerator {
     const modules = result.modules
     const apis = result.apis
     const requests = result.requests
-    const pages = result.pages
 
     const duration = result.endTime
       ? Math.round((result.endTime - result.startTime) / 1000)
@@ -77,6 +76,9 @@ export class ReportGenerator {
         comps.reduce((s, c) => s + 1 + (c.children ? countComponents(c.children) : 0), 0)
       return sum + countComponents(pa.components)
     }, 0)
+
+    // 生成页面的显示名称（处理同名页面）
+    const pageDisplayNames = this.generatePageDisplayNames(pageAnalyses)
 
     return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -90,6 +92,7 @@ ${this.getStyles()}
 </head>
 <body>
 <div id="app">
+  <!-- 顶部导航栏 -->
   <header class="header">
     <div class="header-content">
       <h1>🔍 网站前端分析报告</h1>
@@ -100,452 +103,528 @@ ${this.getStyles()}
         <span class="badge">🔗 ${sharedComponents.length} 公共组件</span>
         <span class="badge">🔌 ${sharedApis.length} 公用接口</span>
         <span class="badge">⏱️ ${duration}秒</span>
-        <span class="badge">${new Date(result.startTime).toLocaleString('zh-CN')}</span>
       </div>
+    </div>
+    <div class="header-actions">
+      <input type="text" id="globalSearch" placeholder="🔍 搜索组件、接口、字段..." oninput="onGlobalSearch(this.value)">
+      <button onclick="exportJSON()" class="btn-export">导出JSON</button>
+      <button onclick="exportMarkdown()" class="btn-export">导出Markdown</button>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" onclick="switchTab('pages')">📄 页面分析</button>
-    <button class="tab" onclick="switchTab('shared-components')">🧩 公共组件</button>
-    <button class="tab" onclick="switchTab('shared-apis')">🔌 公用接口</button>
-    <button class="tab" onclick="switchTab('modules')">📋 功能模块</button>
-    <button class="tab" onclick="switchTab('overview')">📊 总览</button>
-    <div class="search-box">
-      <input type="text" id="searchInput" placeholder="搜索..." oninput="filterContent()">
-    </div>
-    <div class="export-btns">
-      <button onclick="exportJSON()">导出JSON</button>
-      <button onclick="exportMarkdown()">导出Markdown</button>
-    </div>
-  </nav>
-
-  <main class="main">
-    <!-- 页面分析（主视图） -->
-    <section id="tab-pages" class="tab-content active">
-      <h2>📄 页面分析 (${pageAnalyses.length})</h2>
-      <div class="page-filters">
-        <select id="pageTypeFilter" onchange="filterPages()">
-          <option value="">全部类型</option>
-          ${this.getPageTypeOptions(pageAnalyses)}
-        </select>
+  <div class="layout">
+    <!-- 左侧边栏 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-item overview-item active" data-view="overview" onclick="navigateTo('overview')">
+          <span class="sidebar-icon">📊</span> 总览
+        </div>
       </div>
-      <div class="page-analysis-list">
-        ${pageAnalyses.map((pa, i) => this.renderPageAnalysis(pa, i, apis, pages)).join('\n')}
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">
+          <span class="arrow">▶</span> 📄 页面分析 <span class="count">${pageAnalyses.length}</span>
+        </div>
+        <div class="sidebar-children collapsed">
+          ${pageAnalyses.map((pa, i) => this.renderSidebarPage(pa, i, pageDisplayNames[i])).join('\n')}
+        </div>
       </div>
-    </section>
 
-    <!-- 公共组件 -->
-    <section id="tab-shared-components" class="tab-content">
-      <h2>🧩 公共组件 (${sharedComponents.length})</h2>
-      <p class="section-desc">以下组件在多个页面中被共同使用，建议封装为全局公共组件</p>
-      <div class="shared-list">
-        ${sharedComponents.map((sc, i) => this.renderSharedComponent(sc, i)).join('\n')}
-      </div>
-    </section>
+      ${sharedComponents.length > 0 ? `
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">
+          <span class="arrow">▶</span> 🧩 公共组件 <span class="count">${sharedComponents.length}</span>
+        </div>
+        <div class="sidebar-children collapsed">
+          ${sharedComponents.map((sc, i) => {
+            const meta = COMPONENT_META[sc.type] || COMPONENT_META.other
+            return `<div class="sidebar-item comp-item" data-view="shared-comp-${i}" onclick="navigateTo('shared-comp-${i}')">
+              <span class="sidebar-icon">${meta.icon}</span> ${this.escapeHtml(sc.name)}
+            </div>`
+          }).join('\n')}
+        </div>
+      </div>` : ''}
 
-    <!-- 公用接口 -->
-    <section id="tab-shared-apis" class="tab-content">
-      <h2>🔌 公用接口 (${sharedApis.length})</h2>
-      <p class="section-desc">以下API接口被多个页面共同调用，建议统一封装为公共服务</p>
-      <div class="shared-list">
-        ${sharedApis.map((sa, i) => this.renderSharedApi(sa, i, apis)).join('\n')}
-      </div>
-    </section>
+      ${sharedApis.length > 0 ? `
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">
+          <span class="arrow">▶</span> 🔌 公用接口 <span class="count">${sharedApis.length}</span>
+        </div>
+        <div class="sidebar-children collapsed">
+          ${sharedApis.map((sa, i) => {
+            const methodClass = sa.method.toLowerCase()
+            return `<div class="sidebar-item api-item" data-view="shared-api-${i}" onclick="navigateTo('shared-api-${i}')">
+              <span class="method-tag ${methodClass}">${sa.method}</span> ${this.truncateUrl(sa.url, 30)}
+            </div>`
+          }).join('\n')}
+        </div>
+      </div>` : ''}
+    </aside>
 
-    <!-- 功能模块（保留向后兼容） -->
-    <section id="tab-modules" class="tab-content">
-      <h2>📋 功能模块 (${modules.length})</h2>
-      <div class="module-grid">
-        ${modules.map((m, i) => this.renderModule(m, i, apis)).join('\n')}
-      </div>
-    </section>
+    <!-- 右侧内容区 -->
+    <main class="content" id="content">
+      <!-- 总览（默认显示） -->
+      <section id="view-overview" class="view active">
+        ${this.renderOverview(result, pageAnalyses, sharedComponents, sharedApis, totalComponents)}
+      </section>
 
-    <!-- 总览 -->
-    <section id="tab-overview" class="tab-content">
-      <h2>📊 总览</h2>
-      ${this.renderOverview(result, pageAnalyses, sharedComponents, sharedApis)}
-    </section>
-  </main>
+      <!-- 页面详情 -->
+      ${pageAnalyses.map((pa, i) => `
+      <section id="view-page-${i}" class="view">
+        ${this.renderPageDetail(pa, i, pageDisplayNames[i], apis)}
+      </section>`).join('\n')}
 
-  <!-- 详情弹窗 -->
+      <!-- 公共组件详情 -->
+      ${sharedComponents.map((sc, i) => `
+      <section id="view-shared-comp-${i}" class="view">
+        ${this.renderSharedComponentDetail(sc, i)}
+      </section>`).join('\n')}
+
+      <!-- 公用接口详情 -->
+      ${sharedApis.map((sa, i) => `
+      <section id="view-shared-api-${i}" class="view">
+        ${this.renderSharedApiDetail(sa, i, apis)}
+      </section>`).join('\n')}
+    </main>
+  </div>
+
+  <!-- API详情弹窗 -->
   <div id="modal" class="modal" onclick="closeModal(event)">
     <div class="modal-content" onclick="event.stopPropagation()">
       <button class="modal-close" onclick="closeModal()">&times;</button>
       <div id="modal-body"></div>
     </div>
   </div>
-
-  <!-- 截图放大弹窗 -->
-  <div id="screenshotModal" class="screenshot-modal" onclick="closeScreenshotModal()">
-    <img id="screenshotModalImg" src="" alt="截图预览" />
-  </div>
 </div>
 
 <script>
-${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
+${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis, apis)}
 </script>
 </body>
 </html>`
   }
 
-  // ==================== 页面分析渲染 ====================
+  // ==================== 侧边栏渲染 ====================
 
   /**
-   * 渲染页面截图区域
+   * 渲染侧边栏中的页面项及其子组件
    */
-  private renderPageScreenshot(screenshot: string, title: string): string {
-    return `
-      <div class="page-screenshot-section">
-        <h4>📸 页面截图</h4>
-        <div class="screenshot-container">
-          <img class="screenshot-thumb" src="data:image/png;base64,${screenshot}" alt="${this.escapeHtml(title)}" onclick="openScreenshotModal(this)" />
-          <div class="screenshot-hint">点击放大</div>
-        </div>
-      </div>`
-  }
-
-  /**
-   * 渲染侧边栏导航上下文
-   */
-  private renderSidebarContext(sidebar: NonNullable<PageStructure['sidebar']>): string {
-    const renderMenuItems = (items: SidebarMenuItem[], level = 0): string => {
-      return items.map(item => {
-        const indent = level * 16
-        const activeClass = item.isActive ? 'sidebar-active' : ''
-        const prefix = level > 0 ? '<span class="sidebar-arrow">└</span>' : ''
-        const childrenHtml = item.children ? renderMenuItems(item.children, level + 1) : ''
-        return `<div class="sidebar-menu-item ${activeClass}" style="padding-left: ${indent + 8}px">
-          ${prefix}<span class="sidebar-icon">${item.isActive ? '📌' : '📄'}</span>
-          <span class="sidebar-text">${this.escapeHtml(item.text)}</span>
-          ${item.isActive ? '<span class="sidebar-badge">当前</span>' : ''}
-        </div>${childrenHtml}`
-      }).join('')
-    }
-
-    return `
-      <div class="sidebar-context-section">
-        <h4>🧭 导航上下文</h4>
-        ${sidebar.activeItem ? `<div class="sidebar-active-info">当前页面：<strong>${this.escapeHtml(sidebar.activeItem)}</strong></div>` : ''}
-        <div class="sidebar-menu-tree">
-          ${renderMenuItems(sidebar.items)}
-        </div>
-      </div>`
-  }
-
-  /**
-   * 渲染表格结构详情
-   */
-  private renderTableStructures(tables: TableStructure[]): string {
-    if (tables.length === 0) return ''
-
-    return `
-      <div class="structure-section">
-        <h4>📊 数据表格详情 (${tables.length})</h4>
-        ${tables.map((t, i) => `
-        <div class="structure-card">
-          <div class="structure-card-header">
-            <span class="structure-badge table-badge">表格 ${i + 1}</span>
-            ${t.title ? `<span class="structure-title">${this.escapeHtml(t.title)}</span>` : ''}
-          </div>
-          <table class="detail-table">
-            <tbody>
-              <tr><td class="detail-label">列定义</td><td class="detail-value"><div class="column-tags">${t.columns.map(c => `<span class="column-tag">${this.escapeHtml(c)}</span>`).join('')}</div></td></tr>
-              <tr><td class="detail-label">数据行数</td><td class="detail-value"><span class="num-badge">${t.rowCount}</span></td></tr>
-              ${t.hasCheckbox ? '<tr><td class="detail-label">行选择</td><td class="detail-value"><span class="feature-tag yes">☑️ 支持多选（checkbox）</span></td></tr>' : ''}
-              ${t.hasIndex ? '<tr><td class="detail-label">序号列</td><td class="detail-value"><span class="feature-tag yes">✅ 自带序号</span></td></tr>' : ''}
-              ${t.hasAction ? `<tr><td class="detail-label">操作列</td><td class="detail-value"><div class="action-buttons">${t.actionButtons.map(b => `<span class="action-btn-tag">${this.escapeHtml(b)}</span>`).join('')}</div></td></tr>` : ''}
-              ${t.headerButtons.length > 0 ? `<tr><td class="detail-label">表头按钮</td><td class="detail-value"><div class="action-buttons">${t.headerButtons.map(b => `<span class="header-btn-tag">${this.escapeHtml(b)}</span>`).join('')}</div></td></tr>` : ''}
-              ${t.hasPagination ? '<tr><td class="detail-label">分页</td><td class="detail-value"><span class="feature-tag yes">📄 支持分页</span></td></tr>' : ''}
-            </tbody>
-          </table>
-        </div>`).join('')}
-      </div>`
-  }
-
-  /**
-   * 渲染表单结构详情
-   */
-  private renderFormStructures(forms: FormStructure[]): string {
-    if (forms.length === 0) return ''
-
-    return `
-      <div class="structure-section">
-        <h4>📝 表单详情 (${forms.length})</h4>
-        ${forms.map((f, i) => `
-        <div class="structure-card">
-          <div class="structure-card-header">
-            <span class="structure-badge form-badge">表单 ${i + 1}</span>
-            ${f.title ? `<span class="structure-title">${this.escapeHtml(f.title)}</span>` : ''}
-          </div>
-          <table class="detail-table fields-table">
-            <thead>
-              <tr><th>字段名</th><th>类型</th><th>必填</th><th>占位提示</th><th>选项</th></tr>
-            </thead>
-            <tbody>
-              ${f.fields.map(field => `<tr>
-                <td><strong>${this.escapeHtml(field.label)}</strong></td>
-                <td><span class="field-type-badge">${this.escapeHtml(field.type)}</span></td>
-                <td>${field.required ? '<span class="required-yes">✅ 必填</span>' : '<span class="required-no">选填</span>'}</td>
-                <td>${field.placeholder ? `<span class="placeholder-text">${this.escapeHtml(field.placeholder)}</span>` : '-'}</td>
-                <td>${field.options && field.options.length > 0 ? `<div class="option-tags">${field.options.slice(0, 8).map(o => `<span class="option-tag">${this.escapeHtml(o)}</span>`).join('')}${field.options.length > 8 ? `<span class="option-more">+${field.options.length - 8}</span>` : ''}</div>` : '-'}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
-          ${f.buttons.length > 0 ? `<div class="form-buttons-row"><strong>操作按钮：</strong>${f.buttons.map(b => `<span class="form-btn-tag">${this.escapeHtml(b)}</span>`).join('')}</div>` : ''}
-        </div>`).join('')}
-      </div>`
-  }
-
-  /**
-   * 渲染统计卡片
-   */
-  private renderStatCards(statCards: Array<{ label: string; value: string }>): string {
-    if (statCards.length === 0) return ''
-
-    return `
-      <div class="stat-cards-section">
-        <h4>📈 统计概览</h4>
-        <div class="stat-cards-grid">
-          ${statCards.map(sc => `
-          <div class="stat-card-item">
-            <div class="stat-card-value">${this.escapeHtml(sc.value)}</div>
-            <div class="stat-card-label">${this.escapeHtml(sc.label)}</div>
-          </div>`).join('')}
-        </div>
-      </div>`
-  }
-
-  /**
-   * 渲染页面头部信息
-   */
-  private renderPageHeader(pageHeader: NonNullable<PageStructure['pageHeader']>): string {
-    const parts: string[] = []
-    if (pageHeader.breadcrumbs.length > 0) {
-      parts.push(`<div class="breadcrumb-path">${pageHeader.breadcrumbs.map(b => `<span class="breadcrumb-item">${this.escapeHtml(b)}</span>`).join('<span class="breadcrumb-sep">›</span>')}</div>`)
-    }
-    if (pageHeader.headerActions.length > 0) {
-      parts.push(`<div class="header-actions"><strong>页面操作：</strong>${pageHeader.headerActions.map(a => `<span class="header-action-tag">${this.escapeHtml(a)}</span>`).join('')}</div>`)
-    }
-    if (parts.length === 0) return ''
-    return `
-      <div class="page-header-section">
-        <h4>📍 页面位置</h4>
-        ${parts.join('')}
-      </div>`
-  }
-
-  /**
-   * 渲染交互探索结果
-   */
-  private renderInteractionResults(results: NonNullable<import('./types').SitePage['interactionResults']>): string {
-    if (results.length === 0) return ''
-
-    return `
-      <div class="interaction-section">
-        <h4>🔍 交互探索结果 (${results.length})</h4>
-        <div class="interaction-list">
-          ${results.map((r, i) => `
-          <div class="interaction-item">
-            <div class="interaction-header">
-              <span class="interaction-index">#${i + 1}</span>
-              <span class="interaction-action">${this.escapeHtml(r.action)}</span>
-              <span class="interaction-element">${this.escapeHtml(r.element)}</span>
-            </div>
-            <div class="interaction-result">${this.escapeHtml(r.result)}</div>
-            ${r.contentSummary ? `<div class="interaction-summary">📋 ${this.escapeHtml(r.contentSummary)}</div>` : ''}
-            ${r.screenshot ? `<div class="interaction-screenshot"><img src="data:image/png;base64,${r.screenshot}" alt="交互截图" onclick="openScreenshotModal(this)" /><div class="screenshot-hint">点击放大</div></div>` : ''}
-          </div>`).join('')}
-        </div>
-      </div>`
-  }
-
-  /**
-   * 渲染单个页面分析卡片（增强版 - 包含截图/侧边栏/表格/表单/交互详情）
-   */
-  private renderPageAnalysis(pa: PageAnalysis, index: number, apis: ApiInterface[], pages: SitePage[]): string {
+  private renderSidebarPage(pa: PageAnalysis, index: number, displayName: string): string {
     const pageTypeIcons: Record<string, string> = {
       '列表页': '📋', '详情页': '📄', '表单页': '📝', '仪表盘': '📊',
       '登录页': '🔐', '设置页': '⚙️', '注册页': '👤', '混合页': '🔀', '其他': '📦'
     }
     const typeIcon = pageTypeIcons[pa.pageType] || '📦'
 
-    // 查找对应的 SitePage 以获取 pageStructure 和 interactionResults
-    const page = pages.find(p => p.url === pa.url)
-    const ps = page?.pageStructure
-    const interactionResults = page?.interactionResults
+    // 收集所有组件（递归）
+    const collectComponents = (comps: UIComponent[], prefix: string): string[] => {
+      const items: string[] = []
+      comps.forEach((c, ci) => {
+        const meta = COMPONENT_META[c.type] || COMPONENT_META.other
+        const compId = `${prefix}-${ci}`
+        items.push(`<div class="sidebar-item comp-item" data-view="page-${index}-comp-${compId}" data-comp-name="${this.escapeHtml(c.name)}" onclick="navigateTo('page-${index}', '${compId}')">
+          <span class="sidebar-icon">${meta.icon}</span> ${this.escapeHtml(c.name)}
+        </div>`)
+        if (c.children && c.children.length > 0) {
+          items.push(...collectComponents(c.children, compId))
+        }
+      })
+      return items
+    }
 
-    // 构建搜索索引（包含侧边栏、表格列名等以支持搜索）
-    const searchParts = [pa.title, pa.url, pa.uiDescription, pa.pageType]
-    if (ps?.sidebar?.activeItem) searchParts.push(ps.sidebar.activeItem)
-    if (ps?.tables) ps.tables.forEach(t => searchParts.push(t.columns.join(' ')))
-    if (ps?.pageHeader?.breadcrumbs) searchParts.push(ps.pageHeader.breadcrumbs.join(' '))
+    const compItems = collectComponents(pa.components, 'c')
 
     return `
-    <div class="page-card" data-page-type="${this.escapeHtml(pa.pageType)}" data-search="${this.escapeHtml(searchParts.join(' '))}">
-      <div class="page-card-header">
-        <div class="page-card-title">
+    <div class="sidebar-page-group">
+      <div class="sidebar-item page-item" data-view="page-${index}" onclick="navigateTo('page-${index}')">
+        <span class="sidebar-icon">${typeIcon}</span>
+        <span class="page-name">${this.escapeHtml(displayName)}</span>
+        <span class="page-type-mini">${this.escapeHtml(pa.pageType)}</span>
+      </div>
+      ${compItems.length > 0 ? `
+      <div class="sidebar-comp-list">
+        ${compItems.join('\n')}
+      </div>` : ''}
+    </div>`
+  }
+
+  // ==================== 页面详情渲染 ====================
+
+  /**
+   * 渲染页面详情（右侧内容区）
+   */
+  private renderPageDetail(pa: PageAnalysis, index: number, displayName: string, apis: ApiInterface[]): string {
+    const pageTypeIcons: Record<string, string> = {
+      '列表页': '📋', '详情页': '📄', '表单页': '📝', '仪表盘': '📊',
+      '登录页': '🔐', '设置页': '⚙️', '注册页': '👤', '混合页': '🔀', '其他': '📦'
+    }
+    const typeIcon = pageTypeIcons[pa.pageType] || '📦'
+
+    // 分离自动加载和操作触发的API
+    const autoLoadApis: string[] = []
+    const actionApis: string[] = []
+
+    const classifyApi = (apiUrl: string) => {
+      // 从组件的 triggerTiming 判断
+      let timing = ''
+      const findTiming = (comps: UIComponent[]) => {
+        for (const c of comps) {
+          if (c.apiUrls.includes(apiUrl) && c.triggerTiming) {
+            timing = c.triggerTiming
+            return
+          }
+          if (c.children) findTiming(c.children)
+        }
+      }
+      findTiming(pa.components)
+
+      // 从 actions 中的 targetApi 判断
+      const isActionTrigger = pa.components.some(c => {
+        const checkActions = (comp: UIComponent): boolean => {
+          if (comp.actions?.some(a => a.targetApi && apiUrl.includes(a.targetApi.split(' ').pop() || ''))) return true
+          if (comp.buttons?.some(b => b.action?.targetApi && apiUrl.includes(b.action.targetApi.split(' ').pop() || ''))) return true
+          if (comp.children) return comp.children.some(checkActions)
+          return false
+        }
+        return checkActions(c)
+      })
+
+      if (timing === 'action_trigger' || isActionTrigger) {
+        actionApis.push(apiUrl)
+      } else {
+        autoLoadApis.push(apiUrl)
+      }
+    }
+
+    pa.exclusiveApis.forEach(classifyApi)
+    // 也收集组件上的API
+    const allComponentApis = new Set<string>()
+    const collectApis = (comps: UIComponent[]) => {
+      comps.forEach(c => {
+        c.apiUrls.forEach(u => allComponentApis.add(u))
+        if (c.children) collectApis(c.children)
+      })
+    }
+    collectApis(pa.components)
+    allComponentApis.forEach(u => {
+      if (!pa.exclusiveApis.includes(u)) classifyApi(u)
+    })
+
+    return `
+    <div class="page-detail">
+      <div class="page-detail-header">
+        <div class="page-title-row">
           <span class="page-type-badge">${typeIcon} ${this.escapeHtml(pa.pageType)}</span>
-          <h3>${this.escapeHtml(pa.title)}</h3>
-          ${ps?.sidebar?.activeItem && ps.sidebar.activeItem !== pa.title ? `<span class="sidebar-name-hint">🧭 ${this.escapeHtml(ps.sidebar.activeItem)}</span>` : ''}
+          <h2>${this.escapeHtml(displayName)}</h2>
         </div>
-        <span class="page-url">${this.truncateUrl(pa.url)}</span>
+        <div class="page-url">${this.escapeHtml(pa.url)}</div>
+        <div class="page-desc-grid">
+          <div class="desc-card">
+            <div class="desc-label">UI描述</div>
+            <div class="desc-value">${this.escapeHtml(pa.uiDescription)}</div>
+          </div>
+          <div class="desc-card">
+            <div class="desc-label">布局概述</div>
+            <div class="desc-value">${this.escapeHtml(pa.layoutSummary)}</div>
+          </div>
+        </div>
       </div>
 
-      <div class="page-card-desc">
-        <div class="desc-row"><strong>UI描述：</strong>${this.escapeHtml(pa.uiDescription)}</div>
-        <div class="desc-row"><strong>布局：</strong>${this.escapeHtml(pa.layoutSummary)}</div>
-      </div>
+      ${autoLoadApis.length > 0 || actionApis.length > 0 ? `
+      <div class="api-summary-section">
+        <h3>🔌 接口调用概览</h3>
+        <div class="api-summary-grid">
+          ${autoLoadApis.length > 0 ? `
+          <div class="api-summary-group">
+            <div class="api-summary-title"><span class="trigger-badge auto_load">🚀 自动加载</span> 页面/组件加载时自动调用</div>
+            <div class="api-summary-list">
+              ${autoLoadApis.map(u => {
+                const method = this.extractMethod(u)
+                const methodClass = method.toLowerCase()
+                const url = u.replace(/^(GET|POST|PUT|DELETE|PATCH)\s+/i, '')
+                return `<div class="api-summary-item" onclick="showApiDetail('${this.escapeHtml(url)}')">
+                  <span class="method-tag ${methodClass}">${method}</span>
+                  <code>${this.truncateUrl(url, 60)}</code>
+                </div>`
+              }).join('')}
+            </div>
+          </div>` : ''}
 
-      ${page?.screenshot ? this.renderPageScreenshot(page.screenshot, pa.title) : ''}
-      ${ps?.pageHeader ? this.renderPageHeader(ps.pageHeader) : ''}
-      ${ps?.sidebar ? this.renderSidebarContext(ps.sidebar) : ''}
-      ${ps?.statCards && ps.statCards.length > 0 ? this.renderStatCards(ps.statCards) : ''}
-      ${ps?.tables && ps.tables.length > 0 ? this.renderTableStructures(ps.tables) : ''}
-      ${ps?.forms && ps.forms.length > 0 ? this.renderFormStructures(ps.forms) : ''}
-      ${ps?.allButtons && ps.allButtons.length > 0 ? `
-      <div class="all-buttons-section">
-        <h4>🔘 页面按钮 (${ps.allButtons.length})</h4>
-        <div class="all-buttons-list">${ps.allButtons.map(b => `<span class="page-btn-tag">${this.escapeHtml(b)}</span>`).join('')}</div>
+          ${actionApis.length > 0 ? `
+          <div class="api-summary-group">
+            <div class="api-summary-title"><span class="trigger-badge action_trigger">🖱️ 操作触发</span> 用户操作后调用</div>
+            <div class="api-summary-list">
+              ${actionApis.map(u => {
+                const method = this.extractMethod(u)
+                const methodClass = method.toLowerCase()
+                const url = u.replace(/^(GET|POST|PUT|DELETE|PATCH)\s+/i, '')
+                return `<div class="api-summary-item" onclick="showApiDetail('${this.escapeHtml(url)}')">
+                  <span class="method-tag ${methodClass}">${method}</span>
+                  <code>${this.truncateUrl(url, 60)}</code>
+                </div>`
+              }).join('')}
+            </div>
+          </div>` : ''}
+        </div>
       </div>` : ''}
 
-      <div class="page-card-components">
-        <h4>📦 组件列表 (${this.countComponents(pa.components)})</h4>
-        <div class="component-tree">
-          ${pa.components.map(c => this.renderComponent(c, 0)).join('\n')}
+      <div class="components-section">
+        <h3>🧩 组件列表 (${this.countComponents(pa.components)})</h3>
+        <div class="components-list">
+          ${pa.components.map((c, ci) => this.renderComponentDetail(c, 0, `page-${index}-c-${ci}`)).join('\n')}
         </div>
       </div>
 
-      ${pa.exclusiveApis.length > 0 ? `
-      <div class="page-card-apis">
-        <h4>🔌 独占API (${pa.exclusiveApis.length})</h4>
-        <div class="api-tags">
-          ${pa.exclusiveApis.map(apiUrl => {
-            const api = apis.find(a => a.url === apiUrl || apiUrl.includes(a.url))
-            const method = api?.method || this.extractMethod(apiUrl)
+      ${pa.sharedComponentRefs.length > 0 || pa.sharedApiRefs.length > 0 ? `
+      <div class="refs-section">
+        ${pa.sharedComponentRefs.length > 0 ? `
+        <div class="refs-group">
+          <span class="refs-label">🧩 引用的公共组件：</span>
+          ${pa.sharedComponentRefs.map(name => `<span class="ref-tag">${this.escapeHtml(name)}</span>`).join('')}
+        </div>` : ''}
+        ${pa.sharedApiRefs.length > 0 ? `
+        <div class="refs-group">
+          <span class="refs-label">🔌 引用的公用接口：</span>
+          ${pa.sharedApiRefs.map(url => `<span class="ref-tag api">${this.truncateUrl(url, 40)}</span>`).join('')}
+        </div>` : ''}
+      </div>` : ''}
+    </div>`
+  }
+
+  // ==================== 组件详情渲染 ====================
+
+  /**
+   * 渲染单个组件的详细信息（递归）
+   */
+  private renderComponentDetail(comp: UIComponent, depth: number, compId: string): string {
+    const meta = COMPONENT_META[comp.type] || COMPONENT_META.other
+    const indent = depth * 16
+    const hasChildren = comp.children && comp.children.length > 0
+    const hasColumns = comp.columns && comp.columns.length > 0
+    const hasProps = comp.props && comp.props.length > 0
+    const hasActions = comp.actions && comp.actions.length > 0
+    const hasButtons = comp.buttons && comp.buttons.length > 0
+
+    // 构建组件特性标签
+    const featureTags: string[] = []
+    if (comp.type === 'table') {
+      if (comp.hasIndex) featureTags.push('<span class="feature-tag">✅ 有序号列</span>')
+      else featureTags.push('<span class="feature-tag dim">❌ 无序号列</span>')
+      if (comp.hasSelection) featureTags.push('<span class="feature-tag">✅ 可多选</span>')
+      if (comp.hasPagination) featureTags.push('<span class="feature-tag">✅ 有分页</span>')
+    }
+
+    // 构建列定义表格
+    let columnsHtml = ''
+    if (hasColumns) {
+      columnsHtml = `
+      <div class="detail-block">
+        <div class="detail-block-title">📋 列定义</div>
+        <table class="detail-table">
+          <thead><tr>
+            <th>列标题</th><th>字段名</th><th>数据类型</th>
+            ${comp.columns!.some(c => c.width) ? '<th>宽度</th>' : ''}
+            <th>可排序</th><th>可筛选</th>
+            ${comp.columns!.some(c => c.render) ? '<th>渲染方式</th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${comp.columns!.map(col => `<tr>
+              <td><strong>${this.escapeHtml(col.title)}</strong></td>
+              <td><code>${this.escapeHtml(col.dataIndex)}</code></td>
+              <td>${this.escapeHtml(col.dataType || '-')}</td>
+              ${comp.columns!.some(c => c.width) ? `<td>${this.escapeHtml(col.width || '-')}</td>` : ''}
+              <td>${col.sortable ? '✅' : '❌'}</td>
+              <td>${col.filterable ? '✅' : '❌'}</td>
+              ${comp.columns!.some(c => c.render) ? `<td>${this.escapeHtml(col.render || '-')}</td>` : ''}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`
+    }
+
+    // 构建表单字段表格
+    let propsHtml = ''
+    if (hasProps) {
+      propsHtml = `
+      <div class="detail-block">
+        <div class="detail-block-title">📝 字段/属性</div>
+        <table class="detail-table">
+          <thead><tr>
+            <th>名称</th><th>类型</th><th>描述</th><th>必填</th>
+            ${comp.props!.some(p => p.placeholder) ? '<th>占位符</th>' : ''}
+            ${comp.props!.some(p => p.options) ? '<th>选项</th>' : ''}
+            ${comp.props!.some(p => p.validation) ? '<th>校验规则</th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${comp.props!.map(p => `<tr>
+              <td><code>${this.escapeHtml(p.name)}</code></td>
+              <td><span class="type-tag">${this.escapeHtml(p.type)}</span></td>
+              <td>${this.escapeHtml(p.description)}</td>
+              <td>${p.required ? '✅' : '❌'}</td>
+              ${comp.props!.some(pp => pp.placeholder) ? `<td>${this.escapeHtml(p.placeholder || '-')}</td>` : ''}
+              ${comp.props!.some(pp => pp.options) ? `<td>${p.options ? p.options.map(o => `<span class="option-tag">${this.escapeHtml(o)}</span>`).join(' ') : '-'}</td>` : ''}
+              ${comp.props!.some(pp => pp.validation) ? `<td>${this.escapeHtml(p.validation || '-')}</td>` : ''}
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`
+    }
+
+    // 构建操作按钮列表
+    let buttonsHtml = ''
+    if (hasButtons) {
+      buttonsHtml = `
+      <div class="detail-block">
+        <div class="detail-block-title">🔘 操作按钮</div>
+        <div class="buttons-list">
+          ${comp.buttons!.map(b => {
+            const btnClass = b.type === 'primary' ? 'btn-primary' : b.type === 'danger' ? 'btn-danger' : b.type === 'link' ? 'btn-link' : 'btn-default'
+            const actionInfo = b.action ? ` → <span class="action-info">${this.escapeHtml(b.action.type)}${b.action.targetApi ? `: <code>${this.escapeHtml(b.action.targetApi)}</code>` : ''}${b.action.targetComponent ? ` → ${this.escapeHtml(b.action.targetComponent)}` : ''}</span>` : ''
+            return `<span class="button-item ${btnClass}">${this.escapeHtml(b.name)}${actionInfo}</span>`
+          }).join('')}
+        </div>
+      </div>`
+    }
+
+    // 构建操作列表（actions）
+    let actionsHtml = ''
+    if (hasActions) {
+      actionsHtml = `
+      <div class="detail-block">
+        <div class="detail-block-title">⚡ 交互操作</div>
+        <div class="actions-list">
+          ${comp.actions!.map(a => {
+            const actionIcon = a.type === 'modal' ? '💬' : a.type === 'drawer' ? '📂' : a.type === 'navigate' ? '🔗' : a.type === 'download' ? '⬇️' : '⚡'
+            return `<div class="action-item">
+              <span class="action-icon">${actionIcon}</span>
+              <strong>${this.escapeHtml(a.name)}</strong>
+              <span class="action-type">[${this.escapeHtml(a.type)}]</span>
+              <span class="action-desc">${this.escapeHtml(a.description)}</span>
+              ${a.targetApi ? `<span class="action-target">→ <code>${this.escapeHtml(a.targetApi)}</code></span>` : ''}
+              ${a.targetComponent ? `<span class="action-target">→ ${this.escapeHtml(a.targetComponent)}</span>` : ''}
+            </div>`
+          }).join('')}
+        </div>
+      </div>`
+    }
+
+    // 构建关联API列表
+    let apiHtml = ''
+    if (comp.apiUrls && comp.apiUrls.length > 0) {
+      apiHtml = `
+      <div class="detail-block">
+        <div class="detail-block-title">🔌 关联接口</div>
+        <div class="comp-api-list">
+          ${comp.apiUrls.map(url => {
+            const method = this.extractMethod(url)
             const methodClass = method.toLowerCase()
-            return `<span class="api-tag ${methodClass}" onclick="showApiDetail('${this.escapeHtml(apiUrl)}')"><span class="method-mini ${methodClass}">${method}</span> ${this.truncateUrl(apiUrl, 50)}</span>`
+            const cleanUrl = url.replace(/^(GET|POST|PUT|DELETE|PATCH)\s+/i, '')
+            const triggerTag = comp.triggerTiming ? `<span class="trigger-badge ${comp.triggerTiming}">${TRIGGER_META[comp.triggerTiming]?.icon || ''} ${TRIGGER_META[comp.triggerTiming]?.label || ''}</span>` : ''
+            return `<div class="comp-api-item" onclick="showApiDetail('${this.escapeHtml(cleanUrl)}')">
+              <span class="method-tag ${methodClass}">${method}</span>
+              <code>${this.truncateUrl(cleanUrl, 60)}</code>
+              ${triggerTag}
+            </div>`
+          }).join('')}
+        </div>
+      </div>`
+    }
+
+    return `
+    <div class="comp-detail" style="margin-left: ${indent}px" id="${compId}" data-search="${this.escapeHtml(comp.name)} ${this.escapeHtml(comp.description)} ${comp.type}">
+      <div class="comp-detail-header">
+        <span class="comp-icon">${meta.icon}</span>
+        <span class="comp-type-badge">${meta.label}</span>
+        <h4 class="comp-title">${this.escapeHtml(comp.name)}</h4>
+        <span class="comp-desc">${this.escapeHtml(comp.description)}</span>
+        ${featureTags.length > 0 ? `<div class="feature-tags">${featureTags.join('')}</div>` : ''}
+      </div>
+      ${columnsHtml}
+      ${propsHtml}
+      ${buttonsHtml}
+      ${actionsHtml}
+      ${apiHtml}
+      ${hasChildren ? `
+      <div class="comp-children">
+        <div class="children-title">📦 子组件</div>
+        ${comp.children!.map((c, ci) => this.renderComponentDetail(c, depth + 1, `${compId}-${ci}`)).join('\n')}
+      </div>` : ''}
+    </div>`
+  }
+
+  // ==================== 公共组件详情 ====================
+
+  private renderSharedComponentDetail(sc: SharedComponent, index: number): string {
+    const meta = COMPONENT_META[sc.type] || COMPONENT_META.other
+
+    return `
+    <div class="shared-detail">
+      <div class="shared-detail-header">
+        <span class="comp-icon">${meta.icon}</span>
+        <span class="comp-type-badge">${meta.label}</span>
+        <h2>${this.escapeHtml(sc.name)}</h2>
+        <span class="usage-count">使用页面: ${sc.pages.length}个</span>
+      </div>
+      <p class="shared-desc">${this.escapeHtml(sc.description)}</p>
+
+      ${sc.commonProps && sc.commonProps.length > 0 ? `
+      <div class="detail-block">
+        <div class="detail-block-title">📝 通用属性</div>
+        <table class="detail-table">
+          <thead><tr><th>名称</th><th>类型</th><th>描述</th></tr></thead>
+          <tbody>
+            ${sc.commonProps.map(p => `<tr>
+              <td><code>${this.escapeHtml(p.name)}</code></td>
+              <td><span class="type-tag">${this.escapeHtml(p.type)}</span></td>
+              <td>${this.escapeHtml(p.description)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
+
+      ${sc.apiUrls.length > 0 ? `
+      <div class="detail-block">
+        <div class="detail-block-title">🔌 关联接口</div>
+        <div class="comp-api-list">
+          ${sc.apiUrls.map(url => {
+            const method = this.extractMethod(url)
+            const methodClass = method.toLowerCase()
+            return `<div class="comp-api-item" onclick="showApiDetail('${this.escapeHtml(url)}')">
+              <span class="method-tag ${methodClass}">${method}</span>
+              <code>${this.truncateUrl(url, 60)}</code>
+            </div>`
           }).join('')}
         </div>
       </div>` : ''}
 
-      ${pa.sharedComponentRefs.length > 0 ? `
-      <div class="page-card-refs">
-        <span class="ref-label">🧩 公共组件：</span>
-        ${pa.sharedComponentRefs.map(name => `<span class="ref-tag">${this.escapeHtml(name)}</span>`).join('')}
-      </div>` : ''}
-
-      ${pa.sharedApiRefs.length > 0 ? `
-      <div class="page-card-refs">
-        <span class="ref-label">🔌 公用接口：</span>
-        ${pa.sharedApiRefs.map(url => `<span class="ref-tag api">${this.truncateUrl(url, 40)}</span>`).join('')}
-      </div>` : ''}
-
-      ${interactionResults && interactionResults.length > 0 ? this.renderInteractionResults(interactionResults) : ''}
-    </div>`
-  }
-
-  /**
-   * 渲染单个UI组件（递归）
-   */
-  private renderComponent(comp: UIComponent, depth: number): string {
-    const meta = COMPONENT_META[comp.type] || COMPONENT_META.other
-    const indent = depth * 20
-    const hasChildren = comp.children && comp.children.length > 0
-
-    let actionsHtml = ''
-    if (comp.actions && comp.actions.length > 0) {
-      actionsHtml = `<div class="comp-actions">
-        ${comp.actions.map(a => {
-          const actionIcon = a.type === 'modal' ? '💬' : a.type === 'drawer' ? '📂' : a.type === 'navigate' ? '🔗' : a.type === 'download' ? '⬇️' : '⚡'
-          return `<span class="action-tag" title="${this.escapeHtml(a.description)}">${actionIcon} ${this.escapeHtml(a.name)}${a.targetApi ? ` → <code>${this.escapeHtml(a.targetApi)}</code>` : ''}${a.targetComponent ? ` → ${this.escapeHtml(a.targetComponent)}` : ''}</span>`
-        }).join('')}
-      </div>`
-    }
-
-    let propsHtml = ''
-    if (comp.props && comp.props.length > 0) {
-      propsHtml = `<div class="comp-props">
-        ${comp.props.map(p => `<span class="prop-tag" title="${this.escapeHtml(p.description)}"><code>${this.escapeHtml(p.name)}</code>: ${this.escapeHtml(p.type)}</span>`).join('')}
-      </div>`
-    }
-
-    let apiHtml = ''
-    if (comp.apiUrls && comp.apiUrls.length > 0) {
-      apiHtml = `<div class="comp-apis">
-        ${comp.apiUrls.map(url => {
-          const method = this.extractMethod(url)
-          const methodClass = method.toLowerCase()
-          return `<span class="method-mini ${methodClass}">${method}</span> <code class="api-url">${this.truncateUrl(url, 50)}</code>`
-        }).join(' &nbsp;')}
-      </div>`
-    }
-
-    return `
-    <div class="comp-item" style="margin-left: ${indent}px" data-search="${this.escapeHtml(comp.name)} ${this.escapeHtml(comp.description)} ${comp.type}">
-      <div class="comp-header">
-        <span class="comp-icon">${meta.icon}</span>
-        <span class="comp-type-badge">${meta.label}</span>
-        <span class="comp-name">${this.escapeHtml(comp.name)}</span>
-        <span class="comp-desc">${this.escapeHtml(comp.description)}</span>
-      </div>
-      ${propsHtml}
-      ${actionsHtml}
-      ${apiHtml}
-      ${hasChildren ? comp.children!.map(c => this.renderComponent(c, depth + 1)).join('\n') : ''}
-    </div>`
-  }
-
-  // ==================== 公共组件渲染 ====================
-
-  private renderSharedComponent(sc: SharedComponent, index: number): string {
-    const meta = COMPONENT_META[sc.type] || COMPONENT_META.other
-
-    return `
-    <div class="shared-card" data-search="${this.escapeHtml(sc.name)} ${this.escapeHtml(sc.description)} ${sc.type}">
-      <div class="shared-card-header">
-        <span class="comp-icon">${meta.icon}</span>
-        <span class="comp-type-badge">${meta.label}</span>
-        <h3>${this.escapeHtml(sc.name)}</h3>
-        <span class="usage-count">使用页面: ${sc.pages.length}个</span>
-      </div>
-      <p class="shared-desc">${this.escapeHtml(sc.description)}</p>
-      ${sc.commonProps && sc.commonProps.length > 0 ? `
-      <div class="shared-props">
-        <strong>通用属性：</strong>
-        ${sc.commonProps.map(p => `<span class="prop-tag"><code>${this.escapeHtml(p.name)}</code>: ${this.escapeHtml(p.type)}</span>`).join('')}
-      </div>` : ''}
-      ${sc.apiUrls.length > 0 ? `
-      <div class="shared-apis">
-        <strong>关联API：</strong>
-        ${sc.apiUrls.map(url => `<code class="api-url">${this.truncateUrl(url, 50)}</code>`).join(' &nbsp;')}
-      </div>` : ''}
-      <div class="shared-pages">
-        <strong>使用页面：</strong>
-        ${sc.pages.map(url => `<span class="page-ref">${this.truncateUrl(url, 50)}</span>`).join('')}
+      <div class="detail-block">
+        <div class="detail-block-title">📄 使用页面</div>
+        <div class="page-refs-list">
+          ${sc.pages.map(url => `<span class="page-ref">${this.truncateUrl(url, 60)}</span>`).join('')}
+        </div>
       </div>
     </div>`
   }
 
-  // ==================== 公用接口渲染 ====================
+  // ==================== 公用接口详情 ====================
 
-  private renderSharedApi(sa: SharedApi, index: number, apis: ApiInterface[]): string {
+  private renderSharedApiDetail(sa: SharedApi, index: number, apis: ApiInterface[]): string {
     const methodClass = sa.method.toLowerCase()
-    // 尝试从apis中获取更详细的信息
     const detailedApi = apis.find(a => a.url === sa.url)
 
     return `
-    <div class="shared-card api-card" data-method="${sa.method}" data-search="${this.escapeHtml(sa.url)} ${this.escapeHtml(sa.description)} ${sa.method}">
-      <div class="shared-card-header">
+    <div class="shared-detail">
+      <div class="shared-detail-header">
         <span class="method-badge ${methodClass}">${sa.method}</span>
-        <h3>${this.escapeHtml(sa.url)}</h3>
+        <h2>${this.escapeHtml(sa.url)}</h2>
         <span class="usage-count">调用页面: ${sa.pages.length}个</span>
       </div>
       <p class="shared-desc">${this.escapeHtml(sa.description)}</p>
+
       ${(sa.params && sa.params.length > 0) || (detailedApi?.params && detailedApi.params.length > 0) ? `
-      <div class="shared-params">
-        <strong>参数：</strong>
-        <table class="params-table">
+      <div class="detail-block">
+        <div class="detail-block-title">📋 参数</div>
+        <table class="detail-table">
           <thead><tr><th>名称</th><th>类型</th><th>必填</th><th>说明</th></tr></thead>
           <tbody>
             ${(sa.params || detailedApi?.params || []).map(p => `<tr>
@@ -557,50 +636,31 @@ ${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
           </tbody>
         </table>
       </div>` : ''}
+
       ${sa.returnValue || detailedApi?.returnValue ? `
-      <div class="shared-return">
-        <strong>返回值：</strong><code>${this.escapeHtml(sa.returnValue || detailedApi?.returnValue || '')}</code>
+      <div class="detail-block">
+        <div class="detail-block-title">📤 返回值</div>
+        <pre class="code-block">${this.escapeHtml(sa.returnValue || detailedApi?.returnValue || '')}</pre>
       </div>` : ''}
+
       ${sa.exampleBody || detailedApi?.exampleBody ? `
-      <div class="shared-example">
-        <strong>示例请求体：</strong><pre>${this.escapeHtml(sa.exampleBody || detailedApi?.exampleBody || '')}</pre>
+      <div class="detail-block">
+        <div class="detail-block-title">📥 示例请求体</div>
+        <pre class="code-block">${this.escapeHtml(sa.exampleBody || detailedApi?.exampleBody || '')}</pre>
       </div>` : ''}
+
       ${sa.exampleResponse || detailedApi?.exampleResponse ? `
-      <div class="shared-example">
-        <strong>示例响应：</strong><pre>${this.escapeHtml((sa.exampleResponse || detailedApi?.exampleResponse || '').substring(0, 500))}</pre>
+      <div class="detail-block">
+        <div class="detail-block-title">📤 示例响应</div>
+        <pre class="code-block">${this.escapeHtml((sa.exampleResponse || detailedApi?.exampleResponse || '').substring(0, 1000))}</pre>
       </div>` : ''}
-      <div class="shared-pages">
-        <strong>调用页面：</strong>
-        ${sa.pages.map(url => `<span class="page-ref">${this.truncateUrl(url, 50)}</span>`).join('')}
-      </div>
-    </div>`
-  }
 
-  // ==================== 功能模块渲染（保留向后兼容）====================
-
-  private renderModule(mod: FunctionModule, index: number, apis: ApiInterface[]): string {
-    const relatedApis = apis.filter((a) => mod.interfaces.includes(a.url))
-    const categoryIcon = this.getCategoryIcon(mod.category || '')
-
-    return `
-    <div class="module-card" data-search="${this.escapeHtml(mod.name)} ${this.escapeHtml(mod.description)} ${this.escapeHtml(mod.category || '')}">
-      <div class="module-header">
-        <span class="module-icon">${categoryIcon}</span>
-        <h3>${this.escapeHtml(mod.name)}</h3>
-        ${mod.confidence ? `<span class="confidence">置信度: ${Math.round(mod.confidence * 100)}%</span>` : ''}
+      <div class="detail-block">
+        <div class="detail-block-title">📄 调用页面</div>
+        <div class="page-refs-list">
+          ${sa.pages.map(url => `<span class="page-ref">${this.truncateUrl(url, 60)}</span>`).join('')}
+        </div>
       </div>
-      <p class="module-desc">${this.escapeHtml(mod.description)}</p>
-      <div class="module-meta">
-        <span>📄 页面: ${mod.pages.length}</span>
-        <span>🔌 API: ${relatedApis.length}</span>
-        ${mod.category ? `<span class="category-tag">${this.escapeHtml(mod.category)}</span>` : ''}
-      </div>
-      ${relatedApis.length > 0 ? `
-      <div class="module-apis">
-        <strong>关联API:</strong>
-        ${relatedApis.slice(0, 5).map((a) => `<code class="api-link" onclick="showApiDetail('${this.escapeHtml(a.url)}')">${a.method} ${this.truncateUrl(a.url)}</code>`).join('')}
-        ${relatedApis.length > 5 ? `<span class="more">+${relatedApis.length - 5} 更多</span>` : ''}
-      </div>` : ''}
     </div>`
   }
 
@@ -610,7 +670,8 @@ ${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
     result: SiteAnalyzerResult,
     pageAnalyses: PageAnalysis[],
     sharedComponents: SharedComponent[],
-    sharedApis: SharedApi[]
+    sharedApis: SharedApi[],
+    totalComponents: number
   ): string {
     // 页面类型统计
     const pageTypeCounts = new Map<string, number>()
@@ -628,82 +689,114 @@ ${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
     }
     for (const pa of pageAnalyses) countCompTypes(pa.components)
 
-    // 排序
     const sortedPageTypes = Array.from(pageTypeCounts.entries()).sort((a, b) => b[1] - a[1])
     const sortedCompTypes = Array.from(componentTypeCounts.entries()).sort((a, b) => b[1] - a[1])
 
     return `
-    <div class="overview-grid">
-      <div class="overview-card">
-        <h3>📄 页面概览</h3>
-        <div class="overview-stats">
-          <div class="stat-item"><span class="stat-num">${pageAnalyses.length}</span><span class="stat-label">总页面数</span></div>
-          ${sortedPageTypes.map(([type, count]) => `<div class="stat-item"><span class="stat-num">${count}</span><span class="stat-label">${type}</span></div>`).join('')}
+    <div class="overview">
+      <h2>📊 分析总览</h2>
+      <div class="overview-stats-grid">
+        <div class="stat-card">
+          <div class="stat-number">${pageAnalyses.length}</div>
+          <div class="stat-label">页面</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${totalComponents}</div>
+          <div class="stat-label">组件</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${sharedComponents.length}</div>
+          <div class="stat-label">公共组件</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">${sharedApis.length}</div>
+          <div class="stat-label">公用接口</div>
         </div>
       </div>
 
-      <div class="overview-card">
-        <h3>🧩 组件概览</h3>
-        <div class="overview-stats">
-          <div class="stat-item"><span class="stat-num">${sortedCompTypes.reduce((s, [, c]) => s + c, 0)}</span><span class="stat-label">总组件数</span></div>
-          ${sortedCompTypes.slice(0, 8).map(([type, count]) => {
-            const meta = COMPONENT_META[type] || COMPONENT_META.other
-            return `<div class="stat-item"><span class="stat-num">${count}</span><span class="stat-label">${meta.icon} ${meta.label}</span></div>`
-          }).join('')}
+      <div class="overview-row">
+        <div class="overview-card">
+          <h3>📄 页面类型分布</h3>
+          <div class="type-bars">
+            ${sortedPageTypes.map(([type, count]) => {
+              const pct = Math.round(count / pageAnalyses.length * 100)
+              return `<div class="type-bar-row">
+                <span class="type-bar-label">${this.escapeHtml(type)}</span>
+                <div class="type-bar-track"><div class="type-bar-fill" style="width:${pct}%"></div></div>
+                <span class="type-bar-count">${count}</span>
+              </div>`
+            }).join('')}
+          </div>
         </div>
-      </div>
 
-      <div class="overview-card">
-        <h3>🔗 公共资源</h3>
-        <div class="overview-stats">
-          <div class="stat-item"><span class="stat-num">${sharedComponents.length}</span><span class="stat-label">公共组件</span></div>
-          <div class="stat-item"><span class="stat-num">${sharedApis.length}</span><span class="stat-label">公用接口</span></div>
+        <div class="overview-card">
+          <h3>🧩 组件类型分布</h3>
+          <div class="type-bars">
+            ${sortedCompTypes.slice(0, 10).map(([type, count]) => {
+              const meta = COMPONENT_META[type] || COMPONENT_META.other
+              const pct = Math.round(count / totalComponents * 100)
+              return `<div class="type-bar-row">
+                <span class="type-bar-label">${meta.icon} ${meta.label}</span>
+                <div class="type-bar-track"><div class="type-bar-fill comp" style="width:${pct}%"></div></div>
+                <span class="type-bar-count">${count}</span>
+              </div>`
+            }).join('')}
+          </div>
         </div>
-        ${sharedComponents.length > 0 ? `
-        <div class="overview-detail">
-          <strong>公共组件：</strong>
-          ${sharedComponents.map(sc => {
-            const meta = COMPONENT_META[sc.type] || COMPONENT_META.other
-            return `<span class="overview-tag">${meta.icon} ${this.escapeHtml(sc.name)} (${sc.pages.length}页)</span>`
-          }).join('')}
-        </div>` : ''}
-        ${sharedApis.length > 0 ? `
-        <div class="overview-detail">
-          <strong>公用接口：</strong>
-          ${sharedApis.map(sa => `<span class="overview-tag api"><span class="method-mini ${sa.method.toLowerCase()}">${sa.method}</span> ${this.truncateUrl(sa.url, 30)} (${sa.pages.length}页)</span>`).join('')}
-        </div>` : ''}
       </div>
 
       <div class="overview-card full-width">
         <h3>📋 页面-组件-接口映射表</h3>
-        <table class="mapping-table">
-          <thead>
-            <tr><th>页面</th><th>类型</th><th>组件数</th><th>独占API</th><th>公共组件</th><th>公用接口</th></tr>
-          </thead>
-          <tbody>
-            ${pageAnalyses.map(pa => `<tr>
-              <td><strong>${this.escapeHtml(pa.title)}</strong><br><small class="page-url">${this.truncateUrl(pa.url, 40)}</small></td>
-              <td><span class="page-type-badge">${this.escapeHtml(pa.pageType)}</span></td>
-              <td>${this.countComponents(pa.components)}</td>
-              <td>${pa.exclusiveApis.length}</td>
-              <td>${pa.sharedComponentRefs.length > 0 ? pa.sharedComponentRefs.map(n => `<span class="ref-tag small">${this.escapeHtml(n)}</span>`).join('') : '-'}</td>
-              <td>${pa.sharedApiRefs.length > 0 ? pa.sharedApiRefs.map(u => `<span class="ref-tag small api">${this.truncateUrl(u, 25)}</span>`).join('') : '-'}</td>
-            </tr>`).join('\n')}
-          </tbody>
-        </table>
+        <div class="table-wrapper">
+          <table class="mapping-table">
+            <thead>
+              <tr><th>页面</th><th>类型</th><th>组件数</th><th>独占API</th><th>公共组件</th><th>公用接口</th></tr>
+            </thead>
+            <tbody>
+              ${pageAnalyses.map((pa, i) => `<tr class="clickable-row" onclick="navigateTo('page-${i}')">
+                <td><strong>${this.escapeHtml(pa.title)}</strong><br><small class="page-url">${this.truncateUrl(pa.url, 40)}</small></td>
+                <td><span class="page-type-badge-sm">${this.escapeHtml(pa.pageType)}</span></td>
+                <td>${this.countComponents(pa.components)}</td>
+                <td>${pa.exclusiveApis.length}</td>
+                <td>${pa.sharedComponentRefs.length > 0 ? pa.sharedComponentRefs.map(n => `<span class="ref-tag-sm">${this.escapeHtml(n)}</span>`).join('') : '-'}</td>
+                <td>${pa.sharedApiRefs.length > 0 ? pa.sharedApiRefs.map(u => `<span class="ref-tag-sm api">${this.truncateUrl(u, 25)}</span>`).join('') : '-'}</td>
+              </tr>`).join('\n')}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>`
   }
 
   // ==================== 辅助方法 ====================
 
-  private countComponents(components: UIComponent[]): number {
-    return components.reduce((sum, c) => sum + 1 + (c.children ? this.countComponents(c.children) : 0), 0)
+  /**
+   * 生成页面显示名称（处理同名页面）
+   */
+  private generatePageDisplayNames(pageAnalyses: PageAnalysis[]): string[] {
+    const titleCounts = new Map<string, number[]>()
+    pageAnalyses.forEach((pa, i) => {
+      const title = pa.title || pa.url
+      if (!titleCounts.has(title)) titleCounts.set(title, [])
+      titleCounts.get(title)!.push(i)
+    })
+
+    return pageAnalyses.map((pa, i) => {
+      const title = pa.title || pa.url
+      const indices = titleCounts.get(title) || []
+      if (indices.length <= 1) return title
+      // 同名页面，附加URL路径
+      try {
+        const u = new URL(pa.url)
+        return `${title} - ${u.pathname}`
+      } catch {
+        return `${title} - ${pa.url}`
+      }
+    })
   }
 
-  private getPageTypeOptions(pageAnalyses: PageAnalysis[]): string {
-    const types = new Set(pageAnalyses.map(pa => pa.pageType))
-    return Array.from(types).map(t => `<option value="${this.escapeHtml(t)}">${this.escapeHtml(t)}</option>`).join('')
+  private countComponents(components: UIComponent[]): number {
+    return components.reduce((sum, c) => sum + 1 + (c.children ? this.countComponents(c.children) : 0), 0)
   }
 
   private extractMethod(apiUrl: string): string {
@@ -712,18 +805,6 @@ ${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
       return parts[0].toUpperCase()
     }
     return 'GET'
-  }
-
-  private getCategoryIcon(category: string): string {
-    const icons: Record<string, string> = {
-      '认证': '🔐', '搜索': '🔍', '数据展示': '📊', '表单': '📝',
-      '导航': '🧭', '用户': '👤', '设置': '⚙️', '文件': '📁',
-      '支付': '💳', '消息': '💬', '评论': '💭', '分享': '🔗'
-    }
-    for (const [key, icon] of Object.entries(icons)) {
-      if (category.includes(key)) return icon
-    }
-    return '📦'
   }
 
   private truncateUrl(url: string, maxLen = 60): string {
@@ -757,8 +838,10 @@ ${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
   --bg: #0f172a;
   --bg-card: #1e293b;
   --bg-hover: #334155;
+  --bg-sidebar: #162032;
   --text: #e2e8f0;
   --text-secondary: #94a3b8;
+  --text-muted: #64748b;
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --green: #22c55e;
@@ -769,240 +852,208 @@ ${this.getScripts(result, pageAnalyses, sharedComponents, sharedApis)}
   --cyan: #06b6d4;
   --border: #334155;
   --radius: 8px;
+  --sidebar-width: 280px;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
-.header { background: linear-gradient(135deg, #1e3a5f, #2d1b69); padding: 24px 32px; border-bottom: 1px solid var(--border); }
-.header-content h1 { font-size: 24px; margin-bottom: 12px; }
-.header-meta { display: flex; flex-wrap: wrap; gap: 8px; }
-.badge { background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px; font-size: 13px; }
-.tabs { display: flex; align-items: center; gap: 4px; padding: 12px 32px; background: var(--bg-card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
-.tab { padding: 8px 16px; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; border-radius: var(--radius); font-size: 14px; transition: all 0.2s; }
-.tab:hover { background: var(--bg-hover); color: var(--text); }
-.tab.active { background: var(--accent); color: white; }
-.search-box { margin-left: auto; }
-.search-box input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: var(--radius); width: 200px; font-size: 13px; }
-.export-btns { display: flex; gap: 4px; margin-left: 8px; }
-.export-btns button { padding: 6px 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text-secondary); border-radius: var(--radius); cursor: pointer; font-size: 12px; transition: all 0.2s; }
-.export-btns button:hover { background: var(--accent); color: white; border-color: var(--accent); }
-.main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-.tab-content h2 { margin-bottom: 20px; font-size: 20px; }
-.section-desc { color: var(--text-secondary); margin-bottom: 20px; font-size: 14px; }
 
-/* 页面分析卡片 */
-.page-filters { margin-bottom: 16px; display: flex; gap: 8px; }
-.page-filters select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; }
-.page-analysis-list { display: flex; flex-direction: column; gap: 20px; }
-.page-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; transition: all 0.2s; }
-.page-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
-.page-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
-.page-card-title { display: flex; align-items: center; gap: 12px; flex: 1; }
-.page-card-title h3 { font-size: 18px; }
-.page-type-badge { background: var(--accent); color: white; padding: 3px 12px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
-.page-url { color: var(--text-secondary); font-family: monospace; font-size: 12px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.page-card-desc { margin-bottom: 16px; padding: 12px 16px; background: rgba(59,130,246,0.05); border-radius: var(--radius); border-left: 3px solid var(--accent); }
-.desc-row { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
-.desc-row strong { color: var(--text); }
-.page-card-components { margin-bottom: 16px; }
-.page-card-components h4 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
-.component-tree { display: flex; flex-direction: column; gap: 4px; }
-.comp-item { padding: 8px 12px; background: var(--bg); border-radius: var(--radius); border: 1px solid transparent; transition: all 0.15s; }
-.comp-item:hover { border-color: var(--border); background: var(--bg-hover); }
-.comp-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 顶部导航 */
+.header { background: linear-gradient(135deg, #1e3a5f, #2d1b69); padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 20; }
+.header-content h1 { font-size: 20px; margin-bottom: 6px; }
+.header-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { background: rgba(255,255,255,0.1); padding: 2px 10px; border-radius: 16px; font-size: 12px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.header-actions input { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 6px 14px; border-radius: var(--radius); width: 260px; font-size: 13px; outline: none; }
+.header-actions input:focus { border-color: var(--accent); background: rgba(255,255,255,0.15); }
+.header-actions input::placeholder { color: rgba(255,255,255,0.5); }
+.btn-export { padding: 6px 14px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.8); border-radius: var(--radius); cursor: pointer; font-size: 12px; transition: all 0.2s; }
+.btn-export:hover { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* 布局 */
+.layout { display: flex; height: calc(100vh - 80px); }
+
+/* 侧边栏 */
+.sidebar { width: var(--sidebar-width); min-width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px 0; }
+.sidebar-section { margin-bottom: 4px; }
+.sidebar-section-title { padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none; transition: color 0.2s; }
+.sidebar-section-title:hover { color: var(--text); }
+.sidebar-section-title .arrow { font-size: 10px; transition: transform 0.2s; display: inline-block; width: 14px; }
+.sidebar-section-title .arrow.open { transform: rotate(90deg); }
+.sidebar-section-title .count { background: rgba(59,130,246,0.2); color: var(--accent); padding: 1px 6px; border-radius: 8px; font-size: 11px; margin-left: auto; }
+.sidebar-children { overflow: hidden; }
+.sidebar-children.collapsed { display: none; }
+.sidebar-item { padding: 6px 16px 6px 24px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); transition: all 0.15s; border-left: 3px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-item:hover { background: var(--bg-hover); color: var(--text); }
+.sidebar-item.active { background: rgba(59,130,246,0.1); color: var(--accent); border-left-color: var(--accent); }
+.sidebar-icon { font-size: 14px; flex-shrink: 0; }
+.page-item { padding-left: 16px; }
+.page-item .page-name { font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.page-type-mini { font-size: 10px; color: var(--text-muted); background: var(--bg); padding: 1px 6px; border-radius: 6px; flex-shrink: 0; }
+.comp-item { padding-left: 36px; font-size: 12px; }
+.sidebar-comp-list { }
+.sidebar-page-group { margin-bottom: 2px; }
+.method-tag { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+.method-tag.get { background: rgba(34,197,94,0.2); color: var(--green); }
+.method-tag.post { background: rgba(59,130,246,0.2); color: var(--accent); }
+.method-tag.put { background: rgba(234,179,8,0.2); color: var(--yellow); }
+.method-tag.delete { background: rgba(239,68,68,0.2); color: var(--red); }
+.method-tag.patch { background: rgba(168,85,247,0.2); color: var(--purple); }
+
+/* 内容区 */
+.content { flex: 1; overflow-y: auto; padding: 24px 32px; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* 总览 */
+.overview h2 { margin-bottom: 20px; }
+.overview-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; }
+.stat-number { font-size: 32px; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.overview-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.overview-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.overview-card.full-width { grid-column: 1 / -1; }
+.overview-card h3 { font-size: 15px; margin-bottom: 12px; }
+.type-bars { display: flex; flex-direction: column; gap: 8px; }
+.type-bar-row { display: flex; align-items: center; gap: 10px; }
+.type-bar-label { width: 100px; font-size: 12px; color: var(--text-secondary); text-align: right; flex-shrink: 0; }
+.type-bar-track { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.type-bar-fill { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; }
+.type-bar-fill.comp { background: var(--purple); }
+.type-bar-count { width: 30px; font-size: 12px; color: var(--text-secondary); text-align: right; }
+.table-wrapper { overflow-x: auto; }
+.mapping-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mapping-table th { text-align: left; padding: 10px 12px; background: var(--bg); color: var(--text-secondary); font-weight: 500; }
+.mapping-table td { padding: 10px 12px; border-top: 1px solid var(--border); }
+.mapping-table .page-url { font-size: 11px; color: var(--text-muted); }
+.clickable-row { cursor: pointer; transition: background 0.15s; }
+.clickable-row:hover { background: var(--bg-hover); }
+.page-type-badge-sm { background: rgba(59,130,246,0.15); color: var(--accent); padding: 2px 8px; border-radius: 8px; font-size: 11px; }
+.ref-tag-sm { background: rgba(168,85,247,0.12); color: var(--purple); padding: 1px 6px; border-radius: 6px; font-size: 11px; margin-right: 2px; }
+.ref-tag-sm.api { background: rgba(59,130,246,0.12); color: var(--accent); }
+
+/* 页面详情 */
+.page-detail-header { margin-bottom: 24px; }
+.page-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.page-type-badge { background: var(--accent); color: white; padding: 3px 14px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
+.page-detail-header h2 { font-size: 22px; }
+.page-url { color: var(--text-muted); font-family: monospace; font-size: 13px; margin-bottom: 16px; }
+.page-desc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.desc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; border-left: 3px solid var(--accent); }
+.desc-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.desc-value { font-size: 14px; color: var(--text); }
+
+/* API概览 */
+.api-summary-section { margin-bottom: 24px; }
+.api-summary-section h3 { font-size: 16px; margin-bottom: 12px; }
+.api-summary-grid { display: flex; flex-direction: column; gap: 12px; }
+.api-summary-group { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.api-summary-title { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.trigger-badge { padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+.trigger-badge.auto_load { background: rgba(34,197,94,0.15); color: var(--green); }
+.trigger-badge.action_trigger { background: rgba(59,130,246,0.15); color: var(--accent); }
+.trigger-badge.cascade { background: rgba(249,115,22,0.15); color: var(--orange); }
+.api-summary-list { display: flex; flex-direction: column; gap: 6px; }
+.api-summary-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg); border-radius: 6px; cursor: pointer; transition: background 0.15s; font-size: 13px; }
+.api-summary-item:hover { background: var(--bg-hover); }
+.api-summary-item code { color: var(--text-secondary); font-size: 12px; }
+
+/* 组件列表 */
+.components-section { margin-bottom: 24px; }
+.components-section h3 { font-size: 16px; margin-bottom: 16px; }
+.components-list { display: flex; flex-direction: column; gap: 12px; }
+
+/* 组件详情卡片 */
+.comp-detail { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; transition: border-color 0.2s; }
+.comp-detail:hover { border-color: rgba(59,130,246,0.3); }
+.comp-detail-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .comp-icon { font-size: 16px; }
-.comp-type-badge { background: rgba(168,85,247,0.15); color: var(--purple); padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: 500; }
-.comp-name { font-weight: 600; font-size: 14px; }
+.comp-type-badge { background: rgba(168,85,247,0.15); color: var(--purple); padding: 2px 10px; border-radius: 8px; font-size: 11px; font-weight: 500; }
+.comp-title { font-size: 15px; font-weight: 600; }
 .comp-desc { color: var(--text-secondary); font-size: 13px; }
-.comp-props { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
-.prop-tag { background: rgba(6,182,212,0.1); color: var(--cyan); padding: 1px 8px; border-radius: 6px; font-size: 11px; }
-.prop-tag code { background: none; padding: 0; font-size: 11px; color: var(--cyan); }
-.comp-actions { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
-.action-tag { background: rgba(34,197,94,0.1); color: var(--green); padding: 1px 8px; border-radius: 6px; font-size: 11px; }
-.action-tag code { background: rgba(59,130,246,0.2); color: var(--accent); padding: 0 4px; border-radius: 3px; font-size: 10px; }
-.comp-apis { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.comp-apis .api-url { background: var(--bg-card); padding: 1px 6px; border-radius: 3px; font-size: 11px; color: var(--text-secondary); }
-.method-mini { padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
-.method-mini.get { background: rgba(34,197,94,0.2); color: var(--green); }
-.method-mini.post { background: rgba(59,130,246,0.2); color: var(--accent); }
-.method-mini.put { background: rgba(234,179,8,0.2); color: var(--yellow); }
-.method-mini.delete { background: rgba(239,68,68,0.2); color: var(--red); }
-.page-card-apis { margin-bottom: 12px; }
-.page-card-apis h4 { font-size: 14px; margin-bottom: 8px; }
-.api-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.api-tag { background: var(--bg); padding: 4px 10px; border-radius: var(--radius); font-size: 12px; font-family: monospace; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
-.api-tag:hover { background: var(--accent); color: white; }
-.page-card-refs { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ref-label { color: var(--text-secondary); font-size: 13px; }
-.ref-tag { background: rgba(168,85,247,0.15); color: var(--purple); padding: 2px 10px; border-radius: 10px; font-size: 12px; }
-.ref-tag.api { background: rgba(59,130,246,0.15); color: var(--accent); }
-.ref-tag.small { padding: 1px 6px; font-size: 11px; }
+.feature-tags { display: flex; gap: 6px; margin-left: auto; }
+.feature-tag { background: rgba(34,197,94,0.1); color: var(--green); padding: 2px 8px; border-radius: 6px; font-size: 11px; }
+.feature-tag.dim { background: rgba(100,116,139,0.1); color: var(--text-muted); }
 
-/* 公共组件/公用接口卡片 */
-.shared-list { display: flex; flex-direction: column; gap: 16px; }
-.shared-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: all 0.2s; }
-.shared-card:hover { border-color: var(--accent); }
-.shared-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.shared-card-header h3 { font-size: 16px; flex: 1; }
-.usage-count { background: rgba(34,197,94,0.15); color: var(--green); padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
-.shared-desc { color: var(--text-secondary); font-size: 14px; margin-bottom: 12px; }
-.shared-props, .shared-apis, .shared-params, .shared-return, .shared-example, .shared-pages { margin-top: 8px; font-size: 13px; }
-.shared-props strong, .shared-apis strong, .shared-params strong, .shared-return strong, .shared-example strong, .shared-pages strong { color: var(--text-secondary); margin-right: 8px; }
-.shared-pages { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.page-ref { background: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 12px; font-family: monospace; color: var(--text-secondary); }
-.params-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-.params-table th { text-align: left; padding: 6px 12px; background: var(--bg); color: var(--text-secondary); font-weight: 500; }
-.params-table td { padding: 6px 12px; border-top: 1px solid var(--border); }
-.params-table code { background: var(--bg); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
-.shared-example pre { background: var(--bg); padding: 12px; border-radius: var(--radius); overflow-x: auto; font-size: 12px; margin-top: 6px; white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow-y: auto; }
+/* 详情块 */
+.detail-block { margin-top: 12px; }
+.detail-block-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.detail-table th { text-align: left; padding: 6px 10px; background: var(--bg); color: var(--text-muted); font-weight: 500; font-size: 11px; }
+.detail-table td { padding: 6px 10px; border-top: 1px solid rgba(51,65,85,0.5); }
+.detail-table code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.type-tag { background: rgba(6,182,212,0.1); color: var(--cyan); padding: 1px 6px; border-radius: 4px; font-size: 11px; }
+.option-tag { background: var(--bg); color: var(--text-secondary); padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-right: 2px; }
 
-/* 功能模块卡片（保留） */
-.module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
-.module-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; transition: all 0.2s; }
-.module-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-.module-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.module-header h3 { font-size: 16px; flex: 1; }
-.module-icon { font-size: 20px; }
-.confidence { font-size: 12px; color: var(--green); background: rgba(34,197,94,0.1); padding: 2px 8px; border-radius: 12px; }
-.module-desc { color: var(--text-secondary); font-size: 14px; margin-bottom: 12px; }
-.module-meta { display: flex; gap: 12px; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
-.category-tag { background: var(--purple); color: white; padding: 1px 8px; border-radius: 10px; font-size: 11px; }
-.module-apis { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
-.module-apis strong { color: var(--text-secondary); display: block; margin-bottom: 6px; }
-.api-link { background: var(--bg); padding: 2px 8px; border-radius: 4px; margin: 2px 4px 2px 0; display: inline-block; font-size: 12px; cursor: pointer; transition: all 0.2s; }
-.api-link:hover { background: var(--accent); color: white; }
-.more { color: var(--text-secondary); font-size: 12px; }
-.method-badge { padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; min-width: 60px; text-align: center; }
+/* 按钮列表 */
+.buttons-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.button-item { padding: 4px 12px; border-radius: 6px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+.button-item.btn-primary { background: rgba(59,130,246,0.15); color: var(--accent); }
+.button-item.btn-danger { background: rgba(239,68,68,0.15); color: var(--red); }
+.button-item.btn-default { background: var(--bg); color: var(--text-secondary); }
+.button-item.btn-link { background: transparent; color: var(--accent); text-decoration: underline; }
+.action-info { color: var(--text-muted); font-size: 11px; }
+.action-info code { background: rgba(59,130,246,0.15); color: var(--accent); padding: 0 4px; border-radius: 3px; font-size: 10px; }
+
+/* 操作列表 */
+.actions-list { display: flex; flex-direction: column; gap: 6px; }
+.action-item { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--bg); border-radius: 6px; font-size: 12px; flex-wrap: wrap; }
+.action-icon { font-size: 14px; }
+.action-type { color: var(--text-muted); font-size: 11px; }
+.action-desc { color: var(--text-secondary); font-size: 12px; }
+.action-target { color: var(--cyan); font-size: 11px; }
+.action-target code { background: rgba(6,182,212,0.1); color: var(--cyan); padding: 0 4px; border-radius: 3px; font-size: 10px; }
+
+/* 关联接口 */
+.comp-api-list { display: flex; flex-direction: column; gap: 4px; }
+.comp-api-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--bg); border-radius: 6px; cursor: pointer; transition: background 0.15s; font-size: 12px; }
+.comp-api-item:hover { background: var(--bg-hover); }
+.comp-api-item code { color: var(--text-secondary); font-size: 12px; }
+
+/* 子组件 */
+.comp-children { margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.children-title { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+
+/* 公共组件/接口详情 */
+.shared-detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.shared-detail-header h2 { font-size: 20px; }
+.usage-count { background: rgba(34,197,94,0.15); color: var(--green); padding: 3px 12px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
+.shared-desc { color: var(--text-secondary); font-size: 14px; margin-bottom: 16px; }
+.code-block { background: var(--bg); padding: 14px; border-radius: var(--radius); overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+.page-refs-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.page-ref { background: var(--bg); padding: 3px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; color: var(--text-secondary); }
+
+/* 引用区域 */
+.refs-section { margin-top: 20px; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
+.refs-group { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.refs-label { color: var(--text-secondary); font-size: 13px; }
+.ref-tag { background: rgba(168,85,247,0.12); color: var(--purple); padding: 3px 10px; border-radius: 10px; font-size: 12px; }
+.ref-tag.api { background: rgba(59,130,246,0.12); color: var(--accent); }
+
+/* 方法标签 */
+.method-badge { padding: 3px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; min-width: 60px; text-align: center; }
 .method-badge.get { background: rgba(34,197,94,0.2); color: var(--green); }
 .method-badge.post { background: rgba(59,130,246,0.2); color: var(--accent); }
 .method-badge.put { background: rgba(234,179,8,0.2); color: var(--yellow); }
 .method-badge.delete { background: rgba(239,68,68,0.2); color: var(--red); }
-
-/* 总览 */
-.overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 16px; }
-.overview-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
-.overview-card.full-width { grid-column: 1 / -1; }
-.overview-card h3 { font-size: 16px; margin-bottom: 12px; }
-.overview-stats { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px; }
-.stat-item { display: flex; flex-direction: column; align-items: center; }
-.stat-num { font-size: 24px; font-weight: 700; color: var(--accent); }
-.stat-label { font-size: 12px; color: var(--text-secondary); }
-.overview-detail { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
-.overview-detail strong { color: var(--text-secondary); margin-right: 4px; }
-.overview-tag { background: var(--bg); padding: 3px 10px; border-radius: 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
-.mapping-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.mapping-table th { text-align: left; padding: 10px 12px; background: var(--bg); color: var(--text-secondary); font-weight: 500; }
-.mapping-table td { padding: 10px 12px; border-top: 1px solid var(--border); vertical-align: top; }
-.mapping-table .page-url { font-size: 11px; }
 
 /* 弹窗 */
 .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
 .modal.active { display: flex; }
 .modal-content { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; position: relative; }
 .modal-close { position: absolute; top: 12px; right: 16px; background: none; border: none; color: var(--text-secondary); font-size: 24px; cursor: pointer; }
-.modal-content h3 { margin-bottom: 16px; }
-.modal-content pre { background: var(--bg); padding: 12px; border-radius: var(--radius); overflow-x: auto; font-size: 13px; margin: 8px 0; white-space: pre-wrap; word-break: break-all; }
-.modal-content .label { color: var(--text-secondary); font-size: 13px; margin-top: 12px; margin-bottom: 4px; }
+.modal-content h3 { margin-bottom: 16px; font-size: 16px; }
+.modal-content pre { background: var(--bg); padding: 12px; border-radius: var(--radius); overflow-x: auto; font-size: 12px; margin: 8px 0; white-space: pre-wrap; word-break: break-all; }
+.modal-content .label { color: var(--text-secondary); font-size: 12px; margin-top: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* 截图弹窗 */
-.screenshot-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 200; justify-content: center; align-items: center; cursor: zoom-out; }
-.screenshot-modal.active { display: flex; }
-.screenshot-modal img { max-width: 95%; max-height: 95%; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+/* 搜索高亮 */
+.search-highlight { background: rgba(234,179,8,0.3); border-radius: 2px; }
 
-/* 截图区域 */
-.page-screenshot-section { margin-bottom: 16px; }
-.page-screenshot-section h4 { font-size: 15px; margin-bottom: 8px; color: var(--text); }
-.screenshot-container { position: relative; display: inline-block; cursor: zoom-in; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
-.screenshot-thumb { max-width: 100%; max-height: 300px; display: block; object-fit: contain; background: var(--bg); }
-.screenshot-hint { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: white; font-size: 11px; padding: 2px 8px; border-radius: 4px; pointer-events: none; }
-
-/* 侧边栏导航上下文 */
-.sidebar-context-section { margin-bottom: 16px; padding: 12px 16px; background: rgba(168,85,247,0.05); border-radius: var(--radius); border-left: 3px solid var(--purple); }
-.sidebar-context-section h4 { font-size: 15px; margin-bottom: 8px; color: var(--text); }
-.sidebar-active-info { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
-.sidebar-active-info strong { color: var(--purple); }
-.sidebar-menu-tree { font-size: 13px; }
-.sidebar-menu-item { padding: 3px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px; color: var(--text-secondary); }
-.sidebar-menu-item.sidebar-active { background: rgba(168,85,247,0.15); color: var(--purple); font-weight: 600; }
-.sidebar-icon { font-size: 12px; }
-.sidebar-text { flex: 1; }
-.sidebar-badge { background: var(--purple); color: white; font-size: 10px; padding: 1px 6px; border-radius: 8px; }
-.sidebar-arrow { color: var(--text-secondary); font-size: 12px; margin-right: 2px; opacity: 0.5; }
-.sidebar-name-hint { background: rgba(168,85,247,0.12); color: var(--purple); padding: 2px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
-
-/* 页面头部信息 */
-.page-header-section { margin-bottom: 16px; }
-.page-header-section h4 { font-size: 15px; margin-bottom: 8px; color: var(--text); }
-.breadcrumb-path { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
-.breadcrumb-item { background: var(--bg); padding: 2px 8px; border-radius: 4px; font-size: 12px; color: var(--text-secondary); }
-.breadcrumb-sep { color: var(--text-secondary); font-size: 12px; opacity: 0.5; }
-.header-actions { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
-.header-actions strong { margin-right: 4px; }
-.header-action-tag { background: rgba(59,130,246,0.1); color: var(--accent); padding: 2px 8px; border-radius: 6px; font-size: 12px; margin-right: 4px; }
-
-/* 结构化区域（表格/表单详情） */
-.structure-section { margin-bottom: 16px; }
-.structure-section h4 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
-.structure-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
-.structure-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.structure-badge { padding: 2px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; }
-.table-badge { background: rgba(59,130,246,0.15); color: var(--accent); }
-.form-badge { background: rgba(234,179,8,0.15); color: var(--yellow); }
-.structure-title { font-weight: 600; font-size: 14px; }
-.detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.detail-table th { text-align: left; padding: 6px 12px; background: rgba(255,255,255,0.03); color: var(--text-secondary); font-weight: 500; border-bottom: 1px solid var(--border); }
-.detail-table td { padding: 6px 12px; border-top: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
-.detail-label { color: var(--text-secondary); white-space: nowrap; width: 90px; }
-.detail-value { color: var(--text); }
-.column-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.column-tag { background: rgba(59,130,246,0.1); color: var(--accent); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
-.num-badge { background: rgba(34,197,94,0.15); color: var(--green); padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-.feature-tag { font-size: 12px; }
-.feature-tag.yes { color: var(--green); }
-.action-buttons, .form-buttons-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.action-btn-tag { background: rgba(239,68,68,0.1); color: var(--red); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
-.header-btn-tag { background: rgba(34,197,94,0.1); color: var(--green); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
-.form-btn-tag { background: rgba(59,130,246,0.1); color: var(--accent); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
-.form-buttons-row { margin-top: 10px; font-size: 13px; }
-.form-buttons-row strong { color: var(--text-secondary); margin-right: 4px; }
-.fields-table td, .fields-table th { font-size: 12px; padding: 5px 8px; }
-.field-type-badge { background: rgba(6,182,212,0.1); color: var(--cyan); padding: 1px 6px; border-radius: 4px; font-size: 11px; }
-.required-yes { color: var(--green); font-size: 12px; }
-.required-no { color: var(--text-secondary); font-size: 12px; }
-.placeholder-text { color: var(--text-secondary); font-size: 12px; font-style: italic; }
-.option-tags { display: flex; flex-wrap: wrap; gap: 3px; }
-.option-tag { background: var(--bg-card); color: var(--text-secondary); padding: 1px 6px; border-radius: 3px; font-size: 11px; }
-.option-more { color: var(--text-secondary); font-size: 11px; opacity: 0.6; }
-
-/* 统计卡片 */
-.stat-cards-section { margin-bottom: 16px; }
-.stat-cards-section h4 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
-.stat-cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-.stat-card-item { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; text-align: center; transition: all 0.2s; }
-.stat-card-item:hover { border-color: var(--accent); transform: translateY(-1px); }
-.stat-card-value { font-size: 20px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
-.stat-card-label { font-size: 12px; color: var(--text-secondary); }
-
-/* 页面所有按钮 */
-.all-buttons-section { margin-bottom: 16px; }
-.all-buttons-section h4 { font-size: 15px; margin-bottom: 8px; color: var(--text); }
-.all-buttons-list { display: flex; flex-wrap: wrap; gap: 4px; }
-.page-btn-tag { background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary); padding: 2px 10px; border-radius: 6px; font-size: 12px; }
-
-/* 交互探索结果 */
-.interaction-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-.interaction-section h4 { font-size: 15px; margin-bottom: 12px; color: var(--text); }
-.interaction-list { display: flex; flex-direction: column; gap: 10px; }
-.interaction-item { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
-.interaction-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
-.interaction-index { background: rgba(59,130,246,0.15); color: var(--accent); padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-.interaction-action { background: rgba(34,197,94,0.1); color: var(--green); padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; }
-.interaction-element { color: var(--text-secondary); font-size: 12px; }
-.interaction-result { font-size: 13px; color: var(--text); margin-bottom: 6px; }
-.interaction-summary { font-size: 12px; color: var(--cyan); background: rgba(6,182,212,0.05); padding: 4px 8px; border-radius: 4px; margin-bottom: 6px; }
-.interaction-screenshot { position: relative; display: inline-block; cursor: zoom-in; margin-top: 4px; }
-.interaction-screenshot img { max-width: 100%; max-height: 200px; border-radius: var(--radius); border: 1px solid var(--border); display: block; }
+/* 滚动条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 `
   }
 
@@ -1012,7 +1063,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     result: SiteAnalyzerResult,
     pageAnalyses: PageAnalysis[],
     sharedComponents: SharedComponent[],
-    sharedApis: SharedApi[]
+    sharedApis: SharedApi[],
+    apis: ApiInterface[]
   ): string {
     return `
 const reportData = ${JSON.stringify({
@@ -1031,57 +1083,109 @@ const reportData = ${JSON.stringify({
   sharedApis: sharedApis,
   modules: result.modules,
   apis: result.apis,
-  pages: result.pages.map(p => ({
-    url: p.url, title: p.title, pageType: p.pageType, depth: p.depth,
-    pageStructure: p.pageStructure,
-    interactionResults: p.interactionResults?.map(r => ({ action: r.action, element: r.element, result: r.result, contentSummary: r.contentSummary }))
-  })),
+  pages: result.pages.map(p => ({ url: p.url, title: p.title, pageType: p.pageType, depth: p.depth })),
   requests: result.requests.filter(r => r.isApiRequest).map(r => ({
     url: r.url, method: r.method, statusCode: r.statusCode, duration: r.duration,
     headers: r.headers, body: r.body?.substring(0, 500), response: r.response?.substring(0, 1000)
   }))
 }, null, 0)};
 
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-  document.getElementById('searchInput').value = '';
-  filterContent();
+// 导航到指定视图
+function navigateTo(viewId, compId) {
+  // 隐藏所有视图
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  // 移除所有侧边栏激活状态
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+
+  // 显示目标视图
+  var targetView = document.getElementById('view-' + viewId);
+  if (targetView) {
+    targetView.classList.add('active');
+  }
+
+  // 激活侧边栏项
+  var sidebarItem = document.querySelector('.sidebar-item[data-view="' + viewId + '"]');
+  if (sidebarItem) {
+    sidebarItem.classList.add('active');
+    // 展开父级
+    var parent = sidebarItem.closest('.sidebar-children');
+    if (parent && parent.classList.contains('collapsed')) {
+      parent.classList.remove('collapsed');
+      var arrow = parent.previousElementSibling?.querySelector('.arrow');
+      if (arrow) arrow.classList.add('open');
+    }
+  }
+
+  // 如果指定了组件ID，滚动到该组件
+  if (compId) {
+    setTimeout(function() {
+      var compEl = document.getElementById(compId);
+      if (compEl) {
+        compEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        compEl.style.boxShadow = '0 0 0 2px var(--accent)';
+        setTimeout(function() { compEl.style.boxShadow = ''; }, 2000);
+      }
+    }, 100);
+  }
 }
 
-function filterContent() {
-  const query = document.getElementById('searchInput').value.toLowerCase();
-  document.querySelectorAll('[data-search]').forEach(el => {
-    const text = el.getAttribute('data-search').toLowerCase();
-    el.style.display = (!query || text.includes(query)) ? '' : 'none';
+// 切换侧边栏分组展开/折叠
+function toggleSection(titleEl) {
+  var children = titleEl.nextElementSibling;
+  var arrow = titleEl.querySelector('.arrow');
+  if (children) {
+    children.classList.toggle('collapsed');
+    if (arrow) arrow.classList.toggle('open');
+  }
+}
+
+// 全局搜索
+function onGlobalSearch(query) {
+  query = query.toLowerCase().trim();
+  // 搜索侧边栏
+  document.querySelectorAll('.sidebar-item[data-comp-name]').forEach(function(item) {
+    var name = (item.getAttribute('data-comp-name') || '').toLowerCase();
+    item.style.display = (!query || name.includes(query)) ? '' : 'none';
   });
-}
-
-function filterPages() {
-  const pageType = document.getElementById('pageTypeFilter').value;
-  document.querySelectorAll('.page-card').forEach(card => {
-    if (!pageType || card.dataset.pageType === pageType) {
-      card.style.display = '';
+  // 搜索内容区组件
+  document.querySelectorAll('[data-search]').forEach(function(el) {
+    var text = (el.getAttribute('data-search') || '').toLowerCase();
+    if (query) {
+      el.style.display = text.includes(query) ? '' : 'none';
     } else {
-      card.style.display = 'none';
+      el.style.display = '';
     }
   });
 }
 
+// 显示API详情弹窗
 function showApiDetail(url) {
-  const api = reportData.apis.find(a => a.url === url || url.includes(a.url));
-  if (api) showApiDetailFull(api);
+  var api = reportData.apis.find(function(a) { return a.url === url || url.includes(a.url); });
+  if (api) {
+    showApiDetailFull(api);
+    return;
+  }
+  // 在共享API中查找
+  var sa = reportData.sharedApis.find(function(a) { return a.url === url || url.includes(a.url); });
+  if (sa) {
+    showApiDetailFull({ url: sa.url, method: sa.method, description: sa.description, params: sa.params, returnValue: sa.returnValue, exampleBody: sa.exampleBody, exampleResponse: sa.exampleResponse });
+  }
 }
 
 function showApiDetailFull(api) {
-  const modal = document.getElementById('modal');
-  const body = document.getElementById('modal-body');
-  body.innerHTML = '<h3>' + api.method + ' ' + api.url + '</h3>' +
+  var modal = document.getElementById('modal');
+  var body = document.getElementById('modal-body');
+  var methodClass = (api.method || 'GET').toLowerCase();
+  body.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
+    '<span class="method-badge ' + methodClass + '">' + (api.method || 'GET') + '</span>' +
+    '<h3 style="margin:0;font-size:16px;">' + (api.url || '') + '</h3></div>' +
     '<p class="label">描述</p><p>' + (api.description || '-') + '</p>' +
     (api.params && api.params.length > 0 ?
-      '<p class="label">参数</p><pre>' + JSON.stringify(api.params, null, 2) + '</pre>' : '') +
+      '<p class="label">参数</p><table class="detail-table" style="margin-top:4px;"><thead><tr><th>名称</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>' +
+      api.params.map(function(p) {
+        return '<tr><td><code>' + (p.name||'') + '</code></td><td>' + (p.type||'') + '</td><td>' + (p.required?'✅':'❌') + '</td><td>' + (p.description||'-') + '</td></tr>';
+      }).join('') + '</tbody></table>' : '') +
     (api.returnValue ? '<p class="label">返回值</p><pre>' + api.returnValue + '</pre>' : '') +
     (api.exampleBody ? '<p class="label">示例请求体</p><pre>' + api.exampleBody + '</pre>' : '') +
     (api.exampleResponse ? '<p class="label">示例响应</p><pre>' + api.exampleResponse + '</pre>' : '');
@@ -1094,68 +1198,69 @@ function closeModal(e) {
   }
 }
 
-function openScreenshotModal(img) {
-  const modal = document.getElementById('screenshotModal');
-  const modalImg = document.getElementById('screenshotModalImg');
-  modalImg.src = img.src;
-  modal.classList.add('active');
-}
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
 
-function closeScreenshotModal() {
-  document.getElementById('screenshotModal').classList.remove('active');
-}
-
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeModal();
-    closeScreenshotModal();
+// 默认展开页面分析分组
+(function() {
+  var firstSection = document.querySelector('.sidebar-section-title');
+  if (firstSection) {
+    toggleSection(firstSection);
   }
-});
+})();
 
 function exportJSON() {
-  const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
+  var blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'site-analysis-' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
 }
 
 function exportMarkdown() {
-  let md = '# 网站前端分析报告\\n\\n';
+  var md = '# 网站前端分析报告\\n\\n';
   md += '- 目标: ${result.targetUrl}\\n';
   md += '- 页面数: ${pageAnalyses.length}\\n';
   md += '- 公共组件: ${sharedComponents.length}\\n';
   md += '- 公用接口: ${sharedApis.length}\\n\\n';
 
   md += '## 页面分析\\n\\n';
-  reportData.pageAnalyses.forEach(pa => {
+  reportData.pageAnalyses.forEach(function(pa) {
     md += '### ' + pa.title + '\\n';
     md += '- 类型: ' + pa.pageType + '\\n';
     md += '- UI描述: ' + pa.uiDescription + '\\n';
     md += '- 布局: ' + pa.layoutSummary + '\\n';
     md += '- URL: ' + pa.url + '\\n\\n';
     md += '**组件列表:**\\n\\n';
-    const renderComp = (comp, indent) => {
+    var renderComp = function(comp, indent) {
       md += indent + '- **' + comp.name + '** [' + comp.type + '] ' + comp.description + '\\n';
+      if (comp.columns && comp.columns.length > 0) {
+        md += indent + '  - 列定义: ' + comp.columns.map(function(c) { return c.title + '(' + c.dataIndex + ')'; }).join(', ') + '\\n';
+      }
+      if (comp.hasIndex) md += indent + '  - ✅ 有序号列\\n';
+      if (comp.hasSelection) md += indent + '  - ✅ 可多选\\n';
+      if (comp.hasPagination) md += indent + '  - ✅ 有分页\\n';
       if (comp.props && comp.props.length > 0) {
-        md += indent + '  - 属性: ' + comp.props.map(p => p.name + '(' + p.type + ')').join(', ') + '\\n';
+        md += indent + '  - 字段: ' + comp.props.map(function(p) { return p.name + '(' + p.type + ')' + (p.required ? ' 必填' : ''); }).join(', ') + '\\n';
+      }
+      if (comp.buttons && comp.buttons.length > 0) {
+        md += indent + '  - 按钮: ' + comp.buttons.map(function(b) { return b.name; }).join(', ') + '\\n';
       }
       if (comp.actions && comp.actions.length > 0) {
-        md += indent + '  - 操作: ' + comp.actions.map(a => a.name + ' → ' + (a.targetApi || a.targetComponent || '')).join(', ') + '\\n';
+        md += indent + '  - 操作: ' + comp.actions.map(function(a) { return a.name + ' → ' + (a.targetApi || a.targetComponent || ''); }).join(', ') + '\\n';
       }
       if (comp.apiUrls && comp.apiUrls.length > 0) {
         md += indent + '  - API: ' + comp.apiUrls.join(', ') + '\\n';
       }
-      if (comp.children) comp.children.forEach(c => renderComp(c, indent + '  '));
+      if (comp.children) comp.children.forEach(function(c) { renderComp(c, indent + '  '); });
     };
-    pa.components.forEach(c => renderComp(c, ''));
+    pa.components.forEach(function(c) { renderComp(c, ''); });
     if (pa.exclusiveApis.length > 0) md += '\\n**独占API:** ' + pa.exclusiveApis.join(', ') + '\\n';
     md += '\\n---\\n\\n';
   });
 
   if (reportData.sharedComponents.length > 0) {
     md += '## 公共组件\\n\\n';
-    reportData.sharedComponents.forEach(sc => {
+    reportData.sharedComponents.forEach(function(sc) {
       md += '### ' + sc.name + ' [' + sc.type + ']\\n';
       md += sc.description + '\\n';
       md += '使用页面: ' + sc.pages.join(', ') + '\\n\\n';
@@ -1164,15 +1269,15 @@ function exportMarkdown() {
 
   if (reportData.sharedApis.length > 0) {
     md += '## 公用接口\\n\\n';
-    reportData.sharedApis.forEach(sa => {
+    reportData.sharedApis.forEach(function(sa) {
       md += '### ' + sa.method + ' ' + sa.url + '\\n';
       md += sa.description + '\\n';
       md += '调用页面: ' + sa.pages.join(', ') + '\\n\\n';
     });
   }
 
-  const blob = new Blob([md], { type: 'text/markdown' });
-  const a = document.createElement('a');
+  var blob = new Blob([md], { type: 'text/markdown' });
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'site-analysis-' + new Date().toISOString().slice(0, 10) + '.md';
   a.click();

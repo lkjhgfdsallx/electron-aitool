@@ -139,101 +139,6 @@ export interface PageInteractionResult {
   result: string
   /** 交互后的截图（base64） */
   screenshot?: string
-  /** 交互后出现的内容摘要（如弹窗中的表单字段、Tab下的内容等） */
-  contentSummary?: string
-}
-
-/** 侧边栏/导航菜单项 */
-export interface SidebarMenuItem {
-  /** 菜单项文本 */
-  text: string
-  /** 是否为当前选中项 */
-  isActive: boolean
-  /** 层级（0=一级菜单，1=二级菜单...） */
-  level: number
-  /** 子菜单项 */
-  children?: SidebarMenuItem[]
-}
-
-/** 表格结构详情 */
-export interface TableStructure {
-  /** 表格标题（如果有的话） */
-  title?: string
-  /** 列头文本列表 */
-  columns: string[]
-  /** 数据行数 */
-  rowCount: number
-  /** 是否有行选择框（checkbox） */
-  hasCheckbox: boolean
-  /** 是否有序号列 */
-  hasIndex: boolean
-  /** 是否有操作列 */
-  hasAction: boolean
-  /** 操作列中的按钮文本 */
-  actionButtons: string[]
-  /** 表格上方的操作按钮（新增、导出等） */
-  headerButtons: string[]
-  /** 是否有分页 */
-  hasPagination: boolean
-}
-
-/** 表单字段详情 */
-export interface FormField {
-  /** 字段标签 */
-  label: string
-  /** 字段类型（input/select/datepicker/switch/textarea/radio/checkbox/upload等） */
-  type: string
-  /** 占位文本 */
-  placeholder?: string
-  /** 是否必填 */
-  required: boolean
-  /** 下拉选项（如果是select/radio） */
-  options?: string[]
-  /** 默认值 */
-  defaultValue?: string
-}
-
-/** 表单结构详情 */
-export interface FormStructure {
-  /** 表单标题（如果有的话） */
-  title?: string
-  /** 字段列表 */
-  fields: FormField[]
-  /** 提交/操作按钮文本 */
-  buttons: string[]
-}
-
-/** 页面结构化信息（从DOM中提取） */
-export interface PageStructure {
-  /** 侧边栏/导航菜单 */
-  sidebar?: {
-    /** 菜单项列表 */
-    items: SidebarMenuItem[]
-    /** 当前选中的菜单项文本（用于页面命名） */
-    activeItem?: string
-  }
-  /** 表格详情列表 */
-  tables: TableStructure[]
-  /** 表单详情列表 */
-  forms: FormStructure[]
-  /** 页面头部信息 */
-  pageHeader?: {
-    /** 页面标题文本 */
-    title: string
-    /** 面包屑路径 */
-    breadcrumbs: string[]
-    /** 头部操作按钮 */
-    headerActions: string[]
-  }
-  /** 统计卡片（仪表盘常见） */
-  statCards: Array<{
-    /** 指标名称 */
-    label: string
-    /** 指标值 */
-    value: string
-  }>
-  /** 页面上所有可见的主要按钮文本 */
-  allButtons: string[]
 }
 
 /** 网站页面 */
@@ -262,8 +167,6 @@ export interface SitePage {
   depth: number
   /** 页面交互探索结果（点击按钮、Tab、折叠面板等） */
   interactionResults?: PageInteractionResult[]
-  /** 页面结构化信息（从DOM中提取的表格/表单/侧边栏等） */
-  pageStructure?: PageStructure
 }
 
 // ==================== AI分析结果 ====================
@@ -314,6 +217,12 @@ export interface ApiInterface {
   exampleResponse?: string
   /** 来源页面 */
   sourcePages?: string[]
+  /** 触发时机：auto_load=页面加载时自动调用, action_trigger=用户操作后触发, cascade=级联触发 */
+  triggerTiming?: 'auto_load' | 'action_trigger' | 'cascade'
+  /** 触发该API的组件名称 */
+  triggerComponent?: string
+  /** 触发该API的操作描述 */
+  triggerAction?: string
 }
 
 // ==================== 前端开发者视角的页面分析 ====================
@@ -358,6 +267,48 @@ export interface UIComponentProp {
   type: string
   /** 属性描述 */
   description: string
+  /** 是否必填 */
+  required?: boolean
+  /** 占位符 */
+  placeholder?: string
+  /** 默认值 */
+  defaultValue?: string
+  /** 下拉选项（type=select时） */
+  options?: string[]
+  /** 校验规则描述 */
+  validation?: string
+}
+
+/** 表格列定义 */
+export interface TableColumn {
+  /** 列标题 */
+  title: string
+  /** 字段名（对应数据中的key） */
+  dataIndex: string
+  /** 数据类型：string/number/date/status/image/link */
+  dataType?: string
+  /** 列宽度（如 "120px"、"20%"） */
+  width?: string
+  /** 是否可排序 */
+  sortable?: boolean
+  /** 是否可筛选 */
+  filterable?: boolean
+  /** 是否固定列 */
+  fixed?: 'left' | 'right'
+  /** 渲染方式描述（如"状态标签"、"图片缩略图"、"操作按钮"） */
+  render?: string
+}
+
+/** 组件上的操作按钮 */
+export interface ComponentButton {
+  /** 按钮名称（如"新增"、"导出"、"批量删除"） */
+  name: string
+  /** 按钮类型：primary/default/danger/link */
+  type?: string
+  /** 图标描述 */
+  icon?: string
+  /** 关联的操作 */
+  action?: UIComponentAction
 }
 
 /** 组件操作描述 */
@@ -384,12 +335,24 @@ export interface UIComponent {
   description: string
   /** 关联的API接口列表（如 ["GET /api/user/list", "POST /api/user/add"]） */
   apiUrls: string[]
-  /** 组件的关键属性/配置（如表格列定义、表单字段等） */
+  /** 组件的关键属性/配置（如表单字段等） */
   props?: UIComponentProp[]
   /** 组件中的操作（如"新增"按钮触发的弹窗、"编辑"触发的表单等） */
   actions?: UIComponentAction[]
   /** 交互探索发现的子组件（如点击按钮后弹出的弹窗、Tab页中的内容等） */
   children?: UIComponent[]
+  /** 表格列定义（type=table时） */
+  columns?: TableColumn[]
+  /** 是否有序号列 */
+  hasIndex?: boolean
+  /** 是否有复选框选择 */
+  hasSelection?: boolean
+  /** 是否有分页 */
+  hasPagination?: boolean
+  /** 组件上的操作按钮列表 */
+  buttons?: ComponentButton[]
+  /** API触发时机：auto_load=页面/组件加载时自动调用, action_trigger=用户操作后触发, cascade=级联触发 */
+  triggerTiming?: 'auto_load' | 'action_trigger' | 'cascade'
 }
 
 /** 单个页面的分析结果 */

@@ -20,7 +20,8 @@ import type {
   UIComponentAction,
   SharedComponent,
   SharedApi,
-  PageStructure
+  TableColumn,
+  ComponentButton
 } from './types'
 
 /** analyzeAll 的完整返回结果 */
@@ -231,9 +232,9 @@ export class AIAnalyzer {
     // 精简HTML（移除脚本、样式等）
     const simplifiedHtml = this.simplifyHtml(page.html)
 
-    // 构建分析提示词（包含交互探索结果和页面结构化信息）
+    // 构建分析提示词（包含交互探索结果）
     const prompt = this.buildPageAnalysisPrompt(
-      page.url, page.title || '', simplifiedHtml, pageRequests, page.interactionResults, page.pageStructure
+      page.url, page.title || '', simplifiedHtml, pageRequests, page.interactionResults
     )
 
     // 调用AI
@@ -256,8 +257,7 @@ export class AIAnalyzer {
     title: string,
     html: string,
     requests: CapturedRequest[],
-    interactionResults?: Array<{ action: string; element: string; result: string; screenshot?: string }>,
-    pageStructure?: PageStructure
+    interactionResults?: Array<{ action: string; element: string; result: string; screenshot?: string }>
   ): string {
     // 限制HTML长度
     const maxHtmlLength = 8000
@@ -285,70 +285,12 @@ export class AIAnalyzer {
         )}\n\`\`\`\n`
       : ''
 
-    // 准备页面结构化信息（从DOM中精确提取的表格/表单/侧边栏等）
-    let structureInfo = ''
-    if (pageStructure) {
-      const parts: string[] = []
-
-      // 侧边栏信息（用于页面命名）
-      if (pageStructure.sidebar?.activeItem) {
-        parts.push(`- 当前导航菜单选中项: "${pageStructure.sidebar.activeItem}"（请用此名称作为页面的中文名称，而非通用标题）`)
-        parts.push(`- 完整菜单: ${pageStructure.sidebar.items.map(i => `${i.isActive ? '【' : ''}${i.text}${i.isActive ? '】' : ''}`).join(' → ')}`)
-      }
-
-      // 表格详情
-      if (pageStructure.tables.length > 0) {
-        for (let i = 0; i < pageStructure.tables.length; i++) {
-          const t = pageStructure.tables[i]
-          const tableDesc = [`表格${i + 1}${t.title ? `「${t.title}」` : ''}: 列=[${t.columns.join(', ')}], ${t.rowCount}行数据`]
-          if (t.hasCheckbox) tableDesc.push('有行选择框(checkbox)')
-          if (t.hasIndex) tableDesc.push('有序号列')
-          if (t.hasAction) tableDesc.push(`操作列按钮=[${t.actionButtons.join(', ')}]`)
-          if (t.headerButtons.length > 0) tableDesc.push(`表格上方按钮=[${t.headerButtons.join(', ')}]`)
-          if (t.hasPagination) tableDesc.push('有分页')
-          parts.push(`- ${tableDesc.join(', ')}`)
-        }
-      }
-
-      // 表单详情
-      if (pageStructure.forms.length > 0) {
-        for (let i = 0; i < pageStructure.forms.length; i++) {
-          const f = pageStructure.forms[i]
-          const fieldDescs = f.fields.map(field => {
-            let desc = `${field.label}(${field.type})`
-            if (field.required) desc += '[必填]'
-            if (field.placeholder) desc += ` placeholder="${field.placeholder}"`
-            if (field.options && field.options.length > 0) desc += ` 选项=[${field.options.slice(0, 5).join(', ')}]`
-            return desc
-          })
-          parts.push(`- 表单${i + 1}${f.title ? `「${f.title}」` : ''}: 字段=[${fieldDescs.join(', ')}], 按钮=[${f.buttons.join(', ')}]`)
-        }
-      }
-
-      // 统计卡片
-      if (pageStructure.statCards.length > 0) {
-        parts.push(`- 统计卡片: ${pageStructure.statCards.map(s => `${s.label}=${s.value}`).join(', ')}`)
-      }
-
-      // 页面头部
-      if (pageStructure.pageHeader) {
-        const h = pageStructure.pageHeader
-        if (h.breadcrumbs.length > 0) parts.push(`- 面包屑: ${h.breadcrumbs.join(' > ')}`)
-        if (h.headerActions.length > 0) parts.push(`- 页面头部按钮: [${h.headerActions.join(', ')}]`)
-      }
-
-      if (parts.length > 0) {
-        structureInfo = `\n## 页面结构化数据（从DOM精确提取，非常可靠）\n${parts.join('\n')}\n`
-      }
-    }
-
     return `你是一个资深前端开发工程师，正在分析一个网站页面以便仿写开发。
 请以"页面→UI组件→接口"的层次结构分析以下页面。
 
 ## 页面信息
 - URL: ${url}
 - 标题: ${title}
-${pageStructure?.sidebar?.activeItem ? `- 导航菜单选中项: ${pageStructure.sidebar.activeItem}（请优先使用此名称作为页面标题）` : ''}
 
 ## 页面HTML（精简版）
 \`\`\`html
@@ -360,21 +302,23 @@ ${truncatedHtml}
 ${JSON.stringify(requestInfo, null, 2)}
 \`\`\`
 ${interactionInfo}
-${structureInfo}
 ## 分析要求
 1. **页面概述**：用一句话描述页面的功能和用途
 2. **页面类型**：从以下选择：列表页、详情页、表单页、仪表盘、登录页、设置页、混合页
 3. **布局概述**：描述页面的整体布局结构（从上到下、从左到右）
-4. **页面命名**：如果提供了导航菜单选中项，请使用它作为页面的中文名称
-5. **组件拆解**：识别页面中的每个UI组件，包括：
+4. **组件拆解**：识别页面中的每个UI组件，包括：
    - 组件类型：table/form/modal/drawer/input/select/datepicker/tabs/tree/chart/search/pagination/button/card/list/dropdown/upload/steps/editor/switch/radio/checkbox/tag/other
-   - 组件名称：给组件起一个有意义的中文名称，结合页面上下文（如"用户列表表格"而非"表格"）
+   - 组件名称：给组件起一个有意义的中文名称
    - 组件描述：描述组件的功能
-   - **表格组件必须**：props中列出所有列名(columns)、是否有行选择(checkbox)、是否有操作列(action)及其按钮列表、是否有分页(pagination)
-   - **表单组件必须**：props中列出所有字段(label+type)、是否必填(required)、placeholder、下拉选项(options)
+   - 组件属性/字段：如表单的字段列表（含是否必填、占位符、校验规则）
+   - **表格组件必须返回 columns（列定义）、hasIndex、hasSelection、buttons**
+   - **表单组件必须返回完整的 props（含 required、placeholder）**
    - 组件操作：如按钮点击触发弹窗、表单提交调用API等
    - 子组件：如弹窗中包含表单、Tab中包含表格等
-6. **API映射**：每个组件调用的API接口
+5. **API映射**：每个组件调用的API接口，**必须标注 triggerTiming**：
+   - "auto_load": 页面或组件加载时自动调用的接口
+   - "action_trigger": 用户点击按钮、提交表单等操作后触发的接口
+   - "cascade": 级联触发（如下拉选择后联动加载选项的接口）
 
 请严格按照以下JSON格式返回：
 \`\`\`json
@@ -388,12 +332,12 @@ ${structureInfo}
       "name": "搜索表单",
       "description": "用户搜索筛选表单",
       "props": [
-        { "name": "username", "type": "input", "description": "用户名搜索" },
-        { "name": "status", "type": "select", "description": "状态筛选" }
+        { "name": "username", "type": "input", "description": "用户名搜索", "required": false, "placeholder": "请输入用户名" },
+        { "name": "status", "type": "select", "description": "状态筛选", "required": false, "options": ["全部", "启用", "禁用"] }
       ],
-      "actions": [
-        { "name": "查询", "type": "api_call", "description": "触发列表搜索", "targetApi": "GET /api/user/list" },
-        { "name": "重置", "type": "api_call", "description": "清空筛选条件" }
+      "buttons": [
+        { "name": "查询", "type": "primary", "action": { "name": "查询", "type": "api_call", "description": "触发列表搜索", "targetApi": "GET /api/user/list" } },
+        { "name": "重置", "type": "default", "action": { "name": "重置", "type": "api_call", "description": "清空筛选条件" } }
       ],
       "apiUrls": ["GET /api/user/list"]
     },
@@ -401,15 +345,25 @@ ${structureInfo}
       "type": "table",
       "name": "用户表格",
       "description": "用户数据列表展示",
-      "props": [
-        { "name": "columns", "type": "array", "description": "用户名、手机号、角色、状态、创建时间、操作" },
-        { "name": "checkbox", "type": "boolean", "description": "有行选择框" },
-        { "name": "actionButtons", "type": "array", "description": "编辑、删除" }
+      "columns": [
+        { "title": "用户名", "dataIndex": "username", "dataType": "string", "sortable": true },
+        { "title": "手机号", "dataIndex": "phone", "dataType": "string" },
+        { "title": "角色", "dataIndex": "role", "dataType": "string" },
+        { "title": "状态", "dataIndex": "status", "dataType": "status", "filterable": true, "render": "状态标签" },
+        { "title": "创建时间", "dataIndex": "createTime", "dataType": "date", "sortable": true }
+      ],
+      "hasIndex": true,
+      "hasSelection": true,
+      "hasPagination": true,
+      "buttons": [
+        { "name": "新增", "type": "primary", "action": { "name": "新增", "type": "modal", "description": "打开新增用户弹窗", "targetComponent": "新增用户弹窗" } },
+        { "name": "批量删除", "type": "danger", "action": { "name": "批量删除", "type": "api_call", "description": "批量删除用户", "targetApi": "DELETE /api/user/batch" } },
+        { "name": "导出", "type": "default", "action": { "name": "导出", "type": "download", "description": "导出用户数据" } }
       ],
       "actions": [
-        { "name": "新增", "type": "modal", "description": "打开新增用户弹窗", "targetComponent": "新增用户弹窗" },
         { "name": "编辑", "type": "modal", "description": "打开编辑用户弹窗", "targetComponent": "编辑用户弹窗" },
-        { "name": "删除", "type": "api_call", "description": "删除用户", "targetApi": "DELETE /api/user/{id}" }
+        { "name": "删除", "type": "api_call", "description": "删除用户", "targetApi": "DELETE /api/user/{id}" },
+        { "name": "查看详情", "type": "navigate", "description": "跳转到用户详情页" }
       ],
       "apiUrls": ["GET /api/user/list"],
       "children": [
@@ -418,9 +372,13 @@ ${structureInfo}
           "name": "新增/编辑用户弹窗",
           "description": "用户信息编辑弹窗",
           "props": [
-            { "name": "username", "type": "input", "description": "用户名" },
-            { "name": "password", "type": "input", "description": "密码（新增时必填）" },
-            { "name": "roleId", "type": "select", "description": "角色选择" }
+            { "name": "username", "type": "input", "description": "用户名", "required": true, "placeholder": "请输入用户名" },
+            { "name": "password", "type": "input", "description": "密码（新增时必填）", "required": true, "placeholder": "请输入密码", "validation": "6-20位字符" },
+            { "name": "roleId", "type": "select", "description": "角色选择", "required": true, "options": ["管理员", "普通用户", "访客"] }
+          ],
+          "buttons": [
+            { "name": "确定", "type": "primary", "action": { "name": "提交", "type": "api_call", "description": "提交表单", "targetApi": "POST /api/user/add" } },
+            { "name": "取消", "type": "default" }
           ],
           "apiUrls": ["POST /api/user/add", "PUT /api/user/update", "GET /api/role/list"]
         }
@@ -439,13 +397,14 @@ ${structureInfo}
 
 注意：
 - 组件类型要准确，使用英文标识（如 table, form, modal, input, select 等）
-- 组件名称用中文，要具体有意义（如"用户列表表格"而非"表格"），优先使用导航菜单选中项来命名页面
+- 组件名称用中文，要具体有意义（如"用户列表表格"而非"表格"）
 - props 中的 type 也用组件类型标识（input/select/datepicker/switch 等）
-- **表格的props必须包含**: columns(列名数组), checkbox(是否有行选择), index(是否有序号列), actionButtons(操作列按钮), pagination(是否有分页)
-- **表单的props必须包含**: 每个字段的label、type(input/select/datepicker等)、required(是否必填)、placeholder、options(下拉选项)
+- props 中尽量提供 required、placeholder、options、validation 信息
+- **表格组件必须包含 columns 数组**，每个列要有 title、dataIndex、dataType
+- **表格组件必须包含 hasIndex、hasSelection、hasPagination 布尔值**
+- **表格和表单组件尽量包含 buttons 数组**，列出所有操作按钮
 - actions 中的 type 可选：navigate(跳转) | modal(弹窗) | drawer(抽屉) | api_call(调接口) | download(下载)
 - 充分利用交互探索结果，识别隐藏的弹窗、Tab页内容等
-- 充分利用页面结构化数据（表格列名、表单字段等），这些是从DOM精确提取的可靠信息
 - 如果页面没有明显的API请求，仅基于HTML分析组件
 - 确保返回合法JSON格式，只返回JSON，不要包含其他文字说明`
   }
@@ -501,7 +460,12 @@ ${structureInfo}
       ? (obj.props as Array<Record<string, unknown>>).map(p => ({
           name: String(p.name || ''),
           type: String(p.type || 'string'),
-          description: String(p.description || '')
+          description: String(p.description || ''),
+          required: p.required != null ? Boolean(p.required) : undefined,
+          placeholder: p.placeholder ? String(p.placeholder) : undefined,
+          defaultValue: p.defaultValue ? String(p.defaultValue) : undefined,
+          options: Array.isArray(p.options) ? p.options.map(String) : undefined,
+          validation: p.validation ? String(p.validation) : undefined
         }))
       : []
 
@@ -519,7 +483,54 @@ ${structureInfo}
       ? (obj.children as Array<Record<string, unknown>>).map(c => this.parseComponent(c))
       : []
 
-    return { type, name, description, apiUrls, props, actions, children }
+    // 解析表格列定义
+    const columns: TableColumn[] | undefined = Array.isArray(obj.columns)
+      ? (obj.columns as Array<Record<string, unknown>>).map(col => ({
+          title: String(col.title || ''),
+          dataIndex: String(col.dataIndex || ''),
+          dataType: col.dataType ? String(col.dataType) : undefined,
+          width: col.width ? String(col.width) : undefined,
+          sortable: col.sortable != null ? Boolean(col.sortable) : undefined,
+          filterable: col.filterable != null ? Boolean(col.filterable) : undefined,
+          fixed: col.fixed === 'left' || col.fixed === 'right' ? col.fixed : undefined,
+          render: col.render ? String(col.render) : undefined
+        }))
+      : undefined
+
+    // 解析操作按钮
+    const buttons: ComponentButton[] | undefined = Array.isArray(obj.buttons)
+      ? (obj.buttons as Array<Record<string, unknown>>).map(b => {
+          const btnAction = b.action as Record<string, unknown> | undefined
+          return {
+            name: String(b.name || ''),
+            type: b.type ? String(b.type) : undefined,
+            icon: b.icon ? String(b.icon) : undefined,
+            action: btnAction ? {
+              name: String(btnAction.name || ''),
+              type: String(btnAction.type || 'api_call'),
+              description: String(btnAction.description || ''),
+              targetApi: btnAction.targetApi ? String(btnAction.targetApi) : undefined,
+              targetComponent: btnAction.targetComponent ? String(btnAction.targetComponent) : undefined
+            } : undefined
+          }
+        })
+      : undefined
+
+    const result: UIComponent = {
+      type, name, description, apiUrls, props, actions, children
+    }
+
+    // 仅在有值时添加可选字段，避免序列化多余的 undefined
+    if (columns && columns.length > 0) result.columns = columns
+    if (obj.hasIndex != null) result.hasIndex = Boolean(obj.hasIndex)
+    if (obj.hasSelection != null) result.hasSelection = Boolean(obj.hasSelection)
+    if (obj.hasPagination != null) result.hasPagination = Boolean(obj.hasPagination)
+    if (buttons && buttons.length > 0) result.buttons = buttons
+    if (obj.triggerTiming && ['auto_load', 'action_trigger', 'cascade'].includes(String(obj.triggerTiming))) {
+      result.triggerTiming = obj.triggerTiming as 'auto_load' | 'action_trigger' | 'cascade'
+    }
+
+    return result
   }
 
   /**
