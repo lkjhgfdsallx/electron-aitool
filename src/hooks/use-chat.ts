@@ -8,6 +8,7 @@ import { reportStore } from '../services/report-store'
 import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
+import { useMCPToolStore } from '../stores/mcp-tool-store'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress } from '../types'
 
@@ -60,10 +61,11 @@ export function useChat() {
   const humanInputResolversRef = useRef<Map<string, (value: string | string[]) => void>>(new Map())
 
   /**
-   * 获取当前可用的工具列表
+   * 获取当前可用的工具列表（内置工具 + Agent 内置工具 + MCP 工具）
    */
   const getAvailableTools = useCallback((): Tool[] => {
-    return [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS]
+    const mcpTools = useMCPToolStore.getState().mcpTools
+    return [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...mcpTools]
   }, [])
 
   /**
@@ -365,8 +367,10 @@ export function useChat() {
       // 获取对话历史
       const history = getMessages(convId)
 
-      // 普通模式使用内置工具（get_current_time、calculate）
-      const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
+      // 普通模式使用内置工具 + MCP 工具
+      const mcpTools = useMCPToolStore.getState().mcpTools
+      const normalModeTools = [...BUILT_IN_TOOLS, ...mcpTools]
+      const toolDefs = toolService.toToolDefinitions(normalModeTools)
 
       // 创建 assistant 消息（流式更新）
       const assistantMsg = addMessage(convId, {
@@ -420,7 +424,8 @@ export function useChat() {
                   status: 'pending' as const
                 }))
               })
-              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, BUILT_IN_TOOLS, currentBranchIdx)
+              const mcpTools3 = useMCPToolStore.getState().mcpTools
+              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools3], currentBranchIdx)
             } else {
               updateMessage(assistantMsg.id, {
                 content: fullContent,
@@ -527,7 +532,9 @@ export function useChat() {
       }
 
       // 构建工具定义（保持工具可用，支持后续轮次继续调用）
-      const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
+      const mcpTools2 = useMCPToolStore.getState().mcpTools
+      const normalModeTools2 = [...BUILT_IN_TOOLS, ...mcpTools2]
+      const toolDefs = toolService.toToolDefinitions(normalModeTools2)
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
 
       // 获取最新历史（包含本轮工具调用和结果）
@@ -785,8 +792,10 @@ export function useChat() {
       } else {
         // 普通模式重新生成
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        // 普通模式使用内置工具
-        const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
+        // 普通模式使用内置工具 + MCP 工具
+        const mcpTools4 = useMCPToolStore.getState().mcpTools
+        const normalModeTools4 = [...BUILT_IN_TOOLS, ...mcpTools4]
+        const toolDefs = toolService.toToolDefinitions(normalModeTools4)
 
         const assistantMsg = addMessage(currentConversationId, {
           conversationId: currentConversationId,
@@ -828,7 +837,8 @@ export function useChat() {
                   isStreaming: false,
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, BUILT_IN_TOOLS, currentBranchIdx)
+                const mcpTools5 = useMCPToolStore.getState().mcpTools
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools5], currentBranchIdx)
               } else {
                 updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
               }
@@ -1241,8 +1251,10 @@ export function useChat() {
       } else {
         // 普通模式
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        // 普通模式使用内置工具
-        const toolDefs = toolService.toToolDefinitions(BUILT_IN_TOOLS)
+        // 普通模式使用内置工具 + MCP 工具
+        const mcpTools6 = useMCPToolStore.getState().mcpTools
+        const normalModeTools6 = [...BUILT_IN_TOOLS, ...mcpTools6]
+        const toolDefs = toolService.toToolDefinitions(normalModeTools6)
 
         const assistantMsg = addMessage(currentConversationId, {
           conversationId: currentConversationId,
@@ -1284,7 +1296,8 @@ export function useChat() {
                   isStreaming: false,
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, BUILT_IN_TOOLS, newBranchIndex)
+                const mcpTools7 = useMCPToolStore.getState().mcpTools
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools7], newBranchIndex)
               } else {
                 updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
               }

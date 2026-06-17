@@ -44,6 +44,10 @@ class MCPServerProcess {
   private buffer = ''
   private initialized = false
   private config: MCPServerConfig
+  /** 收集 stderr 输出，用于错误报告 */
+  private stderrOutput = ''
+  /** 启动期间的 reject 回调，用于进程提前退出时通知 start() */
+  private startupReject: ((reason: Error) => void) | null = null
 
   constructor(config: MCPServerConfig) {
     this.config = config
@@ -53,14 +57,22 @@ class MCPServerProcess {
   async start(): Promise<void> {
     if (this.process) return
 
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       const env = { ...process.env, ...this.config.env }
+      this.startupReject = reject
+      this.stderrOutput = ''
 
-      this.process = spawn(this.config.command, this.config.args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: true,
-        env
-      })
+      try {
+        this.process = spawn(this.config.command, this.config.args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          shell: true,
+          env
+        })
+      } catch (err) {
+        this.startupReject = null
+        reject(new Error(`启动 MCP 服务器失败: ${err instanceof Error ? err.message : String(err)}`))
+        return
+      }
 
       this.process.stdout?.on('data', (data: Buffer) => {
         this.buffer += data.toString()
@@ -68,29 +80,77 @@ class MCPServerProcess {
       })
 
       this.process.stderr?.on('data', (data: Buffer) => {
-        console.error(`[MCP:${this.config.name}] stderr:`, data.toString())
+        const text = data.toString()
+        this.stderrOutput += text
+        console.error(`[MCP:${this.config.name}] stderr:`, text)
       })
 
       this.process.on('error', (err) => {
         console.error(`[MCP:${this.config.name}] 进程错误:`, err)
+        const errorMsg = `MCP 服务器 "${this.config.name}" 启动失败: ${err.message}`
+        if (this.startupReject) {
+          this.startupReject(new Error(errorMsg))
+          this.startupReject = null
+        }
         this.cleanup()
-        reject(err)
       })
 
-      this.process.on('exit', (code) => {
-        console.log(`[MCP:${this.config.name}] 进程退出，code=${code}`)
+      this.process.on('exit', (code, signal) => {
+        const exitInfo = signal
+          ? `被信号 ${signal} 终止`
+          : `退出码 ${code}`
+        console.log(`[MCP:${this.config.name}] 进程 ${exitInfo}`)
+
+        // 构建详细的错误信息
+        let errorMsg = `MCP 服务器 "${this.config.name}" 已退出 (${exitInfo})`
+        if (this.stderrOutput.trim()) {
+          // 取 stderr 最后几行作为错误上下文
+          const stderrLines = this.stderrOutput.trim().split('\n')
+          const lastLines = stderrLines.slice(-5).join('\n')
+          errorMsg += `\n\n服务器输出:\n${lastLines}`
+        }
+        if (code === 127 || code === 9009) {
+          errorMsg += '\n\n提示: 命令未找到，请确认已安装 Node.js 和 npm/npx'
+        }
+        if (code === 1 && this.stderrOutput.includes('EACCES')) {
+          errorMsg += '\n\n提示: 权限不足，请检查文件权限'
+        }
+
+        // 如果还在启动阶段（start() 的 Promise 尚未 resolve），直接 reject
+        if (this.startupReject) {
+          this.startupReject(new Error(errorMsg))
+          this.startupReject = null
+        }
         this.cleanup()
       })
 
       // 等待进程启动后执行 initialize
-      setTimeout(async () => {
+      // 使用更短的初始延迟，然后重试几次
+      const tryInitialize = async (attempt: number): Promise<void> => {
+        // 如果进程已退出，不再尝试
+        if (!this.process || this.process.killed) return
+
         try {
           await this.initialize()
+          // 启动成功，清除 startupReject
+          this.startupReject = null
           resolve()
         } catch (err) {
-          reject(err)
+          if (attempt < 3 && this.process && !this.process.killed) {
+            // 重试，增加延迟
+            setTimeout(() => tryInitialize(attempt + 1), 1000 * (attempt + 1))
+          } else {
+            const message = err instanceof Error ? err.message : String(err)
+            if (this.startupReject) {
+              this.startupReject(new Error(`MCP 服务器 "${this.config.name}" 初始化失败: ${message}`))
+              this.startupReject = null
+            }
+          }
         }
-      }, 500)
+      }
+
+      // 初始延迟 800ms 等待进程启动
+      setTimeout(() => tryInitialize(0), 800)
     })
   }
 
@@ -125,7 +185,7 @@ class MCPServerProcess {
   private sendRequest(method: string, params?: Record<string, unknown>): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.process?.stdin) {
-        reject(new Error('MCP 服务器进程未启动'))
+        reject(new Error(`MCP 服务器 "${this.config.name}" 进程未启动或已退出`))
         return
       }
 
@@ -140,7 +200,7 @@ class MCPServerProcess {
       // 设置超时
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(id)
-        reject(new Error(`MCP 请求超时: ${method}`))
+        reject(new Error(`MCP 请求超时 (${method}): 服务器 "${this.config.name}" 30秒内未响应`))
       }, 30000)
 
       this.pendingRequests.set(id, {
@@ -201,7 +261,7 @@ class MCPServerProcess {
     this.initialized = false
     this.buffer = ''
     for (const [, pending] of this.pendingRequests) {
-      pending.reject(new Error('MCP 服务器进程已退出'))
+      pending.reject(new Error(`MCP 服务器 "${this.config.name}" 进程已退出`))
     }
     this.pendingRequests.clear()
   }
