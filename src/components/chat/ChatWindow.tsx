@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo } from 'react'
-import { MessageSquareDashed } from 'lucide-react'
+import { MessageSquareDashed, Bot, Plug, Globe, FileText, Sparkles } from 'lucide-react'
 import { MessageItem } from './MessageItem'
 import { AssistantGroupBubble } from './AssistantGroupBubble'
 import { MessageInput } from './MessageInput'
@@ -65,7 +65,7 @@ interface ChatWindowProps {
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent } = useConversationStore()
+  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation } = useConversationStore()
   const { showTimestamp, showTokenUsage } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask } = useChat()
@@ -170,14 +170,94 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     [activeBranches]
   )
 
-  // 空状态
+  // 快捷提示词
+  const quickPrompts = [
+    { icon: '💡', text: '帮我写一篇关于 AI 发展趋势的文章', category: '写作' },
+    { icon: '🔍', text: '解释一下量子计算的基本原理', category: '学习' },
+    { icon: '💻', text: '用 Python 实现一个快速排序算法', category: '编程' },
+    { icon: '📊', text: '分析这份销售数据并给出建议', category: '分析' },
+    { icon: '🎨', text: '为我的产品起一个有创意的名字', category: '创意' },
+    { icon: '📝', text: '帮我优化这段代码的性能', category: '编程' },
+  ]
+
+  const featureCards = [
+    { icon: Bot, title: 'Agent 模式', desc: '自主规划、执行多步任务', color: 'from-accent-500 to-purple-600' },
+    { icon: Plug, title: 'MCP 工具', desc: '连接外部服务和数据源', color: 'from-emerald-500 to-teal-600' },
+    { icon: Globe, title: '网站分析', desc: '自动爬取分析网站功能', color: 'from-blue-500 to-indigo-600' },
+    { icon: FileText, title: '知识库', desc: '基于文档的精准问答', color: 'from-amber-500 to-orange-600' },
+  ]
+
+  // 空状态 - 无对话选中：全屏欢迎页
   if (!currentConversationId) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center text-gray-400">
-          <MessageSquareDashed size={48} className="mx-auto mb-4" />
-          <p className="text-lg font-medium">选择或创建一个对话</p>
-          <p className="text-sm mt-1">开始与 AI 交流</p>
+      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-surface-50 via-white to-accent-50/30 dark:from-surface-900 dark:via-surface-950 dark:to-accent-950/10 overflow-y-auto">
+        <div className="max-w-2xl w-full px-6 py-12 text-center animate-fade-in-up">
+          {/* Logo + 标题 */}
+          <div className="flex items-center justify-center mb-6">
+            <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-brand shadow-lg shadow-accent-500/20">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-white">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity="0.9" />
+                <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+            </div>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2 tracking-tight">
+            欢迎使用 <span className="text-gradient-warm">AI Tool</span>
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+            智能对话助手，支持 Agent 自主任务、MCP 工具集成、网站分析等功能
+          </p>
+
+          {/* 功能亮点卡片 */}
+          <div className="grid grid-cols-2 gap-3 mb-8 max-w-lg mx-auto">
+            {featureCards.map((card) => (
+              <div
+                key={card.title}
+                className="group flex items-center gap-3 p-3.5 rounded-xl bg-white dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/60 card-hover cursor-default text-left"
+              >
+                <div className={`flex-shrink-0 w-9 h-9 rounded-lg bg-gradient-to-br ${card.color} flex items-center justify-center shadow-sm`}>
+                  <card.icon size={18} className="text-white" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">{card.title}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">{card.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 快捷提示词 */}
+          <div className="max-w-lg mx-auto">
+            <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-3 uppercase tracking-wider">
+              试试这些问题
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {quickPrompts.map((prompt, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    // 创建新对话并发送提示词
+                    const conv = createConversation(prompt.text.slice(0, 20) + '...')
+                    selectConversation(conv.id)
+                    // 稍后发送消息，确保状态已更新
+                    setTimeout(() => sendMessage(prompt.text), 100)
+                  }}
+                  className="group flex items-start gap-2.5 p-3 rounded-xl bg-white/80 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all text-left"
+                >
+                  <span className="text-base mt-0.5">{prompt.icon}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 leading-relaxed group-hover:text-gray-800 dark:group-hover:text-gray-100 transition-colors">
+                      {prompt.text}
+                    </p>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 inline-block">
+                      {prompt.category}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -186,18 +266,18 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Agent 选择栏 */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
         <AgentSelector
           selectedAgentId={currentConversation?.agentId}
           onSelect={handleAgentSelect}
           onOpenAgentManager={onOpenAgentManager}
         />
         {currentAgent && (
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2.5 py-0.5 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full font-medium">
               Agent 模式
             </span>
-            <span className="truncate max-w-[200px]">{currentAgent.description}</span>
+            <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
           </div>
         )}
       </div>
@@ -210,17 +290,65 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
               <SiteAnalyzerForm onSubmit={handleAnalyzerFormSubmit} />
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              <div className="text-center">
-                <MessageSquareDashed size={36} className="mx-auto mb-3" />
+            <div className="flex items-center justify-center h-full px-6">
+              <div className="max-w-md w-full text-center animate-fade-in-up">
                 {currentAgent ? (
                   <>
-                    <p className="font-medium">与 Agent "{currentAgent.name}" 对话</p>
-                    <p className="text-sm mt-1">{currentAgent.description || '发送消息开始对话'}</p>
+                    {/* Agent 模式引导 */}
+                    <div className="flex items-center justify-center mb-5">
+                      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500 to-purple-600 shadow-lg shadow-accent-500/20">
+                        <Bot size={24} className="text-white" />
+                      </div>
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
+                      {currentAgent.name}
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-xs mx-auto leading-relaxed">
+                      {currentAgent.description || '发送消息开始与 Agent 对话，它会自主规划并执行多步任务'}
+                    </p>
+                    {/* Agent 能力标签 */}
+                    <div className="flex flex-wrap justify-center gap-2 mb-6">
+                      {(currentAgent.enabledToolIds && currentAgent.enabledToolIds.length > 0 ? currentAgent.enabledToolIds.slice(0, 4) : ['自主规划', '多步执行', '工具调用']).map((tag: string, i: number) => (
+                        <span key={i} className="px-2.5 py-1 text-xs rounded-full bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </>
                 ) : (
-                  <p>发送消息开始对话</p>
+                  <>
+                    {/* 普通模式引导 */}
+                    <div className="flex items-center justify-center mb-5">
+                      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-surface-200 to-surface-300 dark:from-surface-700 dark:to-surface-600">
+                        <MessageSquareDashed size={24} className="text-surface-500 dark:text-surface-400" />
+                      </div>
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
+                      开始新的对话
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                      发送消息或选择下方快捷提示开始
+                    </p>
+                  </>
                 )}
+
+                {/* 快捷提示词 */}
+                <div className="grid grid-cols-1 gap-2 max-w-sm mx-auto">
+                  {quickPrompts.slice(0, 3).map((prompt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        sendMessage(prompt.text)
+                      }}
+                      className="group flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/80 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all text-left"
+                    >
+                      <span className="text-base">{prompt.icon}</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1 group-hover:text-gray-800 dark:group-hover:text-gray-100 transition-colors">
+                        {prompt.text}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )

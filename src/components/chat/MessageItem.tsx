@@ -55,10 +55,10 @@ interface MessageItemProps {
 }
 
 const roleConfig = {
-  user: { icon: User, bgClass: 'bg-primary-500', label: '用户' },
-  assistant: { icon: Bot, bgClass: 'bg-emerald-500', label: 'AI' },
-  system: { icon: AlertCircle, bgClass: 'bg-gray-500', label: '系统' },
-  tool: { icon: Wrench, bgClass: 'bg-amber-500', label: '工具' }
+  user: { icon: User, bgClass: 'bg-gradient-to-br from-accent-500 to-purple-600', label: '用户' },
+  assistant: { icon: Bot, bgClass: 'bg-gradient-to-br from-emerald-500 to-teal-600', label: 'AI' },
+  system: { icon: AlertCircle, bgClass: 'bg-gradient-to-br from-gray-400 to-gray-500', label: '系统' },
+  tool: { icon: Wrench, bgClass: 'bg-gradient-to-br from-amber-500 to-orange-600', label: '工具' }
 }
 
 export function MessageItem({
@@ -125,16 +125,16 @@ export function MessageItem({
   // 工具消息特殊显示
   if (message.role === 'tool') {
     return (
-      <div className="flex gap-3 px-4 py-2 ml-10">
-        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center">
+      <div className="flex gap-3 px-4 py-2 ml-10 animate-fade-in">
+        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
           <Wrench size={14} className="text-white" />
         </div>
-        <div className="flex-1 min-w-0 selection-boundary-parent">
-          <div className="text-xs text-gray-500 mb-1">
+        <div className="flex-1 min-w-0 selection-boundary-parent rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 p-3">
+          <div className="text-xs text-muted mb-1">
             工具结果: {message.toolName}
           </div>
           <SelectionBoundary>
-            <pre className="text-sm bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
+            <pre className="text-sm bg-surface-100 dark:bg-surface-800 rounded-lg p-2 overflow-x-auto max-h-40 overflow-y-auto">
               {formatToolResult(message.content)}
             </pre>
           </SelectionBoundary>
@@ -150,7 +150,7 @@ export function MessageItem({
   const isForkPoint = message.role === 'user' && (message.branchCount ?? 0) > 1
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group ${message.isError ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
+    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''}`}>
       {/* 头像 */}
       <div
         className={`flex-shrink-0 w-8 h-8 rounded-full ${role.bgClass} flex items-center justify-center`}
@@ -162,26 +162,26 @@ export function MessageItem({
       <div className="flex-1 min-w-0 selection-boundary-parent">
         {/* 头部信息 */}
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {role.label}
           </span>
           {hasAgentSteps && (
-            <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded">
+            <span className="text-xs bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full px-2 py-0.5">
               Agent
             </span>
           )}
           {showTimestamp && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted">
               {formatTime(message.timestamp)}
             </span>
           )}
           {showTokenUsage && message.tokenUsage && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted">
               {message.tokenUsage.totalTokens} tokens
             </span>
           )}
           {message.isStreaming && (
-            <span className="text-xs text-blue-500 animate-pulse">生成中...</span>
+            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
           )}
         </div>
 
@@ -224,14 +224,14 @@ export function MessageItem({
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
-                className="w-full p-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y"
+                className="w-full p-2 text-sm border border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 rounded-xl bg-white dark:bg-surface-800 resize-y"
                 rows={4}
               />
               <div className="flex gap-2">
                 {onEditAndResend && (
                   <button
                     onClick={handleEditAndResend}
-                    className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
+                    className="px-3 py-1 text-xs bg-accent-500 hover:bg-accent-600 text-white rounded-lg"
                   >
                     保存并重新发送
                   </button>
@@ -239,14 +239,14 @@ export function MessageItem({
                 {onEdit && !onEditAndResend && (
                   <button
                     onClick={handleSaveEdit}
-                    className="px-3 py-1 text-xs bg-primary-500 text-white rounded hover:bg-primary-600"
+                    className="px-3 py-1 text-xs bg-accent-500 hover:bg-accent-600 text-white rounded-lg"
                   >
                     保存
                   </button>
                 )}
                 <button
                   onClick={() => setIsEditing(false)}
-                  className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                  className="px-3 py-1 text-xs bg-surface-200 dark:bg-surface-700 rounded-lg hover:bg-surface-300 dark:hover:bg-surface-600"
                 >
                   取消
                 </button>
@@ -269,21 +269,21 @@ export function MessageItem({
             {message.attachments.map((att, index) => (
               <div
                 key={index}
-                className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs border border-gray-200 dark:border-gray-700"
+                className="flex items-center gap-1.5 px-2 py-1 bg-surface-50 dark:bg-surface-800/60 rounded-xl text-xs border border-surface-200/80 dark:border-surface-700/60"
               >
                 {att.type.startsWith('image/') ? (
-                  <Image size={14} className="text-blue-500 flex-shrink-0" />
+                  <Image size={14} className="text-accent-500 flex-shrink-0" />
                 ) : att.type === 'application/pdf' ? (
-                  <FileText size={14} className="text-red-500 flex-shrink-0" />
+                  <FileText size={14} className="text-danger-500 flex-shrink-0" />
                 ) : att.type.includes('word') || att.type.includes('document') ? (
-                  <FileText size={14} className="text-blue-600 flex-shrink-0" />
+                  <FileText size={14} className="text-accent-600 flex-shrink-0" />
                 ) : (
-                  <FileIcon size={14} className="text-gray-500 flex-shrink-0" />
+                  <FileIcon size={14} className="text-muted flex-shrink-0" />
                 )}
                 <span className="text-gray-700 dark:text-gray-300 max-w-[150px] truncate">
                   {att.name}
                 </span>
-                <span className="text-gray-400">
+                <span className="text-muted">
                   {formatFileSize(att.size)}
                 </span>
               </div>
@@ -322,7 +322,7 @@ export function MessageItem({
             <div className="mt-3">
               <button
                 onClick={handleOpenReport}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg hover:from-blue-600 hover:to-indigo-700 shadow-sm transition-all hover:shadow-md"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-accent-500 to-purple-600 hover:from-accent-600 hover:to-purple-700 rounded-lg shadow-sm transition-all hover:shadow-md"
               >
                 <Eye size={16} />
                 查看交互式分析报告
@@ -335,7 +335,7 @@ export function MessageItem({
           <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
               title="复制"
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -347,7 +347,7 @@ export function MessageItem({
                   setEditContent(message.content)
                   setIsEditing(true)
                 }}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
                 title="编辑"
               >
                 <Pencil size={12} />
@@ -357,7 +357,7 @@ export function MessageItem({
             {message.role === 'assistant' && onRegenerate && (
               <button
                 onClick={() => onRegenerate(message.id)}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
                 title="重新生成"
               >
                 <RotateCcw size={12} />

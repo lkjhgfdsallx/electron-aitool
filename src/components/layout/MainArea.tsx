@@ -29,23 +29,31 @@ export function MainArea({ activePanel, setActivePanel }: MainAreaProps) {
       </div>
 
       {/* 侧边面板 */}
-      {activePanel !== 'none' && (
-        <div className="absolute inset-0 z-30 flex justify-end">
-          {/* 背景遮罩 */}
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={closePanel}
-          />
-          {/* 面板内容 */}
-          <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 shadow-xl overflow-y-auto">
-            {activePanel === 'settings' && <SettingsPanel onClose={closePanel} />}
-            {activePanel === 'agents' && <AgentManager onClose={closePanel} />}
-            {activePanel === 'knowledge-base' && <KnowledgeBasePanel onClose={closePanel} />}
-            {activePanel === 'tools' && <ToolEditor onClose={closePanel} />}
-            {activePanel === 'mcp' && <MCPConfig onClose={closePanel} />}
-          </div>
+      <div
+        className={`absolute inset-0 z-30 flex justify-end transition-all duration-300 ease-in-out ${
+          activePanel === 'none' ? 'pointer-events-none opacity-0' : 'opacity-100'
+        }`}
+      >
+        {/* 背景遮罩 */}
+        <div
+          className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${
+            activePanel === 'none' ? 'opacity-0' : 'opacity-100'
+          }`}
+          onClick={closePanel}
+        />
+        {/* 面板内容 */}
+        <div
+          className={`relative w-full max-w-lg bg-white dark:bg-surface-900 border-l border-surface-200/80 dark:border-surface-700/60 shadow-lg overflow-y-auto transition-transform duration-300 ease-in-out ${
+            activePanel === 'none' ? 'translate-x-full' : 'translate-x-0 animate-slide-in-right'
+          }`}
+        >
+          {activePanel === 'settings' && <SettingsPanel onClose={closePanel} />}
+          {activePanel === 'agents' && <AgentManager onClose={closePanel} />}
+          {activePanel === 'knowledge-base' && <KnowledgeBasePanel onClose={closePanel} />}
+          {activePanel === 'tools' && <ToolEditor onClose={closePanel} />}
+          {activePanel === 'mcp' && <MCPConfig onClose={closePanel} />}
         </div>
-      )}
+      </div>
     </div>
   )
 }

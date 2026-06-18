@@ -102,9 +102,9 @@ export function AssistantGroupBubble({
   }, [finalContent])
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group ${isError ? 'bg-red-50 dark:bg-red-950/20' : ''}`}>
+    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''}`}>
       {/* 头像 */}
-      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
         <Bot size={16} className="text-white" />
       </div>
 
@@ -112,21 +112,21 @@ export function AssistantGroupBubble({
       <div className="flex-1 min-w-0 selection-boundary-parent">
         {/* 头部信息 */}
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             AI
           </span>
           {showTimestamp && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted">
               {formatTime(timestamp)}
             </span>
           )}
           {showTokenUsage && totalTokens > 0 && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted">
               {totalTokens} tokens
             </span>
           )}
           {isStreaming && (
-            <span className="text-xs text-blue-500 animate-pulse">生成中...</span>
+            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
           )}
         </div>
 
@@ -156,7 +156,7 @@ export function AssistantGroupBubble({
           <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleCopy}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
               title="复制"
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
@@ -165,7 +165,7 @@ export function AssistantGroupBubble({
             {onRegenerate && regenerateTargetId && (
               <button
                 onClick={() => onRegenerate(regenerateTargetId)}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
                 title="重新生成"
               >
                 <RotateCcw size={12} />

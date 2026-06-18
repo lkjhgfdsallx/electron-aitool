@@ -3,12 +3,12 @@ import {
   ChevronDown,
   ChevronRight,
   Brain,
-  Wrench,
+  Zap,
   Eye,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  UserCheck,
+  User,
   Timer,
   RotateCcw,
   MessageSquarePlus
@@ -33,23 +33,23 @@ interface AgentStepDisplayProps {
 const stepTypeConfig = {
   thinking: {
     icon: Brain,
-    color: 'text-purple-500',
-    bgColor: 'bg-purple-50 dark:bg-purple-950/30',
-    borderColor: 'border-purple-200 dark:border-purple-800',
+    color: 'text-accent-500',
+    bgColor: 'bg-accent-50 dark:bg-accent-950/30',
+    borderColor: 'border-accent-200 dark:border-accent-800',
     label: '思考'
   },
   action: {
-    icon: Wrench,
-    color: 'text-blue-500',
-    bgColor: 'bg-blue-50 dark:bg-blue-950/30',
-    borderColor: 'border-blue-200 dark:border-blue-800',
+    icon: Zap,
+    color: 'text-amber-500',
+    bgColor: 'bg-amber-50 dark:bg-amber-950/30',
+    borderColor: 'border-amber-200 dark:border-amber-800',
     label: '行动'
   },
   observation: {
     icon: Eye,
-    color: 'text-amber-500',
-    bgColor: 'bg-amber-50 dark:bg-amber-950/30',
-    borderColor: 'border-amber-200 dark:border-amber-800',
+    color: 'text-emerald-500',
+    bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
+    borderColor: 'border-emerald-200 dark:border-emerald-800',
     label: '观察'
   },
   final_answer: {
@@ -61,16 +61,16 @@ const stepTypeConfig = {
   },
   error: {
     icon: AlertCircle,
-    color: 'text-red-500',
-    bgColor: 'bg-red-50 dark:bg-red-950/30',
-    borderColor: 'border-red-200 dark:border-red-800',
+    color: 'text-danger-500',
+    bgColor: 'bg-danger-50 dark:bg-danger-950/30',
+    borderColor: 'border-danger-200 dark:border-danger-800',
     label: '错误'
   },
   human_input: {
-    icon: UserCheck,
-    color: 'text-cyan-500',
-    bgColor: 'bg-cyan-50 dark:bg-cyan-950/30',
-    borderColor: 'border-cyan-200 dark:border-cyan-800',
+    icon: User,
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-50 dark:bg-blue-950/30',
+    borderColor: 'border-blue-200 dark:border-blue-800',
     label: '用户选择'
   }
 }
@@ -179,14 +179,18 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
   if (processSteps.length === 0) return null
 
   return (
-    <div className="mb-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+    <div className="mb-2 rounded-xl border border-surface-200/60 dark:border-surface-700/40 overflow-hidden">
       {/* 标题栏 */}
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between px-3 py-2 bg-surface-50/80 dark:bg-surface-800/40 border-b border-surface-200/60 dark:border-surface-700/40">
         <div className="flex items-center gap-2">
           {isRunning ? (
-            <Loader2 size={14} className="text-blue-500 animate-spin" />
+            <div className="w-5 h-5 rounded-md bg-accent-50 dark:bg-accent-950/30 flex items-center justify-center">
+              <Loader2 size={12} className="text-accent-500 animate-spin" />
+            </div>
           ) : (
-            <Brain size={14} className="text-gray-500" />
+            <div className="w-5 h-5 rounded-md bg-surface-100 dark:bg-surface-700 flex items-center justify-center">
+              <Brain size={12} className="text-muted" />
+            </div>
           )}
           <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
             Agent 执行过程（{processSteps.length} 步）
@@ -194,111 +198,125 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
         </div>
         <button
           onClick={toggleAll}
-          className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          className="text-xs text-accent-500 hover:text-accent-600 transition-colors"
         >
           {isAllExpanded ? '全部折叠' : '全部展开'}
         </button>
       </div>
 
-      {/* 步骤列表 */}
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {processSteps.map((step) => {
+      {/* 步骤列表（timeline 风格） */}
+      <div className="relative">
+        {processSteps.map((step, index) => {
           const config = stepTypeConfig[step.type]
           const StepIcon = config.icon
           const isExpanded = expandedSteps.has(step.id)
+          const isLast = index === processSteps.length - 1
+          const isCurrentStep = isRunning && isLast
 
           return (
-            <div key={step.id} className={config.bgColor}>
-              <button
-                onClick={() => toggleStep(step.id)}
-                className={`flex items-center gap-2 w-full px-3 py-2 text-sm hover:opacity-80 transition-opacity`}
-              >
-                <StepIcon size={14} className={config.color} />
-                <span className={`font-medium ${config.color}`}>
-                  [{config.label}]
-                </span>
-                <span className="text-xs text-gray-600 dark:text-gray-400 truncate flex-1 text-left">
-                  {truncateContent(step.content, 80)}
-                </span>
-                <div className="ml-auto flex-shrink-0">
-                  {isExpanded ? (
-                    <ChevronDown size={14} className="text-gray-400" />
-                  ) : (
-                    <ChevronRight size={14} className="text-gray-400" />
-                  )}
-                </div>
-              </button>
+            <div key={step.id} className="relative">
+              {/* 连接线 */}
+              {!isLast && (
+                <div className="absolute left-[15px] top-8 bottom-0 w-0.5 bg-surface-200 dark:bg-surface-700" />
+              )}
 
-              {isExpanded && (
-                <div className={`px-3 pb-3 border-t ${config.borderColor}`}>
-                  {/* 思考内容 */}
-                  {step.type === 'thinking' && (
-                    <div className="mt-2 text-sm text-purple-700 dark:text-purple-300 whitespace-pre-wrap">
-                      {step.content}
-                    </div>
-                  )}
+              <div className={`rounded-lg border border-surface-200/60 dark:border-surface-700/40 overflow-hidden mx-2 my-1.5 ${isCurrentStep ? 'animate-pulse ring-1 ring-accent-300 dark:ring-accent-600' : ''}`}>
+                <button
+                  onClick={() => toggleStep(step.id)}
+                  className="flex items-center gap-3 w-full px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
+                >
+                  <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${config.bgColor}`}>
+                    <StepIcon size={12} className={config.color} />
+                  </div>
+                  <span className={`text-xs font-medium ${config.color}`}>
+                    {config.label}
+                  </span>
+                  <span className="text-xs text-muted truncate flex-1 text-left">
+                    {truncateContent(step.content, 80)}
+                  </span>
+                  <div className="ml-auto flex-shrink-0">
+                    {isExpanded ? (
+                      <ChevronDown size={14} className="text-muted" />
+                    ) : (
+                      <ChevronRight size={14} className="text-muted" />
+                    )}
+                  </div>
+                </button>
 
-                  {/* 工具调用 */}
-                  {step.type === 'action' && step.toolCall && (
-                    <div className="mt-2 space-y-1">
-                      <div className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                        工具：{step.toolCall.name}
-                      </div>
-                      <pre className="text-xs bg-blue-100 dark:bg-blue-900/30 rounded p-2 overflow-x-auto">
-                        {JSON.stringify(step.toolCall.arguments, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* 工具结果 */}
-                  {step.type === 'observation' && step.toolResult && (
-                    <div className="mt-2 space-y-1">
-                      <div className={`text-xs font-medium ${step.toolResult.success ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {step.toolResult.success ? '✓ 执行成功' : '✗ 执行失败'}
-                      </div>
-                      <pre className="text-xs bg-amber-100 dark:bg-amber-900/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
-                        {step.toolResult.success ? step.toolResult.data : step.toolResult.error}
-                      </pre>
-                    </div>
-                  )}
-
-                  {/* 错误 */}
-                  {step.type === 'error' && (
-                    <div className="mt-2 space-y-2">
-                      <div className="text-sm text-red-600 dark:text-red-400">
+                <div
+                  className="overflow-hidden transition-all duration-300 ease-in-out"
+                  style={{ maxHeight: isExpanded ? '1200px' : '0px', opacity: isExpanded ? 1 : 0 }}
+                >
+                  <div className="px-3 pb-3 text-xs text-muted leading-relaxed">
+                    {/* 思考内容 */}
+                    {step.type === 'thinking' && (
+                      <div className="mt-2 text-xs text-muted leading-relaxed whitespace-pre-wrap">
                         {step.content}
                       </div>
-                      {isError && !isRunning && onResumeAgentTask && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onResumeAgentTask()
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
-                        >
-                          <RotateCcw size={12} />
-                          继续任务
-                        </button>
-                      )}
-                    </div>
-                  )}
+                    )}
 
-                  {/* 用户选择 */}
-                  {step.type === 'human_input' && step.humanChoice && (
-                    <HumanChoicePanel
-                      step={step}
-                      onHumanInput={onHumanInput}
-                      countdown={countdown}
-                      multiSelections={multiSelections}
-                      setMultiSelections={setMultiSelections}
-                      customInputMap={customInputMap}
-                      setCustomInputMap={setCustomInputMap}
-                      customExpandedMap={customExpandedMap}
-                      setCustomExpandedMap={setCustomExpandedMap}
-                    />
-                  )}
+                    {/* 工具调用 */}
+                    {step.type === 'action' && step.toolCall && (
+                      <div className="mt-2 space-y-1">
+                        <div className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                          工具：{step.toolCall.name}
+                        </div>
+                        <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto">
+                          {JSON.stringify(step.toolCall.arguments, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* 工具结果 */}
+                    {step.type === 'observation' && step.toolResult && (
+                      <div className="mt-2 space-y-1">
+                        <div className={`text-xs font-medium ${step.toolResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-danger-600 dark:text-danger-400'}`}>
+                          {step.toolResult.success ? '✓ 执行成功' : '✗ 执行失败'}
+                        </div>
+                        <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto max-h-40 overflow-y-auto">
+                          {step.toolResult.success ? step.toolResult.data : step.toolResult.error}
+                        </pre>
+                      </div>
+                    )}
+
+                    {/* 错误 */}
+                    {step.type === 'error' && (
+                      <div className="mt-2 space-y-2">
+                        <div className="text-xs text-danger-600 dark:text-danger-400">
+                          {step.content}
+                        </div>
+                        {isError && !isRunning && onResumeAgentTask && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onResumeAgentTask()
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
+                          >
+                            <RotateCcw size={12} />
+                            继续任务
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 用户选择 */}
+                    {step.type === 'human_input' && step.humanChoice && (
+                      <HumanChoicePanel
+                        step={step}
+                        onHumanInput={onHumanInput}
+                        countdown={countdown}
+                        multiSelections={multiSelections}
+                        setMultiSelections={setMultiSelections}
+                        customInputMap={customInputMap}
+                        setCustomInputMap={setCustomInputMap}
+                        customExpandedMap={customExpandedMap}
+                        setCustomExpandedMap={setCustomExpandedMap}
+                      />
+                    )}
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           )
         })}
@@ -480,10 +498,10 @@ function HumanChoicePanel({
   return (
     <div className="mt-2 space-y-2">
       {/* 问题 */}
-      <div className="text-sm font-medium text-cyan-700 dark:text-cyan-300">
+      <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
         {choice.question}
         {isMultiple && (
-          <span className="ml-2 text-xs font-normal text-cyan-500 dark:text-cyan-400">
+          <span className="ml-2 text-xs font-normal text-blue-500 dark:text-blue-400">
             （可多选）
           </span>
         )}
@@ -500,9 +518,9 @@ function HumanChoicePanel({
               onClick={() => isMultiple ? handleMultiToggle(opt.value) : handleSingleSelect(opt.value)}
               className={`flex items-start gap-2 w-full px-3 py-2 rounded-md border text-sm text-left transition-colors ${
                 selected
-                  ? 'border-cyan-400 bg-cyan-100 dark:bg-cyan-900/40 dark:border-cyan-600'
+                  ? 'border-blue-400 bg-blue-100 dark:bg-blue-900/40 dark:border-blue-600'
                   : canClick
-                    ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-cyan-300 hover:bg-cyan-50 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/20 cursor-pointer'
+                    ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300 hover:bg-blue-50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20 cursor-pointer'
                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
               }`}
             >
@@ -513,13 +531,13 @@ function HumanChoicePanel({
                   : 'rounded-full border-2 flex items-center justify-center text-xs font-medium'
               } ${
                 selected
-                  ? 'border-cyan-500 bg-cyan-500 text-white'
+                  ? 'border-blue-500 bg-blue-500 text-white'
                   : 'border-gray-300 dark:border-gray-600'
               }`}>
                 {selected ? '\u2713' : String.fromCharCode(65 + idx)}
               </span>
               <div className="flex-1 min-w-0">
-                <div className={`font-medium ${selected ? 'text-cyan-700 dark:text-cyan-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                <div className={`font-medium ${selected ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}>
                   {opt.label}
                 </div>
                 {opt.description && (
@@ -544,9 +562,9 @@ function HumanChoicePanel({
           )}
           className={`flex items-start gap-2 w-full px-3 py-2 rounded-md border text-sm text-left transition-colors ${
             isNoneSelected()
-              ? 'border-cyan-400 bg-cyan-100 dark:bg-cyan-900/40 dark:border-cyan-600'
+              ? 'border-blue-400 bg-blue-100 dark:bg-blue-900/40 dark:border-blue-600'
               : canClick
-                ? 'border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-cyan-300 hover:bg-cyan-50 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/20 cursor-pointer'
+                ? 'border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-300 hover:bg-blue-50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20 cursor-pointer'
                 : 'border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
           }`}
         >
@@ -556,13 +574,13 @@ function HumanChoicePanel({
               : 'rounded-full border-2 flex items-center justify-center text-xs font-medium'
           } ${
             isNoneSelected()
-              ? 'border-cyan-500 bg-cyan-500 text-white'
+              ? 'border-blue-500 bg-blue-500 text-white'
               : 'border-gray-300 dark:border-gray-600'
           }`}>
             {isNoneSelected() ? '\u2713' : <MessageSquarePlus size={12} className="text-gray-400" />}
           </span>
           <div className="flex-1 min-w-0">
-            <div className={`font-medium ${isNoneSelected() ? 'text-cyan-700 dark:text-cyan-300' : 'text-gray-500 dark:text-gray-400'}`}>
+            <div className={`font-medium ${isNoneSelected() ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
               以上都不是，我自己输入
             </div>
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
@@ -585,7 +603,7 @@ function HumanChoicePanel({
             })}
             placeholder="请输入你的答案..."
             rows={2}
-            className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-cyan-300 dark:border-cyan-700 focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-y"
+            className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -601,7 +619,7 @@ function HumanChoicePanel({
             <button
               onClick={handleCustomConfirm}
               disabled={!customInput.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               确认提交
             </button>
@@ -613,7 +631,7 @@ function HumanChoicePanel({
       {isMultiple && !hasResponded && currentMultiSel.size > 0 && (
         <button
           onClick={handleMultiConfirm}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-600 hover:to-cyan-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
         >
           确认选择（已选 {currentMultiSel.size} 项）
         </button>
@@ -629,11 +647,10 @@ function HumanChoicePanel({
 
       {/* 已选择结果展示 */}
       {hasResponded && (
-        <div className="text-xs text-cyan-600 dark:text-cyan-400 font-medium">
-          \u2705 用户已选择: {formatSelectedLabel()}
+        <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+          {'\u2705'} 用户已选择: {formatSelectedLabel()}
         </div>
       )}
     </div>
   )
 }
-

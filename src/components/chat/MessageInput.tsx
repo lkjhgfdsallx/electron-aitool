@@ -191,15 +191,15 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
   }, [])
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-      <div className="max-w-3xl mx-auto rounded-xl border border-transparent focus-within:border-primary-300 dark:focus-within:border-primary-600 focus-within:ring-1 focus-within:ring-primary-200/50 dark:focus-within:ring-primary-500/30 transition-colors p-1">
+    <div className="border-t border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm p-4">
+      <div className="max-w-3xl mx-auto">
         {/* 附件预览区 */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
             {attachments.map((att, index) => (
               <div
                 key={index}
-                className="flex items-center gap-1.5 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-lg text-xs border border-gray-200 dark:border-gray-700"
+                className="flex items-center gap-1.5 px-2 py-1 bg-surface-50 dark:bg-surface-800/60 rounded-lg text-xs border border-surface-200/60 dark:border-surface-700/40"
               >
                 {isImageType(att.type) ? (
                   <div className="relative">
@@ -210,17 +210,17 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                     />
                   </div>
                 ) : (
-                  <FileIcon size={14} className="text-gray-500 flex-shrink-0" />
+                  <FileIcon size={14} className="text-muted flex-shrink-0" />
                 )}
                 <span className="text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
                   {att.name}
                 </span>
-                <span className="text-gray-400">
+                <span className="text-muted">
                   {formatFileSize(att.size)}
                 </span>
                 <button
                   onClick={() => removeAttachment(index)}
-                  className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-red-500 transition-colors"
+                  className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-muted hover:text-danger-500 transition-colors"
                 >
                   <X size={12} />
                 </button>
@@ -229,7 +229,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
           </div>
         )}
 
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-2">
+        <div className="bg-surface-50 dark:bg-surface-800/80 rounded-2xl border border-surface-200/80 dark:border-surface-700/60 focus-within:border-accent-300 dark:focus-within:border-accent-600 focus-within:ring-2 focus-within:ring-accent-500/20 transition-all p-3">
           {/* 输入框 */}
           <textarea
             ref={textareaRef}
@@ -239,7 +239,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             placeholder={isExtracting ? '正在解析文件...' : isStreaming ? 'AI 正在回复...' : '输入消息...'}
             disabled={disabled || isStreaming || isExtracting}
             rows={1}
-            className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 py-2 max-h-[200px]"
+            className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400/80 dark:placeholder-gray-500/80 py-2 max-h-[200px]"
           />
 
           {/* 底部工具栏 */}
@@ -248,7 +248,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
               {/* 附件按钮 */}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-shrink-0 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                className="flex-shrink-0 p-1.5 text-muted hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-all"
                 title="上传文件（图片、PDF、Word、TXT等）"
               >
                 <Paperclip size={18} />
@@ -266,7 +266,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
               <div className="relative">
                 <button
                   onClick={() => setShowPromptMenu(!showPromptMenu)}
-                  className="flex-shrink-0 p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  className="flex-shrink-0 p-1.5 text-muted hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-all"
                   title="插入提示词"
                 >
                   <FileText size={18} />
@@ -279,8 +279,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                       className="fixed inset-0 z-10"
                       onClick={() => setShowPromptMenu(false)}
                     />
-                    <div className="absolute left-0 bottom-full z-20 mb-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[240px] max-h-[300px] overflow-y-auto">
-                      <div className="px-3 py-1.5 text-xs text-gray-500 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <div className="absolute left-0 bottom-full z-20 mb-1 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-lg backdrop-blur-sm py-1 min-w-[240px] max-h-[300px] overflow-y-auto">
+                      <div className="px-3 py-1.5 text-xs text-muted border-b border-surface-200/60 dark:border-surface-700/40 flex items-center justify-between">
                         <span>选择提示词</span>
                         <button
                           onClick={(e) => {
@@ -339,7 +339,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
               {isStreaming ? (
                 <button
                   onClick={onStop}
-                  className="flex-shrink-0 p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  className="flex-shrink-0 p-2 bg-danger-500 hover:bg-danger-600 text-white rounded-xl transition-all"
                   title="停止生成"
                 >
                   <Square size={18} />
@@ -356,7 +356,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                 <button
                   onClick={handleSend}
                   disabled={(!content.trim() && attachments.length === 0) || disabled}
-                  className="flex-shrink-0 p-1.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="flex-shrink-0 p-2 bg-gradient-to-br from-accent-500 to-purple-600 hover:from-accent-600 hover:to-purple-700 text-white rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   title="发送"
                 >
                   <Send size={18} />
@@ -367,7 +367,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
         </div>
 
         {/* 提示文字 */}
-        <div className="text-xs text-gray-400 mt-2 text-center">
+        <div className="text-xs text-muted mt-2.5 text-center">
           {sendWithEnter ? 'Enter 发送，Shift+Enter 换行' : 'Ctrl+Enter 发送，Enter 换行'}
         </div>
       </div>
