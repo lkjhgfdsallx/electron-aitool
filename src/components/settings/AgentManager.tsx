@@ -16,11 +16,13 @@ import {
   Wrench,
   Clock,
   Database,
-  Settings
+  Settings,
+  ChevronDown
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
 import { usePromptStore } from '../../stores/agent-store'
+import { useAIProviderStore } from '../../stores/ai-provider-store'
 import type {
   AgentProfile,
   AgentProfileCreateInput,
@@ -69,6 +71,9 @@ export function AgentManager({ onClose }: AgentManagerProps) {
     prompts, createPrompt, updatePrompt, deletePrompt,
     importPrompts, exportPrompts
   } = useAgentStore()
+
+  const { providers } = useAIProviderStore()
+  const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
 
   const [tab, setTab] = useState<TabType>('agents')
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null)
@@ -526,21 +531,71 @@ export function AgentManager({ onClose }: AgentManagerProps) {
               <Settings size={14} /> 模型配置（可选，留空使用全局配置）
             </h3>
             <div className="space-y-3">
+              {/* Provider 选择 */}
               <div>
-                <label className="block text-xs text-gray-500 mb-1">模型名称</label>
-                <input
-                  type="text"
-                  value={agentForm.modelConfig.model || ''}
-                  onChange={(e) =>
-                    setAgentForm({
-                      ...agentForm,
-                      modelConfig: { ...agentForm.modelConfig, model: e.target.value || undefined }
-                    })
-                  }
-                  placeholder="留空使用全局配置"
-                  className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
+                <label className="block text-xs text-gray-500 mb-1">AI 源（Provider）</label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => { setProviderDropdownOpen(!providerDropdownOpen) }}
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <span className="truncate">
+                      {agentForm.modelConfig.providerId
+                        ? providers.find((p) => p.id === agentForm.modelConfig.providerId)?.name || '未知源'
+                        : '使用全局配置'}
+                    </span>
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${providerDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {providerDropdownOpen && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      <div
+                        onClick={() => {
+                          setAgentForm({ ...agentForm, modelConfig: { ...agentForm.modelConfig, providerId: undefined, modelId: undefined } })
+                          setProviderDropdownOpen(false)
+                        }}
+                        className="px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-700"
+                      >
+                        <span className="text-gray-500">使用全局配置</span>
+                      </div>
+                      {providers.map((p) => (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            setAgentForm({ ...agentForm, modelConfig: { ...agentForm.modelConfig, providerId: p.id, modelId: undefined } })
+                            setProviderDropdownOpen(false)
+                          }}
+                          className={`px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer ${
+                            agentForm.modelConfig.providerId === p.id ? 'bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400' : ''
+                          }`}
+                        >
+                          <span>{p.name}</span>
+                          <span className="text-xs text-gray-400 ml-2">{p.baseUrl}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* 选中 provider 后显示其默认模型 */}
+              {agentForm.modelConfig.providerId && (() => {
+                const selectedProvider = providers.find((p) => p.id === agentForm.modelConfig.providerId)
+                if (!selectedProvider) return null
+                const defaultModel = selectedProvider.defaultModelId
+                  ? selectedProvider.models.find((m) => m.id === selectedProvider.defaultModelId)
+                  : null
+                return (
+                  <div className="px-3 py-2 text-xs bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <span className="text-gray-500">使用模型：</span>
+                    <span className="text-gray-700 dark:text-gray-300 font-medium">
+                      {defaultModel ? defaultModel.name : selectedProvider.defaultModelId || '未选择模型'}
+                    </span>
+                    <span className="text-gray-400 ml-2">（在 AI 源管理中配置）</span>
+                  </div>
+                )
+              })()}
+
               <div>
                 <label className="block text-xs text-gray-500 mb-1">
                   Temperature: {agentForm.modelConfig.temperature ?? '默认'}

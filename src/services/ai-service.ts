@@ -1,4 +1,4 @@
-import type { Message, GlobalConfig, ToolDefinition } from '../types'
+import type { Message, ResolvedAIConfig, ToolDefinition } from '../types'
 
 export interface StreamCallbacks {
   onToken: (token: string) => void
@@ -31,7 +31,7 @@ export const aiService = {
    */
   async streamChat(
     messages: Message[],
-    config: GlobalConfig,
+    config: ResolvedAIConfig,
     systemPrompt: string | null,
     tools: ToolDefinition[],
     signal: AbortSignal,
@@ -39,7 +39,7 @@ export const aiService = {
   ): Promise<void> {
     const apiKey = config.apiKey
     const baseUrl = config.baseUrl.replace(/\/+$/, '')
-    const model = config.defaultModel
+    const model = config.model
     const temperature = config.temperature
     const maxTokens = config.maxTokens
 

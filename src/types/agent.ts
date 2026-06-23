@@ -36,7 +36,11 @@ export interface TerminationConfig {
  * Agent 模型配置（可覆盖全局配置）
  */
 export interface AgentModelConfig {
-  /** 绑定的模型（为空则使用全局配置） */
+  /** 绑定的 AI 源 ID（为空则使用对话/全局配置） */
+  providerId?: string
+  /** 绑定的模型 ID（为空则使用对话/全局配置） */
+  modelId?: string
+  /** @deprecated 保留用于数据迁移，请使用 modelId */
   model?: string
   /** temperature（为空则使用全局配置） */
   temperature?: number

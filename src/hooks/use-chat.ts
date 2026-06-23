@@ -9,9 +9,10 @@ import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
 import { useMCPToolStore } from '../stores/mcp-tool-store'
+import { useAIProviderStore } from '../stores/ai-provider-store'
 import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
-import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress } from '../types'
+import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
 
 /** 将进度事件类型映射到阶段 */
 function mapProgressTypeToPhase(type: string): SiteAnalyzerLiveProgress['phase'] {
@@ -54,7 +55,28 @@ export function useChat() {
   } = useConversationStore()
 
   const globalConfig = useGlobalConfigStore()
+  const resolveConfig = useAIProviderStore((s) => s.resolveConfig)
   const { getAgent, getPrompt, selectedPromptId } = useAgentStore()
+
+  /**
+   * 解析当前对话的 AI 配置（优先级：Agent 绑定 > 对话级别 > 全局默认）
+   */
+  const resolveCurrentConfig = useCallback(
+    (conversationId?: string, agent?: AgentProfile): ResolvedAIConfig | null => {
+      // Agent 模式：优先使用 agent 绑定的 provider
+      if (agent?.modelConfig?.providerId) {
+        return resolveConfig(agent.modelConfig.providerId)
+      }
+      // 对话级别配置
+      const conv = conversationId ? getConversation(conversationId) : undefined
+      if (conv?.aiConfig) {
+        return resolveConfig(conv.aiConfig.providerId)
+      }
+      // 全局默认
+      return resolveConfig()
+    },
+    [resolveConfig, getConversation]
+  )
 
   const isStreamingRef = useRef(false)
 
@@ -178,7 +200,7 @@ export function useChat() {
         agentMessage,
         history,
         allTools,
-        globalConfig,
+        resolveCurrentConfig(convId, agent)!,
         abortControllerRef.current!.signal,
         {
           onStep: (step) => {
@@ -309,7 +331,7 @@ export function useChat() {
         }
       )
     },
-    [globalConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex]
+    [resolveCurrentConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex]
   )
 
   /**
@@ -393,7 +415,7 @@ export function useChat() {
 
       await aiService.streamChat(
         history,
-        globalConfig,
+        resolveCurrentConfig(convId)!,
         prompt?.content ?? null,
         toolDefs,
         abortControllerRef.current.signal,
@@ -452,7 +474,7 @@ export function useChat() {
     },
     [
       currentConversationId,
-      globalConfig,
+      resolveCurrentConfig,
       selectedPromptId,
       getPrompt,
       getAgent,
@@ -517,7 +539,7 @@ export function useChat() {
 
         await aiService.streamChat(
           limitHistory,
-          globalConfig,
+          resolveCurrentConfig(conversationId)!,
           promptAtLimit?.content ?? null,
           [], // 不传工具定义，防止 AI 继续调用工具
           limitController.signal,
@@ -641,7 +663,7 @@ export function useChat() {
       // 关键改动：传入工具定义（而非空数组），让 AI 在需要时可以继续调用工具
       await aiService.streamChat(
         history,
-        globalConfig,
+        resolveCurrentConfig(conversationId)!,
         prompt?.content ?? null,
         toolDefs,
         controller.signal,
@@ -707,7 +729,7 @@ export function useChat() {
         }
       )
     },
-    [globalConfig, selectedPromptId, getPrompt, addMessage, updateMessage, getMessages, getVisibleMessages]
+    [resolveCurrentConfig, selectedPromptId, getPrompt, addMessage, updateMessage, getMessages, getVisibleMessages]
   )
 
   /**
@@ -775,7 +797,7 @@ export function useChat() {
           '', // 空 prompt，Agent 从历史中恢复上下文
           history,
           allTools,
-          globalConfig,
+          resolveCurrentConfig(currentConversationId, agent)!,
           abortControllerRef.current.signal,
           {
             onStep: (step) => {
@@ -892,7 +914,7 @@ export function useChat() {
 
         await aiService.streamChat(
           history,
-          globalConfig,
+          resolveCurrentConfig(currentConversationId)!,
           prompt?.content ?? null,
           toolDefs,
           abortControllerRef.current.signal,
@@ -935,7 +957,7 @@ export function useChat() {
     },
     [
       currentConversationId,
-      globalConfig,
+      resolveCurrentConfig,
       selectedPromptId,
       getPrompt,
       getAgent,
@@ -1014,7 +1036,7 @@ export function useChat() {
         agent,
         history,
         allTools,
-        globalConfig,
+        resolveCurrentConfig(currentConversationId, agent)!,
         abortControllerRef.current.signal,
         {
           onStep: (step) => {
@@ -1132,7 +1154,7 @@ export function useChat() {
         }
       )
     },
-    [currentConversationId, globalConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent]
+    [currentConversationId, resolveCurrentConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent]
   )
 
   /**
@@ -1234,7 +1256,7 @@ export function useChat() {
           agentMessage,
           visibleHistory.slice(0, -1),
           allTools,
-          globalConfig,
+          resolveCurrentConfig(currentConversationId, agent)!,
           abortControllerRef.current.signal,
           {
             onStep: (step) => {
@@ -1351,7 +1373,7 @@ export function useChat() {
 
         await aiService.streamChat(
           visibleHistory,
-          globalConfig,
+          resolveCurrentConfig(currentConversationId)!,
           prompt?.content ?? null,
           toolDefs,
           abortControllerRef.current.signal,
@@ -1394,7 +1416,7 @@ export function useChat() {
     },
     [
       currentConversationId,
-      globalConfig,
+      resolveCurrentConfig,
       selectedPromptId,
       getPrompt,
       getAgent,

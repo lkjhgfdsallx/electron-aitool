@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { X, Save, RotateCcw, Trash2, Key, Cpu, Palette, Database, Check } from 'lucide-react'
+import { X, Save, RotateCcw, Trash2, Globe, Cpu, Palette, Database, Check } from 'lucide-react'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useConversationStore } from '../../stores/conversation-store'
+import { AIProviderManager } from './AIProviderManager'
 
-type TabKey = 'api' | 'model' | 'ui' | 'data'
+type TabKey = 'ai-providers' | 'model' | 'ui' | 'data'
 
-const tabs: { key: TabKey; label: string; icon: typeof Key }[] = [
-  { key: 'api', label: 'API 配置', icon: Key },
+const tabs: { key: TabKey; label: string; icon: typeof Globe }[] = [
+  { key: 'ai-providers', label: 'AI 源', icon: Globe },
   { key: 'model', label: '模型参数', icon: Cpu },
   { key: 'ui', label: '界面偏好', icon: Palette },
   { key: 'data', label: '数据管理', icon: Database }
@@ -22,10 +23,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const settings = useSettingsStore()
   const { clearMessages, conversations } = useConversationStore()
 
-  const [activeTab, setActiveTab] = useState<TabKey>('api')
-  const [apiKey, setApiKey] = useState(config.apiKey)
-  const [baseUrl, setBaseUrl] = useState(config.baseUrl)
-  const [defaultModel, setDefaultModel] = useState(config.defaultModel)
+  const [activeTab, setActiveTab] = useState<TabKey>('ai-providers')
   const [temperature, setTemperature] = useState(config.temperature)
   const [maxTokens, setMaxTokens] = useState(config.maxTokens)
   const [streamEnabled, setStreamEnabled] = useState(config.streamEnabled)
@@ -33,9 +31,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const handleSave = () => {
     config.updateConfig({
-      apiKey,
-      baseUrl,
-      defaultModel,
       temperature,
       maxTokens,
       streamEnabled
@@ -92,44 +87,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
       {/* 标签页内容 */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* API 配置 */}
-        {activeTab === 'api' && (
-          <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-4 space-y-4 animate-fade-in">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-              <Key size={15} className="text-accent-500" /> API 配置
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-muted mb-1.5">API Key</label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted mb-1.5">Base URL</label>
-                <input
-                  type="text"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.openai.com/v1"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted mb-1.5">默认模型</label>
-                <input
-                  type="text"
-                  value={defaultModel}
-                  onChange={(e) => setDefaultModel(e.target.value)}
-                  placeholder="gpt-4o-mini"
-                  className={inputClass}
-                />
-              </div>
-            </div>
+        {/* AI 源管理 */}
+        {activeTab === 'ai-providers' && (
+          <div className="animate-fade-in h-full">
+            <AIProviderManager onClose={() => {}} />
           </div>
         )}
 

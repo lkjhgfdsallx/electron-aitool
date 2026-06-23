@@ -31,13 +31,20 @@ export type {
   ToolCreateInput,
   MCPServerConfig
 } from './tool'
-export type { GlobalConfig } from './config'
+export type { GlobalConfig, ResolvedAIConfig } from './config'
 export { DEFAULT_GLOBAL_CONFIG } from './config'
 export type {
   KnowledgeBaseFile,
   KnowledgeBaseChunk,
   SearchResult
 } from './knowledge-base'
+export type {
+  AIProvider,
+  AIProviderCreateInput,
+  AIProviderUpdateInput,
+  AIModel,
+  ConversationAIConfig
+} from './ai-provider'
 
 // ==================== 界面偏好类型 ====================
 

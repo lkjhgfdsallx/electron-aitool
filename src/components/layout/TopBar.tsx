@@ -4,13 +4,12 @@ import {
   Moon,
   Sun,
   Monitor,
-  Sparkles,
-  Cpu
+  Sparkles
 } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useConversationStore } from '../../stores/conversation-store'
-import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useAgentStore } from '../../stores/agent-store'
+import { ModelSelector } from '../chat/ModelSelector'
 import type { ThemeMode } from '../../types'
 
 interface TopBarProps {
@@ -20,7 +19,6 @@ interface TopBarProps {
 export function TopBar({ onOpenSettings }: TopBarProps) {
   const { theme, setTheme } = useSettingsStore()
   const { currentConversationId, getConversation } = useConversationStore()
-  const { defaultModel } = useGlobalConfigStore()
   const { getAgent } = useAgentStore()
 
   const currentConversation = currentConversationId ? getConversation(currentConversationId) : undefined
@@ -77,11 +75,8 @@ export function TopBar({ onOpenSettings }: TopBarProps) {
 
       {/* 右侧：模型指示器 + 主题 + 设置 */}
       <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        {/* 模型指示器 */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-100 dark:bg-surface-800 text-xs text-gray-500 dark:text-gray-400 mr-1">
-          <Cpu size={12} className="text-accent-500" />
-          <span className="font-medium max-w-[100px] truncate">{defaultModel || '未配置'}</span>
-        </div>
+        {/* AI 源切换器 */}
+        <ModelSelector conversationId={currentConversationId || undefined} onOpenSettings={onOpenSettings} />
 
         {/* 主题切换 */}
         <button

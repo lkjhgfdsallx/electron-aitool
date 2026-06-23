@@ -1,11 +1,15 @@
 // ==================== 对话相关类型 ====================
 
+import type { ConversationAIConfig } from './ai-provider'
+
 export interface Conversation {
   id: string
   title: string
   promptId?: string // 关联的提示词 ID
   /** 关联的 Agent ID（Agent 模式） */
   agentId?: string
+  /** 对话级别的 AI 源配置（覆盖全局默认） */
+  aiConfig?: ConversationAIConfig
   isPinned: boolean
   createdAt: number
   updatedAt: number

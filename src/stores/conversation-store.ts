@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Conversation, Message, MessageCreateInput } from '../types'
+import type { Conversation, Message, MessageCreateInput, ConversationAIConfig } from '../types'
 
 interface ConversationStore {
   conversations: Conversation[]
@@ -16,6 +16,7 @@ interface ConversationStore {
   selectConversation: (id: string | null) => void
   getConversation: (id: string) => Conversation | undefined
   setConversationAgent: (id: string, agentId: string | undefined) => void
+  setConversationAIConfig: (id: string, aiConfig: ConversationAIConfig | undefined) => void
 
   // Message Actions
   addMessage: (conversationId: string, input: MessageCreateInput) => Message
@@ -103,6 +104,14 @@ export const useConversationStore = create<ConversationStore>()(
         set((state) => ({
           conversations: state.conversations.map((c) =>
             c.id === id ? { ...c, agentId, updatedAt: Date.now() } : c
+          )
+        }))
+      },
+
+      setConversationAIConfig: (id, aiConfig) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, aiConfig, updatedAt: Date.now() } : c
           )
         }))
       },

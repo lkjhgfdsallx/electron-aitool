@@ -14,7 +14,7 @@ import type {
   AgentStep,
   AgentStepType,
   AgentRunContext,
-  GlobalConfig,
+  ResolvedAIConfig,
   Message,
   Tool,
   ToolDefinition,
@@ -204,7 +204,7 @@ export async function runAgent(
   userMessage: string,
   conversationHistory: Message[],
   allTools: Tool[],
-  globalConfig: GlobalConfig,
+  resolvedConfig: ResolvedAIConfig,
   signal: AbortSignal,
   callbacks: AgentEngineCallbacks
 ): Promise<void> {
@@ -406,9 +406,9 @@ export async function runAgent(
       loginType,
       loginCredential: {},
       aiConfig: {
-        baseUrl: String(args.ai_base_url ?? globalConfig.baseUrl ?? ''),
-        apiKey: String(args.ai_api_key ?? globalConfig.apiKey ?? ''),
-        modelId: String(args.ai_model_id ?? globalConfig.defaultModel ?? '')
+        baseUrl: String(args.ai_base_url ?? resolvedConfig.baseUrl ?? ''),
+        apiKey: String(args.ai_api_key ?? resolvedConfig.apiKey ?? ''),
+        modelId: String(args.ai_model_id ?? resolvedConfig.model ?? '')
       },
       taskId
     }
@@ -645,11 +645,11 @@ export async function runAgent(
       await aiService.streamChat(
         toMessages(messages),
         {
-          ...globalConfig,
+          ...resolvedConfig,
           // 覆盖 Agent 特定配置
-          defaultModel: agent.modelConfig.model || globalConfig.defaultModel,
-          temperature: agent.modelConfig.temperature ?? globalConfig.temperature,
-          maxTokens: agent.modelConfig.maxTokens || globalConfig.maxTokens
+          model: agent.modelConfig.modelId || agent.modelConfig.model || resolvedConfig.model,
+          temperature: agent.modelConfig.temperature ?? resolvedConfig.temperature,
+          maxTokens: agent.modelConfig.maxTokens || resolvedConfig.maxTokens
         },
         systemPrompt,
         toolDefs,
@@ -1007,7 +1007,7 @@ export async function resumeAgent(
   agent: AgentProfile,
   conversationHistory: Message[],
   allTools: Tool[],
-  globalConfig: GlobalConfig,
+  resolvedConfig: ResolvedAIConfig,
   signal: AbortSignal,
   callbacks: AgentEngineCallbacks
 ): Promise<void> {
@@ -1387,10 +1387,10 @@ export async function resumeAgent(
       await aiService.streamChat(
         toMessages(messages),
         {
-          ...globalConfig,
-          defaultModel: agent.modelConfig.model || globalConfig.defaultModel,
-          temperature: agent.modelConfig.temperature ?? globalConfig.temperature,
-          maxTokens: agent.modelConfig.maxTokens || globalConfig.maxTokens
+          ...resolvedConfig,
+          model: agent.modelConfig.modelId || agent.modelConfig.model || resolvedConfig.model,
+          temperature: agent.modelConfig.temperature ?? resolvedConfig.temperature,
+          maxTokens: agent.modelConfig.maxTokens || resolvedConfig.maxTokens
         },
         systemPrompt,
         toolDefs,

@@ -1,0 +1,185 @@
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { ChevronDown, Globe, Check, Settings } from 'lucide-react'
+import { useAIProviderStore } from '../../stores/ai-provider-store'
+import { useConversationStore } from '../../stores/conversation-store'
+import { useGlobalConfigStore } from '../../stores/global-config-store'
+
+interface ModelSelectorProps {
+  conversationId?: string
+  onOpenSettings?: () => void
+}
+
+export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const { providers } = useAIProviderStore()
+  const { getConversation, setConversationAIConfig } = useConversationStore()
+  const { activeProviderId, updateConfig } = useGlobalConfigStore()
+
+  const conversation = conversationId ? getConversation(conversationId) : undefined
+  const currentProviderId = conversation?.aiConfig?.providerId || activeProviderId
+
+  // 确定当前使用的 provider
+  const currentProvider = useMemo(() => {
+    if (currentProviderId) {
+      return providers.find((p) => p.id === currentProviderId)
+    }
+    return providers.find((p) => p.isDefault) || providers[0]
+  }, [providers, currentProviderId])
+
+  // 当前模型名称（从 provider.defaultModelId 获取）
+  const currentModelName = useMemo(() => {
+    if (!currentProvider) return '未配置'
+    if (!currentProvider.defaultModelId) return currentProvider.name
+    const model = currentProvider.models.find((m) => m.id === currentProvider.defaultModelId)
+    return model?.name || currentProvider.defaultModelId
+  }, [currentProvider])
+
+  // 计算下拉面板位置
+  const updateDropdownPos = useCallback(() => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect()
+      setDropdownPos({
+        top: rect.bottom - 2,
+        right: window.innerWidth - rect.right
+      })
+    }
+  }, [])
+
+  // 点击外部关闭 & 滚动关闭
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        triggerRef.current && !triggerRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    const handleScroll = (e: Event) => {
+      if (dropdownRef.current && dropdownRef.current.contains(e.target as Node)) return
+      setIsOpen(false)
+    }
+    updateDropdownPos()
+    document.addEventListener('mousedown', handleClickOutside)
+    window.addEventListener('resize', () => { updateDropdownPos() })
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('resize', () => { updateDropdownPos() })
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [isOpen, updateDropdownPos])
+
+  const handleToggle = () => {
+    if (!isOpen) {
+      updateDropdownPos()
+    }
+    setIsOpen(!isOpen)
+  }
+
+  const handleSelectProvider = (providerId: string) => {
+    // 对话级别切换 provider
+    if (conversationId) {
+      setConversationAIConfig(conversationId, { providerId })
+    } else {
+      // 无对话时切换全局默认
+      updateConfig({ activeProviderId: providerId })
+    }
+    setIsOpen(false)
+  }
+
+  if (providers.length === 0) {
+    return (
+      <button
+        onClick={onOpenSettings}
+        className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-dashed border-surface-300 dark:border-surface-600 text-muted hover:border-accent-300 dark:hover:border-accent-600 transition-all"
+      >
+        <Globe size={12} />
+        <span>配置 AI 源</span>
+      </button>
+    )
+  }
+
+  const dropdownPanel = isOpen ? createPortal(
+    <div
+      ref={dropdownRef}
+      className="fixed z-[9999] w-72 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden"
+      style={{ top: dropdownPos.top, right: dropdownPos.right }}
+    >
+      <div className="max-h-80 overflow-y-auto">
+        {providers.map((provider) => {
+          const isActive = currentProvider?.id === provider.id
+          const defaultModel = provider.defaultModelId
+            ? provider.models.find((m) => m.id === provider.defaultModelId)
+            : null
+          return (
+            <div
+              key={provider.id}
+              onClick={() => handleSelectProvider(provider.id)}
+              className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-accent-50 dark:bg-accent-950/30 border-l-2 border-accent-500'
+                  : 'hover:bg-accent-50/50 dark:hover:bg-accent-950/20 border-l-2 border-transparent'
+              }`}
+            >
+              <div className="w-8 h-8 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0">
+                <Globe size={14} className="text-accent-600 dark:text-accent-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`text-xs truncate ${
+                  isActive
+                    ? 'text-accent-700 dark:text-accent-300 font-medium'
+                    : 'text-gray-700 dark:text-gray-300'
+                }`}>
+                  {provider.name}
+                </div>
+                <div className="text-[10px] text-muted truncate">
+                  {defaultModel ? defaultModel.name : provider.defaultModelId || '未选择模型'}
+                </div>
+              </div>
+              {isActive && (
+                <Check size={14} className="text-accent-500 flex-shrink-0" />
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {onOpenSettings && (
+        <div
+          onClick={(e) => { e.stopPropagation(); setIsOpen(false); onOpenSettings() }}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 border-t border-surface-100 dark:border-surface-700/40 text-xs text-muted hover:text-accent-500 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 cursor-pointer transition-colors"
+        >
+          <Settings size={12} />
+          <span>管理 AI 源</span>
+        </div>
+      )}
+    </div>,
+    document.body
+  ) : null
+
+  return (
+    <>
+      {/* 触发按钮 */}
+      <button
+        ref={triggerRef}
+        onClick={handleToggle}
+        className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/60 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all shadow-sm max-w-[200px]"
+      >
+        <Globe size={12} className="text-accent-500 flex-shrink-0" />
+        <span className="text-gray-600 dark:text-gray-400 truncate">
+          {currentProvider ? `${currentProvider.name} · ${currentModelName}` : '选择 AI 源'}
+        </span>
+        <ChevronDown size={12} className={`text-gray-400 transition-transform duration-200 flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Portal 下拉面板 */}
+      {dropdownPanel}
+    </>
+  )
+}
