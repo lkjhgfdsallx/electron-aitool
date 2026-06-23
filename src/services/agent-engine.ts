@@ -25,6 +25,7 @@ import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
 import { siteAnalyzerService } from './site-analyzer-service'
+import { knowledgeBaseService } from './knowledge-base-service'
 
 /** Agent 引擎回调 */
 export interface AgentEngineCallbacks {
@@ -224,8 +225,19 @@ export async function runAgent(
     memoryContext = memoryService.formatMemoriesAsContext(agent.id)
   }
 
+  // RAG: 检索知识库上下文
+  let knowledgeContext = ''
+  try {
+    knowledgeContext = await knowledgeBaseService.searchAndFormatContext(userMessage)
+  } catch {
+    // 知识库检索失败不影响正常流程
+  }
+
+  // 合并记忆和知识库上下文
+  const combinedContext = memoryContext + knowledgeContext
+
   // 构建系统提示词
-  const systemPrompt = buildAgentSystemPrompt(agent, agentTools, memoryContext)
+  const systemPrompt = buildAgentSystemPrompt(agent, agentTools, combinedContext)
 
   // 构建对话历史（限制轮数）
   const maxHistory = agent.memoryConfig.historyTurns * 2 // 每轮 = user + assistant

@@ -5,6 +5,7 @@ import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
 import { reportStore } from '../services/report-store'
+import { knowledgeBaseService } from '../services/knowledge-base-service'
 import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
@@ -408,6 +409,17 @@ export function useChat() {
         branchIndex: currentBranchIdx
       })
 
+      // RAG: 检索知识库上下文
+      let systemPromptWithKB = prompt?.content ?? null
+      try {
+        const kbContext = await knowledgeBaseService.searchAndFormatContext(content)
+        if (kbContext) {
+          systemPromptWithKB = (systemPromptWithKB ?? '') + kbContext
+        }
+      } catch {
+        // 知识库检索失败不影响正常流程
+      }
+
       // 发送 AI 请求
       let fullContent = ''
       let reasoningContent = ''
@@ -416,7 +428,7 @@ export function useChat() {
       await aiService.streamChat(
         history,
         resolveCurrentConfig(convId)!,
-        prompt?.content ?? null,
+        systemPromptWithKB,
         toolDefs,
         abortControllerRef.current.signal,
         {

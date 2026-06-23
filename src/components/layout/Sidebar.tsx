@@ -1,4 +1,4 @@
-import { Plus, PanelLeftClose, PanelLeft, FileText, Bot, Plug, Settings, Keyboard, HelpCircle } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeft, FileText, Bot, Plug, Settings, Keyboard, HelpCircle, Database } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
@@ -8,9 +8,10 @@ interface SidebarProps {
   onOpenAgentManager?: () => void
   onOpenMCP?: () => void
   onOpenSettings?: () => void
+  onOpenKnowledgeBase?: () => void
 }
 
-export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP }: SidebarProps) {
+export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP, onOpenKnowledgeBase }: SidebarProps) {
   const { createConversation } = useConversationStore()
   const { sidebarCollapsed, toggleSidebar } = useSettingsStore()
 
@@ -58,6 +59,13 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP }: 
           title="MCP 配置"
         >
           <Plug size={18} />
+        </button>
+        <button
+          onClick={onOpenKnowledgeBase}
+          className="p-2.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all"
+          title="知识库"
+        >
+          <Database size={18} />
         </button>
 
         <div className="flex-1" />
@@ -133,6 +141,13 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP }: 
           >
             <Plug size={13} />
             <span>MCP</span>
+          </button>
+          <button
+            onClick={onOpenKnowledgeBase}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-800 hover:text-violet-600 dark:hover:text-violet-400 transition-all"
+          >
+            <Database size={13} />
+            <span>知识库</span>
           </button>
         </div>
       </div>

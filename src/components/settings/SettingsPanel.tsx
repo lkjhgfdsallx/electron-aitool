@@ -16,9 +16,10 @@ const tabs: { key: TabKey; label: string; icon: typeof Globe }[] = [
 
 interface SettingsPanelProps {
   onClose: () => void
+  onOpenKnowledgeBase?: () => void
 }
 
-export function SettingsPanel({ onClose }: SettingsPanelProps) {
+export function SettingsPanel({ onClose, onOpenKnowledgeBase }: SettingsPanelProps) {
   const config = useGlobalConfigStore()
   const settings = useSettingsStore()
   const { clearMessages, conversations } = useConversationStore()
@@ -210,12 +211,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
               <Database size={15} className="text-accent-500" /> 数据管理
             </h3>
-            <button
-              onClick={handleClearAll}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-xl hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
-            >
-              <Trash2 size={14} /> 清除所有对话数据
-            </button>
+            <div className="space-y-2">
+              {onOpenKnowledgeBase && (
+                <button
+                  onClick={() => {
+                    onClose()
+                    onOpenKnowledgeBase()
+                  }}
+                  className="flex items-center gap-2 w-full px-4 py-2 text-sm text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800/60 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
+                >
+                  <Database size={14} /> 管理知识库
+                </button>
+              )}
+              <button
+                onClick={handleClearAll}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-xl hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
+              >
+                <Trash2 size={14} /> 清除所有对话数据
+              </button>
+            </div>
           </div>
         )}
       </div>

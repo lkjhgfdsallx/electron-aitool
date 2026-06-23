@@ -203,5 +203,37 @@ export const knowledgeBaseService = {
   async clearAll(): Promise<void> {
     await dbService.clearAll()
     embeddingService.dispose()
+  },
+
+  /**
+   * RAG 检索：根据用户消息搜索知识库，返回格式化的上下文字符串
+   * 如果知识库为空或无匹配结果，返回空字符串
+   */
+  async searchAndFormatContext(
+    query: string,
+    topK: number = 5,
+    threshold: number = 0.3
+  ): Promise<string> {
+    try {
+      // 检查是否有知识库文件
+      const files = await dbService.getAllFileMetadata()
+      const readyFiles = files.filter((f) => f.status === 'ready')
+      if (readyFiles.length === 0) return ''
+
+      const results = await this.search(query, topK, threshold)
+      if (results.length === 0) return ''
+
+      // 格式化为上下文
+      let context = '\n\n## 知识库参考内容\n以下是从知识库中检索到的相关内容，请参考这些信息来回答用户的问题：\n'
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i]
+        context += `\n### [${i + 1}] 来自文件: ${r.fileName}（相似度: ${(r.score * 100).toFixed(1)}%）\n${r.chunk.content}\n`
+      }
+      context += '\n请优先使用以上知识库内容来回答问题。如果知识库内容不相关，请根据你的通用知识回答。\n'
+      return context
+    } catch (error) {
+      console.error('知识库 RAG 检索失败:', error)
+      return ''
+    }
   }
 }

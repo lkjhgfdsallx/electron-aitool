@@ -21,15 +21,11 @@ import {
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
-import { usePromptStore } from '../../stores/agent-store'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import type {
   AgentProfile,
   AgentProfileCreateInput,
   PlanningStrategy,
-  MemoryConfig,
-  TerminationConfig,
-  AgentModelConfig,
   Prompt,
   PromptCreateInput
 } from '../../types'
@@ -50,6 +46,14 @@ const PLANNING_STRATEGIES: { value: PlanningStrategy; label: string; description
 
 // 新建 Agent 时默认选中所有工具的 ID
 const ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
+
+// 始终启用但对用户不可见的工具 ID（web 搜索相关能力由系统自动注入）
+const HIDDEN_ALWAYS_ENABLED_TOOL_IDS = ['builtin:web_search', 'builtin:fetch_webpage']
+
+// 在 UI 中可见的内置工具（排除始终隐藏的工具）
+const VISIBLE_BUILT_IN_TOOLS = BUILT_IN_TOOLS.filter(
+  (t) => !HIDDEN_ALWAYS_ENABLED_TOOL_IDS.includes(t.id)
+)
 
 const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
   name: '',
@@ -94,12 +98,14 @@ export function AgentManager({ onClose }: AgentManagerProps) {
   }
 
   const handleEditAgent = (agent: AgentProfile) => {
+    // 确保隐藏的始终启用工具始终包含在列表中
+    const mergedToolIds = [...new Set([...agent.enabledToolIds, ...HIDDEN_ALWAYS_ENABLED_TOOL_IDS])]
     setAgentForm({
       name: agent.name,
       description: agent.description,
       avatar: agent.avatar,
       systemPrompt: agent.systemPrompt,
-      enabledToolIds: agent.enabledToolIds,
+      enabledToolIds: mergedToolIds,
       planningStrategy: agent.planningStrategy,
       memoryConfig: { ...agent.memoryConfig },
       termination: { ...agent.termination },
@@ -112,10 +118,15 @@ export function AgentManager({ onClose }: AgentManagerProps) {
 
   const handleSaveAgent = () => {
     if (!agentForm.name.trim()) return
+    // 确保隐藏的始终启用工具始终被包含在保存数据中
+    const finalForm = {
+      ...agentForm,
+      enabledToolIds: [...new Set([...agentForm.enabledToolIds, ...HIDDEN_ALWAYS_ENABLED_TOOL_IDS])]
+    }
     if (editingAgent) {
-      updateAgent({ id: editingAgent.id, ...agentForm })
+      updateAgent({ id: editingAgent.id, ...finalForm })
     } else {
-      createAgent(agentForm)
+      createAgent(finalForm)
     }
     setIsCreating(false)
     setEditingAgent(null)
@@ -303,7 +314,7 @@ export function AgentManager({ onClose }: AgentManagerProps) {
             <div className="space-y-2">
               {/* 通用工具 */}
               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 pt-1">通用工具</div>
-              {BUILT_IN_TOOLS.map((tool) => (
+              {VISIBLE_BUILT_IN_TOOLS.map((tool) => (
                 <label
                   key={tool.id}
                   className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"

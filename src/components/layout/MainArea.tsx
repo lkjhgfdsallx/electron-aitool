@@ -47,7 +47,7 @@ export function MainArea({ activePanel, setActivePanel }: MainAreaProps) {
             activePanel === 'none' ? 'translate-x-full' : 'translate-x-0 animate-slide-in-right'
           }`}
         >
-          {activePanel === 'settings' && <SettingsPanel onClose={closePanel} />}
+          {activePanel === 'settings' && <SettingsPanel onClose={closePanel} onOpenKnowledgeBase={() => setActivePanel('knowledge-base')} />}
           {activePanel === 'agents' && <AgentManager onClose={closePanel} />}
           {activePanel === 'knowledge-base' && <KnowledgeBasePanel onClose={closePanel} />}
           {activePanel === 'tools' && <ToolEditor onClose={closePanel} />}

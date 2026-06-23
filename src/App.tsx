@@ -19,6 +19,7 @@ export default function App() {
       <Sidebar
         onOpenAgentManager={() => setActivePanel('agents')}
         onOpenMCP={() => setActivePanel('mcp')}
+        onOpenKnowledgeBase={() => setActivePanel('knowledge-base')}
       />
 
       {/* 主区域 */}
