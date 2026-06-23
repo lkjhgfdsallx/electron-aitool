@@ -6,6 +6,50 @@ import type { Tool } from '../types'
  */
 export const BUILT_IN_TOOLS: Tool[] = [
   {
+    id: 'builtin:web_search',
+    name: 'web_search',
+    description: '在互联网上搜索最新信息。当用户询问需要实时信息的问题时使用，如新闻、天气、股价、技术文档、最新事件等。返回搜索结果列表，包含标题、摘要和链接。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '搜索关键词，应简洁明确，例如 "2025年AI最新进展"'
+        },
+        max_results: {
+          type: 'number',
+          description: '返回结果数量，默认5，最大10'
+        }
+      },
+      required: ['query']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'builtin:fetch_webpage',
+    name: 'fetch_webpage',
+    description: '通过 URL 抓取网页内容并提取正文文本。当需要查看某个网页的详细内容时使用，例如在搜索后想深入了解某个结果页面，或用户提供了具体网址需要读取。返回网页的纯文本内容（自动去除广告、导航栏等无关内容）。',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: '要抓取的网页 URL，必须以 http:// 或 https:// 开头'
+        },
+        max_length: {
+          type: 'number',
+          description: '返回内容的最大字符数，默认 8000，最大 20000'
+        }
+      },
+      required: ['url']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
     id: 'builtin:get_current_time',
     name: 'get_current_time',
     description: '获取当前的日期和时间信息',

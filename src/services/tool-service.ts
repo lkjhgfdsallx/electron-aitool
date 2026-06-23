@@ -256,6 +256,66 @@ export const toolService = {
     args: Record<string, unknown>
   ): Promise<ToolExecuteResult> {
     switch (toolName) {
+      case 'web_search': {
+        try {
+          const query = String(args.query ?? '')
+          const maxResults = Number(args.max_results) || 5
+          if (!query) {
+            return { success: false, data: '', error: 'web_search 需要 query 参数' }
+          }
+          // 检查是否在 Electron 环境中
+          if (typeof window !== 'undefined' && window.electronAPI?.web?.search) {
+            const response = await window.electronAPI.web.search(query, maxResults)
+            if (response.success && response.results) {
+              return {
+                success: true,
+                data: JSON.stringify({
+                  query,
+                  results: response.results,
+                  count: response.results.length
+                })
+              }
+            }
+            return { success: false, data: '', error: response.error || '搜索失败' }
+          }
+          return { success: false, data: '', error: '网页搜索功能仅在 Electron 环境中可用' }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '搜索执行失败'
+          return { success: false, data: '', error: msg }
+        }
+      }
+
+      case 'fetch_webpage': {
+        try {
+          const url = String(args.url ?? '')
+          const maxLength = Number(args.max_length) || 8000
+          if (!url) {
+            return { success: false, data: '', error: 'fetch_webpage 需要 url 参数' }
+          }
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            return { success: false, data: '', error: 'URL 必须以 http:// 或 https:// 开头' }
+          }
+          if (typeof window !== 'undefined' && window.electronAPI?.web?.fetchWebpage) {
+            const response = await window.electronAPI.web.fetchWebpage(url, Math.min(maxLength, 20000))
+            if (response.success && response.content) {
+              return {
+                success: true,
+                data: JSON.stringify({
+                  url,
+                  content: response.content,
+                  length: response.content.length
+                })
+              }
+            }
+            return { success: false, data: '', error: response.error || '网页抓取失败' }
+          }
+          return { success: false, data: '', error: '网页抓取功能仅在 Electron 环境中可用' }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '网页抓取执行失败'
+          return { success: false, data: '', error: msg }
+        }
+      }
+
       case 'get_current_time':
         return {
           success: true,

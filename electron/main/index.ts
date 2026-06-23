@@ -6,6 +6,7 @@ import { setupMCPHandlers } from './mcp-proxy'
 import { generateTitleFromContent } from './title-generator'
 import { extractPdfText } from './pdf-extractor'
 import { setupSiteAnalyzerHandlers } from './site-analyzer-handler'
+import { searchWeb, fetchWebpage } from './web-search'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -75,6 +76,34 @@ app.on('window-all-closed', () => {
 })
 
 function setupIPCHandlers(): void {
+  // 网页搜索
+  ipcMain.handle('web:search', async (_event, query: string, maxResults?: number) => {
+    try {
+      const results = await searchWeb(query, maxResults)
+      return { success: true, results }
+    } catch (error) {
+      console.error('网页搜索失败:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '网页搜索失败'
+      }
+    }
+  })
+
+  // 抓取网页内容
+  ipcMain.handle('web:fetchWebpage', async (_event, url: string, maxLength?: number) => {
+    try {
+      const content = await fetchWebpage(url, maxLength)
+      return { success: true, content }
+    } catch (error) {
+      console.error('网页抓取失败:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '网页抓取失败'
+      }
+    }
+  })
+
   // 标题生成（TextRank + jieba 分词）
   ipcMain.handle('title:generate', (_event, content: string) => {
     try {

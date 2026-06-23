@@ -1,7 +1,19 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+// 搜索结果类型
+export interface SearchResult {
+  title: string
+  snippet: string
+  url: string
+}
+
 // 定义暴露给渲染进程的 API
 export interface ElectronAPI {
+  // 网页搜索
+  web: {
+    search: (query: string, maxResults?: number) => Promise<{ success: boolean; results?: SearchResult[]; error?: string }>
+    fetchWebpage: (url: string, maxLength?: number) => Promise<{ success: boolean; content?: string; error?: string }>
+  }
   // MCP 代理
   mcp: {
     fetchTools: (serverConfig: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
@@ -62,6 +74,12 @@ export interface ElectronAPI {
 }
 
 const electronAPI: ElectronAPI = {
+  web: {
+    search: (query: string, maxResults?: number) =>
+      ipcRenderer.invoke('web:search', query, maxResults),
+    fetchWebpage: (url: string, maxLength?: number) =>
+      ipcRenderer.invoke('web:fetchWebpage', url, maxLength)
+  },
   mcp: {
     fetchTools: (serverConfig: Record<string, unknown>) =>
       ipcRenderer.invoke('mcp:fetchTools', serverConfig),

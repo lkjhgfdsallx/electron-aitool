@@ -50,4 +50,5 @@ export interface UIPreferences {
   fontSize: 'small' | 'medium' | 'large'
   sidebarCollapsed: boolean
   sendWithEnter: boolean // Enter 发送, Shift+Enter 换行
+  webSearchEnabled: boolean // 联网搜索开关
 }

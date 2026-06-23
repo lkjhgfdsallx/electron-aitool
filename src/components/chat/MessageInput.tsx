@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square, Paperclip, FileText, X, Image, FileIcon, Loader2 } from 'lucide-react'
+import { Send, Square, Paperclip, FileText, X, Image, FileIcon, Loader2, Globe } from 'lucide-react'
 import { useSettingsStore, usePromptStore } from '../../stores'
 import { extractFileText } from '../../utils/file-extraction'
 import type { MessageAttachment } from '../../types'
@@ -67,7 +67,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
   const [isExtracting, setIsExtracting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { sendWithEnter } = useSettingsStore()
+  const { sendWithEnter, webSearchEnabled, toggleWebSearch } = useSettingsStore()
   const { prompts } = usePromptStore()
 
   // 自动调整高度
@@ -261,6 +261,19 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                 onChange={handleFileSelect}
                 className="hidden"
               />
+
+              {/* 联网搜索开关 */}
+              <button
+                onClick={toggleWebSearch}
+                className={`flex-shrink-0 p-1.5 rounded-lg transition-all ${
+                  webSearchEnabled
+                    ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                    : 'text-muted hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-700'
+                }`}
+                title={webSearchEnabled ? '联网搜索已开启（点击关闭）' : '联网搜索（模型按需调用）'}
+              >
+                <Globe size={18} />
+              </button>
 
               {/* 提示词按钮 */}
               <div className="relative">

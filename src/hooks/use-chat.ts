@@ -9,6 +9,7 @@ import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
 import { useMCPToolStore } from '../stores/mcp-tool-store'
+import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress } from '../types'
 
@@ -369,7 +370,11 @@ export function useChat() {
 
       // 普通模式使用内置工具 + MCP 工具
       const mcpTools = useMCPToolStore.getState().mcpTools
-      const normalModeTools = [...BUILT_IN_TOOLS, ...mcpTools]
+      const webSearchEnabled = useSettingsStore.getState().webSearchEnabled
+      const webToolNames = new Set(['web_search', 'fetch_webpage'])
+      const normalModeTools = [...BUILT_IN_TOOLS, ...mcpTools].filter(
+        (t) => !webToolNames.has(t.name) || webSearchEnabled
+      )
       const toolDefs = toolService.toToolDefinitions(normalModeTools)
 
       // 创建 assistant 消息（流式更新）
@@ -464,7 +469,7 @@ export function useChat() {
   )
 
   /** 普通模式工具调用最大迭代轮数，防止无限循环 */
-  const MAX_TOOL_ITERATIONS = 10
+  const MAX_TOOL_ITERATIONS = 30
 
   /**
    * 处理工具调用（普通模式）
@@ -479,15 +484,77 @@ export function useChat() {
       branchIndex?: number,
       iteration: number = 1
     ) => {
-      // 超过最大迭代次数，停止工具调用循环
+      // 超过最大迭代次数：通知 AI 工具调用已达上限，让 AI 做最终回复（不带工具）
       if (iteration > MAX_TOOL_ITERATIONS) {
+        // 向对话历史添加系统通知，告知 AI 工具调用已达上限
         addMessage(conversationId, {
           conversationId,
           role: 'system',
-          content: `工具调用已达最大迭代次数（${MAX_TOOL_ITERATIONS}轮），自动停止。`,
+          content: `[系统通知] 工具调用已达最大迭代次数（${MAX_TOOL_ITERATIONS}轮），已停止工具调用。请根据目前已获取的信息直接给出最终回复，不要再尝试调用工具。`,
           branchIndex
         })
-        isStreamingRef.current = false
+
+        // 获取最新历史（包含系统通知）
+        const limitHistory = branchIndex !== undefined
+          ? getVisibleMessages(conversationId)
+          : getMessages(conversationId)
+
+        const promptAtLimit = selectedPromptId ? getPrompt(selectedPromptId) : null
+
+        // 创建新的 assistant 消息用于 AI 的最终回复（不传工具定义）
+        const limitReplyMsg = addMessage(conversationId, {
+          conversationId,
+          role: 'assistant',
+          content: '',
+          isStreaming: true,
+          branchIndex
+        })
+
+        let limitFullContent = ''
+        let limitReasoningContent = ''
+        const limitController = new AbortController()
+        abortControllerRef.current = limitController
+
+        await aiService.streamChat(
+          limitHistory,
+          globalConfig,
+          promptAtLimit?.content ?? null,
+          [], // 不传工具定义，防止 AI 继续调用工具
+          limitController.signal,
+          {
+            onToken: (token) => {
+              limitFullContent += token
+              updateMessage(limitReplyMsg.id, { content: limitFullContent })
+            },
+            onReasoningToken: (token) => {
+              limitReasoningContent += token
+              updateMessage(limitReplyMsg.id, {
+                content: limitFullContent,
+                reasoningContent: limitReasoningContent
+              })
+            },
+            onUsage: (usage) => {
+              updateMessage(limitReplyMsg.id, { tokenUsage: usage })
+            },
+            onDone: () => {
+              updateMessage(limitReplyMsg.id, {
+                content: limitFullContent,
+                isStreaming: false,
+                reasoningContent: limitReasoningContent || undefined
+              })
+              isStreamingRef.current = false
+            },
+            onError: (error) => {
+              updateMessage(limitReplyMsg.id, {
+                content: limitFullContent || error,
+                isStreaming: false,
+                isError: true,
+                reasoningContent: limitReasoningContent || undefined
+              })
+              isStreamingRef.current = false
+            }
+          }
+        )
         return
       }
 
@@ -496,29 +563,38 @@ export function useChat() {
       )
       if (!currentMsg?.toolCalls) return
 
-      // 逐个执行工具调用，实时更新状态
+      // 并行执行所有工具调用
+      const updatedToolCalls = [...currentMsg.toolCalls]
+      // 先将所有工具调用标记为 running
       for (let i = 0; i < toolCalls.length; i++) {
-        const tc = toolCalls[i]
-
-        const updatedToolCalls = [...currentMsg.toolCalls]
         updatedToolCalls[i] = { ...updatedToolCalls[i], status: 'running' }
-        updateMessage(assistantMsgId, { toolCalls: updatedToolCalls })
+      }
+      updateMessage(assistantMsgId, { toolCalls: updatedToolCalls })
 
-        let args: Record<string, unknown> = {}
-        try {
-          args = JSON.parse(tc.arguments)
-        } catch {
-          // 空参数
+      // 并行执行
+      const results = await Promise.all(
+        toolCalls.map(async (tc) => {
+          let args: Record<string, unknown> = {}
+          try {
+            args = JSON.parse(tc.arguments)
+          } catch {
+            // 空参数
+          }
+          const result = await toolService.executeTool(tc.name, args, tools)
+          return { tc, result }
+        })
+      )
+
+      // 更新所有工具调用状态并添加结果消息
+      for (const { tc, result } of results) {
+        const idx = updatedToolCalls.findIndex((t) => t.id === tc.id)
+        if (idx !== -1) {
+          updatedToolCalls[idx] = {
+            ...updatedToolCalls[idx],
+            status: result.success ? 'completed' : 'error',
+            result: result.success ? result.data : result.error
+          }
         }
-
-        const result = await toolService.executeTool(tc.name, args, tools)
-
-        updatedToolCalls[i] = {
-          ...updatedToolCalls[i],
-          status: result.success ? 'completed' : 'error',
-          result: result.success ? result.data : result.error
-        }
-        updateMessage(assistantMsgId, { toolCalls: updatedToolCalls })
 
         // 将工具结果作为 tool 消息添加到对话历史
         addMessage(conversationId, {
@@ -530,10 +606,15 @@ export function useChat() {
           branchIndex
         })
       }
+      updateMessage(assistantMsgId, { toolCalls: [...updatedToolCalls] })
 
       // 构建工具定义（保持工具可用，支持后续轮次继续调用）
       const mcpTools2 = useMCPToolStore.getState().mcpTools
-      const normalModeTools2 = [...BUILT_IN_TOOLS, ...mcpTools2]
+      const webSearchEnabled2 = useSettingsStore.getState().webSearchEnabled
+      const webToolNames2 = new Set(['web_search', 'fetch_webpage'])
+      const normalModeTools2 = [...BUILT_IN_TOOLS, ...mcpTools2].filter(
+        (t) => !webToolNames2.has(t.name) || webSearchEnabled2
+      )
       const toolDefs = toolService.toToolDefinitions(normalModeTools2)
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
 

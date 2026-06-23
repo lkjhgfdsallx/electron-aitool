@@ -8,7 +8,8 @@ const DEFAULT_PREFERENCES: UIPreferences = {
   showTimestamp: true,
   fontSize: 'medium',
   sidebarCollapsed: false,
-  sendWithEnter: true
+  sendWithEnter: true,
+  webSearchEnabled: false
 }
 
 interface SettingsStore extends UIPreferences {
@@ -19,6 +20,7 @@ interface SettingsStore extends UIPreferences {
   setFontSize: (size: UIPreferences['fontSize']) => void
   toggleSidebar: () => void
   setSendWithEnter: (value: boolean) => void
+  toggleWebSearch: () => void
   resetPreferences: () => void
 }
 
@@ -44,6 +46,9 @@ export const useSettingsStore = create<SettingsStore>()(
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
 
       setSendWithEnter: (sendWithEnter) => set({ sendWithEnter }),
+
+      toggleWebSearch: () =>
+        set((state) => ({ webSearchEnabled: !state.webSearchEnabled })),
 
       resetPreferences: () => set({ ...DEFAULT_PREFERENCES })
     }),
