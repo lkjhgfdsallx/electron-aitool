@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import {
-  X,
   Save,
   RefreshCw,
   CheckCircle,
@@ -63,21 +62,17 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string
 
 function getCategoryColor(category: string) {
   return CATEGORY_COLORS[category] || {
-    bg: 'bg-gray-50 dark:bg-gray-950/30',
-    text: 'text-gray-700 dark:text-gray-300',
-    border: 'border-gray-200 dark:border-gray-800'
+    bg: 'bg-surface-50 dark:bg-surface-950/30',
+    text: 'text-surface-700 dark:text-surface-300',
+    border: 'border-surface-200 dark:border-surface-800'
   }
 }
 
 // ==================== 组件 ====================
 
-interface MCPConfigProps {
-  onClose: () => void
-}
-
 type TabType = 'presets' | 'custom'
 
-export function MCPConfig({ onClose }: MCPConfigProps) {
+export function MCPConfig() {
   const { mcpServers, updateConfig } = useGlobalConfigStore()
   const { mcpTools, loading: mcpLoading, errors: mcpErrors, refreshTools } = useMCPToolStore()
 
@@ -326,61 +321,52 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
   }, [servers])
 
   return (
-    <div className="flex flex-col h-full">
-      {/* 标题栏 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-2">
-          <Sparkles size={18} className="text-primary-500" />
-          <h2 className="text-lg font-semibold">MCP 扩展服务</h2>
-        </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* 说明文字 */}
-      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-        <p className="text-xs text-gray-600 dark:text-gray-400">
-          MCP（Model Context Protocol）扩展服务让 AI 获得额外能力，如抓取网页、操作 GitHub、查询数据库等。
-          <br />
+    <div className="space-y-6">
+      {/* 标题 + 描述 */}
+      <div>
+        <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
+          <Sparkles size={20} className="text-accent-500" />
+          MCP 扩展服务
+        </h2>
+        <p className="text-sm text-muted mt-1">
+          MCP 扩展服务让 AI 获得额外能力，如抓取网页、操作 GitHub、查询数据库等。
           选择下方的推荐服务一键启用，或切换到「自定义配置」手动添加。
         </p>
       </div>
 
-      {/* Tab 切换 */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setActiveTab('presets')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'presets'
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-          }`}
-        >
-          <Sparkles size={14} />
-          推荐服务
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('custom')
-            handleInitJsonEditor()
-          }}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'custom'
-              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-          }`}
-        >
-          <Code2 size={14} />
-          自定义配置
-        </button>
-      </div>
+      {/* Tab 切换 + 内容卡片 */}
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 overflow-hidden">
+        {/* Tab 栏 */}
+        <div className="flex border-b border-surface-200/80 dark:border-surface-700/60">
+          <button
+            onClick={() => setActiveTab('presets')}
+            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'presets'
+                ? 'border-accent-500 text-accent-600 dark:text-accent-400'
+                : 'border-transparent text-muted hover:text-surface-700 dark:hover:text-surface-300'
+            }`}
+          >
+            <Sparkles size={14} />
+            推荐服务
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('custom')
+              handleInitJsonEditor()
+            }}
+            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'custom'
+                ? 'border-accent-500 text-accent-600 dark:text-accent-400'
+                : 'border-transparent text-muted hover:text-surface-700 dark:hover:text-surface-300'
+            }`}
+          >
+            <Code2 size={14} />
+            自定义配置
+          </button>
+        </div>
 
-      {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {/* 内容区域 */}
+        <div className="p-5">
         {activeTab === 'presets' ? (
           <PresetTab
             servers={servers}
@@ -407,11 +393,12 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
             onJsonEdit={() => { jsonEditedByUser.current = true }}
           />
         )}
+        </div>
       </div>
 
-      {/* MCP 工具状态栏 */}
+      {/* MCP 工具状态 */}
       {(mcpTools.length > 0 || mcpLoading || Object.keys(mcpErrors).length > 0) && (
-        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 space-y-1">
+        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-4 space-y-2">
           {mcpLoading && (
             <div className="flex items-center gap-2 text-xs text-blue-500">
               <Loader2 size={12} className="animate-spin" />
@@ -419,13 +406,13 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
             </div>
           )}
           {mcpTools.length > 0 && (
-            <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+            <div className="flex items-center gap-2 text-xs text-success-600 dark:text-success-400">
               <CheckCircle size={12} />
               已加载 {mcpTools.length} 个 MCP 工具：{mcpTools.map((t) => t.name).join('、')}
             </div>
           )}
           {Object.entries(mcpErrors).map(([serverId, error]) => (
-            <div key={serverId} className="flex items-start gap-2 text-xs text-red-500">
+            <div key={serverId} className="flex items-start gap-2 text-xs text-danger-500">
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
               <span className="break-all">{error}</span>
             </div>
@@ -433,25 +420,24 @@ export function MCPConfig({ onClose }: MCPConfigProps) {
         </div>
       )}
 
-      {/* 底部按钮 */}
-      <div className="flex items-center gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+      {/* 底部操作按钮 */}
+      <div className="flex items-center gap-3">
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors text-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-xl hover:bg-accent-600 transition-colors text-sm"
         >
           <Save size={14} /> 保存配置
         </button>
         <button
           onClick={refreshTools}
           disabled={mcpLoading}
-          className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-sm text-gray-600 dark:text-gray-400 disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-sm text-muted disabled:opacity-50"
         >
           <RefreshCw size={14} className={mcpLoading ? 'animate-spin' : ''} />
           刷新工具
         </button>
-        <div className="flex-1" />
         {presetStatus.count > 0 && (
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted ml-auto">
             已启用 {presetStatus.count} 个服务
           </span>
         )}
@@ -512,7 +498,7 @@ function PresetTab({
             className={`border rounded-xl transition-all ${
               isInstalled && isEnabled
                 ? `${colors.border} ${colors.bg}`
-                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                : 'border-surface-200/80 dark:border-surface-700/60 hover:border-surface-300 dark:hover:border-surface-600'
             }`}
           >
             {/* 主卡片区域 */}
@@ -528,7 +514,7 @@ function PresetTab({
                 {/* 内容 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">
                       {preset.name}
                     </h3>
                     <span
@@ -542,12 +528,12 @@ function PresetTab({
                       </span>
                     )}
                     {isInstalled && !isEnabled && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-surface-100 text-muted dark:bg-surface-800 dark:text-muted border border-surface-200/80 dark:border-surface-700/60">
                         已禁用
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                  <p className="text-xs text-muted mt-1 leading-relaxed">
                     {preset.description}
                   </p>
 
@@ -565,7 +551,7 @@ function PresetTab({
                             }))
                           }
                           placeholder={preset.apiKeyHint || '请输入 API Key'}
-                          className="flex-1 px-2.5 py-1.5 text-xs border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
+                          className="flex-1 px-2.5 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 font-mono"
                           onClick={(e) => e.stopPropagation()}
                         />
                         <button
@@ -576,7 +562,7 @@ function PresetTab({
                               [preset.presetId]: !prev[preset.presetId]
                             }))
                           }}
-                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          className="p-1.5 text-muted hover:text-surface-600 dark:hover:text-surface-300"
                         >
                           {showApiKeys[preset.presetId] ? (
                             <EyeOff size={14} />
@@ -590,7 +576,7 @@ function PresetTab({
 
                   {/* 已安装时显示 API Key 信息 */}
                   {isInstalled && preset.requiresApiKey && (
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-[10px] text-muted mt-1">
                       {preset.apiKeyEnvKey}: ••••••••
                     </p>
                   )}
@@ -605,7 +591,7 @@ function PresetTab({
                       onTest(preset)
                     }}
                     disabled={isTestingThis || (!isInstalled && preset.requiresApiKey && !(apiKeyInputs[preset.presetId] || '').trim())}
-                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 disabled:opacity-40"
+                    className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted disabled:opacity-40"
                     title="测试连接"
                   >
                     <RefreshCw
@@ -622,8 +608,8 @@ function PresetTab({
                     }}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                       isInstalled && isEnabled
-                        ? 'bg-primary-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
+                        ? 'bg-accent-500'
+                        : 'bg-surface-300 dark:bg-surface-600'
                     }`}
                   >
                     <span
@@ -640,7 +626,7 @@ function PresetTab({
                         e.stopPropagation()
                         onRemove(preset)
                       }}
-                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 text-red-400 hover:text-red-500"
+                      className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-400 hover:text-red-500"
                       title="移除此服务"
                     >
                       <Trash2 size={14} />
@@ -665,12 +651,12 @@ function PresetTab({
                     <div>
                       <p>{testResult.message}</p>
                       {testResult.tools && testResult.tools.length > 0 && (
-                        <p className="text-[10px] text-gray-500 mt-0.5">
+                        <p className="text-[10px] text-muted mt-0.5">
                           可用工具：{testResult.tools.join('、')}
                         </p>
                       )}
                       {!testResult.success && (
-                        <p className="text-[10px] text-gray-400 mt-0.5">
+                        <p className="text-[10px] text-muted mt-0.5">
                           常见原因：网络不通、命令未安装（需先安装 Node.js/npm）、API Key 无效
                         </p>
                       )}
@@ -687,7 +673,7 @@ function PresetTab({
                     [preset.presetId]: !prev[preset.presetId]
                   }))
                 }
-                className="mt-2 ml-13 flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="mt-2 ml-13 flex items-center gap-1 text-[10px] text-muted hover:text-surface-600 dark:hover:text-surface-300"
               >
                 {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                 {isExpanded ? '收起详情' : '查看详情'}
@@ -695,10 +681,10 @@ function PresetTab({
 
               {/* 详情展开区 */}
               {isExpanded && (
-                <div className="mt-2 ml-13 p-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-xs text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-line">
+                <div className="mt-2 ml-13 p-2.5 bg-surface-50 dark:bg-surface-900/50 rounded-lg text-xs text-muted leading-relaxed whitespace-pre-line">
                   {preset.detail}
-                  <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-[10px] text-gray-400 font-mono">
+                  <div className="mt-2 pt-2 border-t border-surface-200/80 dark:border-surface-700/60">
+                    <p className="text-[10px] text-muted font-mono">
                       命令：{preset.defaultConfig.command} {preset.defaultConfig.args.join(' ')}
                     </p>
                   </div>
@@ -744,7 +730,7 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+        <label className="block text-xs font-medium text-surface-700 dark:text-surface-300 mb-1.5">
           MCP 服务器配置（JSON）
         </label>
         <textarea
@@ -764,7 +750,7 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
 }`}
           rows={16}
           spellCheck={false}
-          className="w-full px-3 py-2.5 text-xs font-mono border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y leading-relaxed"
+          className="w-full px-3 py-2.5 text-xs font-mono border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 resize-y leading-relaxed"
         />
       </div>
 
@@ -778,7 +764,7 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
       <div className="flex items-center gap-2">
         <button
           onClick={onApply}
-          className="px-3 py-1.5 text-xs bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+          className="px-3 py-1.5 text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
         >
           应用配置
         </button>
@@ -791,7 +777,7 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
               // ignore
             }
           }}
-          className="px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+          className="px-3 py-1.5 text-xs border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
         >
           格式化
         </button>

@@ -11,12 +11,15 @@ import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { ModelSelector } from '../chat/ModelSelector'
 import type { ThemeMode } from '../../types'
+import type { ViewMode } from '../settings/SettingsNavRail'
 
 interface TopBarProps {
+  viewMode: ViewMode
   onOpenSettings: () => void
+  onBackToChat: () => void
 }
 
-export function TopBar({ onOpenSettings }: TopBarProps) {
+export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) {
   const { theme, setTheme } = useSettingsStore()
   const { currentConversationId, getConversation } = useConversationStore()
   const { getAgent } = useAgentStore()
@@ -53,9 +56,13 @@ export function TopBar({ onOpenSettings }: TopBarProps) {
         </span>
       </div>
 
-      {/* 中间：当前对话标题 */}
+      {/* 中间：当前对话标题 或 设置页面标题 */}
       <div className="flex-1 flex items-center justify-center min-w-0 px-4">
-        {currentConversation ? (
+        {viewMode === 'settings' ? (
+          <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+            设置
+          </span>
+        ) : currentConversation ? (
           <div className="flex items-center gap-2 min-w-0">
             {currentAgent && (
               <span className="flex-shrink-0 text-xs px-2 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full font-medium">
@@ -75,8 +82,10 @@ export function TopBar({ onOpenSettings }: TopBarProps) {
 
       {/* 右侧：模型指示器 + 主题 + 设置 */}
       <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        {/* AI 源切换器 */}
-        <ModelSelector conversationId={currentConversationId || undefined} onOpenSettings={onOpenSettings} />
+        {/* AI 源切换器 - 仅在对话模式显示 */}
+        {viewMode === 'chat' && (
+          <ModelSelector conversationId={currentConversationId || undefined} onOpenSettings={onOpenSettings} />
+        )}
 
         {/* 主题切换 */}
         <button
@@ -89,9 +98,13 @@ export function TopBar({ onOpenSettings }: TopBarProps) {
 
         {/* 全局设置 */}
         <button
-          onClick={onOpenSettings}
-          className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
-          title="设置"
+          onClick={viewMode === 'settings' ? onBackToChat : onOpenSettings}
+          className={`p-2 rounded-lg transition-all ${
+            viewMode === 'settings'
+              ? 'bg-accent-50 dark:bg-accent-900/20 text-accent-600 dark:text-accent-400'
+              : 'hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+          }`}
+          title={viewMode === 'settings' ? '返回对话' : '设置'}
         >
           <Settings size={16} />
         </button>

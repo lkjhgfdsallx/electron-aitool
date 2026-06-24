@@ -1,58 +1,33 @@
 import { ChatWindow } from '../chat/ChatWindow'
 import { TopBar } from './TopBar'
-import { SettingsPanel } from '../settings/SettingsPanel'
-import { AgentManager } from '../settings/AgentManager'
-import { KnowledgeBasePanel } from '../settings/KnowledgeBasePanel'
-import { ToolEditor } from '../settings/ToolEditor'
-import { MCPConfig } from '../settings/MCPConfig'
-import type { PanelType } from '../../App'
+import { SettingsPage } from '../settings/SettingsPage'
+import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 
 interface MainAreaProps {
-  activePanel: PanelType
-  setActivePanel: (panel: PanelType) => void
+  viewMode: ViewMode
+  settingsSection: SettingsSection
+  onOpenSettings: (section?: SettingsSection) => void
+  onCloseSettings: () => void
 }
 
-export function MainArea({ activePanel, setActivePanel }: MainAreaProps) {
-  const closePanel = () => setActivePanel('none')
-
+export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSettings }: MainAreaProps) {
   return (
     <div className="flex-1 flex flex-col min-w-0 relative">
       <TopBar
-        onOpenSettings={() => setActivePanel('settings')}
+        viewMode={viewMode}
+        onOpenSettings={() => onOpenSettings()}
+        onBackToChat={onCloseSettings}
       />
 
       <div className="flex-1 flex min-h-0">
-        <ChatWindow
-          onOpenPromptManager={() => setActivePanel('agents')}
-          onOpenAgentManager={() => setActivePanel('agents')}
-        />
-      </div>
-
-      {/* 侧边面板 */}
-      <div
-        className={`absolute inset-0 z-30 flex justify-end transition-all duration-300 ease-in-out ${
-          activePanel === 'none' ? 'pointer-events-none opacity-0' : 'opacity-100'
-        }`}
-      >
-        {/* 背景遮罩 */}
-        <div
-          className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ${
-            activePanel === 'none' ? 'opacity-0' : 'opacity-100'
-          }`}
-          onClick={closePanel}
-        />
-        {/* 面板内容 */}
-        <div
-          className={`relative w-full max-w-lg bg-white dark:bg-surface-900 border-l border-surface-200/80 dark:border-surface-700/60 shadow-lg overflow-y-auto transition-transform duration-300 ease-in-out ${
-            activePanel === 'none' ? 'translate-x-full' : 'translate-x-0 animate-slide-in-right'
-          }`}
-        >
-          {activePanel === 'settings' && <SettingsPanel onClose={closePanel} onOpenKnowledgeBase={() => setActivePanel('knowledge-base')} />}
-          {activePanel === 'agents' && <AgentManager onClose={closePanel} />}
-          {activePanel === 'knowledge-base' && <KnowledgeBasePanel onClose={closePanel} />}
-          {activePanel === 'tools' && <ToolEditor onClose={closePanel} />}
-          {activePanel === 'mcp' && <MCPConfig onClose={closePanel} />}
-        </div>
+        {viewMode === 'chat' ? (
+          <ChatWindow />
+        ) : (
+          <SettingsPage
+            defaultSection={settingsSection}
+            onBack={onCloseSettings}
+          />
+        )}
       </div>
     </div>
   )

@@ -1,14 +1,9 @@
 import { useState } from 'react'
-import { X, Plus, Edit2, Trash2, Save, Wrench, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Edit2, Trash2, Save, Wrench, ToggleLeft, ToggleRight, X } from 'lucide-react'
 import { BUILT_IN_TOOLS } from '../../services/built-in-tools'
 import type { Tool, ToolCreateInput } from '../../types'
 
-interface ToolEditorProps {
-  onClose: () => void
-}
-
-export function ToolEditor({ onClose }: ToolEditorProps) {
-  // 自定义工具列表（内置工具固定显示）
+export function ToolEditor() {
   const [customTools, setCustomTools] = useState<Tool[]>([])
   const [isEditing, setIsEditing] = useState(false)
   const [editingTool, setEditingTool] = useState<Tool | null>(null)
@@ -18,7 +13,6 @@ export function ToolEditor({ onClose }: ToolEditorProps) {
     parameters: { type: 'object', properties: {}, required: [] },
     enabled: true
   })
-  // 存储 textarea 的原始文本
   const [parametersJson, setParametersJson] = useState(
     JSON.stringify({ type: 'object', properties: {}, required: [] }, null, 2)
   )
@@ -56,7 +50,6 @@ export function ToolEditor({ onClose }: ToolEditorProps) {
   const handleSave = () => {
     if (!formData.name.trim()) return
 
-    // 验证并解析 JSON
     let parsedParams: Record<string, unknown>
     try {
       parsedParams = JSON.parse(parametersJson)
@@ -97,7 +90,6 @@ export function ToolEditor({ onClose }: ToolEditorProps) {
 
   const handleJsonChange = (value: string) => {
     setParametersJson(value)
-    // 实时验证
     try {
       JSON.parse(value)
       setJsonError('')
@@ -109,66 +101,78 @@ export function ToolEditor({ onClose }: ToolEditorProps) {
   // 编辑视图
   if (isEditing) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold">
-            {editingTool ? '编辑工具' : '创建工具'}
-          </h2>
+      <div className="space-y-6">
+        {/* 标题 */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
+              <Wrench size={20} className="text-indigo-500" />
+              {editingTool ? '编辑工具' : '创建工具'}
+            </h2>
+          </div>
           <button
             onClick={() => setIsEditing(false)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
           >
             <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* 表单 */}
+        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">工具名称 *</label>
+            <label className="block text-xs text-muted mb-1.5">工具名称 *</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="my_tool"
               disabled={editingTool?.isBuiltIn}
-              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50"
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all disabled:opacity-50"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1">描述</label>
+            <label className="block text-xs text-muted mb-1.5">描述</label>
             <input
               type="text"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="工具的功能描述"
-              className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-xs text-gray-500 mb-1">参数 Schema (JSON)</label>
+            <label className="block text-xs text-muted mb-1.5">参数 Schema (JSON)</label>
             <textarea
               value={parametersJson}
               onChange={(e) => handleJsonChange(e.target.value)}
               rows={10}
-              className={`w-full px-3 py-2 text-xs font-mono border rounded-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y ${
-                jsonError ? 'border-red-500' : ''
+              className={`w-full px-3 py-2 text-xs font-mono bg-surface-50 dark:bg-surface-900 border rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all resize-y ${
+                jsonError ? 'border-danger-400' : 'border-surface-200/80 dark:border-surface-700/60'
               }`}
             />
             {jsonError && (
-              <p className="text-xs text-red-500 mt-1">{jsonError}</p>
+              <p className="text-xs text-danger-500 mt-1.5">{jsonError}</p>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+        {/* 操作按钮 */}
+        <div className="flex items-center gap-3">
           <button
             onClick={handleSave}
             disabled={!formData.name.trim()}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors text-sm"
+            className="flex items-center gap-2 bg-accent-500 hover:bg-accent-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-all shadow-sm disabled:opacity-50"
           >
             <Save size={14} /> 保存
+          </button>
+          <button
+            onClick={() => setIsEditing(false)}
+            className="flex items-center gap-2 bg-surface-200 dark:bg-surface-700 text-muted rounded-xl px-4 py-2 text-sm font-medium transition-all hover:bg-surface-300 dark:hover:bg-surface-600"
+          >
+            取消
           </button>
         </div>
       </div>
@@ -177,75 +181,73 @@ export function ToolEditor({ onClose }: ToolEditorProps) {
 
   // 列表视图
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold">工具管理</h2>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+    <div className="space-y-6">
+      {/* 标题 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
+            <Wrench size={20} className="text-indigo-500" />
+            工具管理
+          </h2>
+          <p className="text-sm text-muted mt-1">
+            管理 AI 可使用的工具，包括内置工具和自定义工具
+          </p>
+        </div>
         <button
           onClick={handleCreate}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
         >
           <Plus size={14} /> 新建自定义工具
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-2">
-        {/* 内置工具 */}
-        <div className="mb-4">
-          <h3 className="text-xs font-medium text-gray-500 mb-2">内置工具</h3>
-          <div className="space-y-1">
-            {BUILT_IN_TOOLS.map((tool) => (
+      {/* 内置工具 */}
+      <div>
+        <h3 className="text-xs font-medium text-muted mb-2">内置工具</h3>
+        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+          {BUILT_IN_TOOLS.map((tool) => (
+            <ToolItem
+              key={tool.id}
+              tool={tool}
+              onEdit={() => handleEdit(tool)}
+              onToggle={() => {}}
+              onDelete={() => {}}
+              isBuiltIn
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* 自定义工具 */}
+      {customTools.length > 0 && (
+        <div>
+          <h3 className="text-xs font-medium text-muted mb-2">自定义工具</h3>
+          <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+            {customTools.map((tool) => (
               <ToolItem
                 key={tool.id}
                 tool={tool}
                 onEdit={() => handleEdit(tool)}
-                onToggle={() => {}} // 内置工具不允许切换
-                onDelete={() => {}}
-                isBuiltIn
+                onToggle={() =>
+                  setCustomTools((prev) =>
+                    prev.map((t) =>
+                      t.id === tool.id ? { ...t, enabled: !t.enabled } : t
+                    )
+                  )
+                }
+                onDelete={() => handleDelete(tool.id)}
               />
             ))}
           </div>
         </div>
+      )}
 
-        {/* 自定义工具 */}
-        {customTools.length > 0 && (
-          <div>
-            <h3 className="text-xs font-medium text-gray-500 mb-2">自定义工具</h3>
-            <div className="space-y-1">
-              {customTools.map((tool) => (
-                <ToolItem
-                  key={tool.id}
-                  tool={tool}
-                  onEdit={() => handleEdit(tool)}
-                  onToggle={() =>
-                    setCustomTools((prev) =>
-                      prev.map((t) =>
-                        t.id === tool.id ? { ...t, enabled: !t.enabled } : t
-                      )
-                    )
-                  }
-                  onDelete={() => handleDelete(tool.id)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {allTools.length === 0 && (
-          <div className="text-center text-gray-400 py-8">
-            <Wrench size={36} className="mx-auto mb-3" />
-            <p>暂无工具</p>
-          </div>
-        )}
-      </div>
+      {allTools.length === 0 && (
+        <div className="text-center text-muted py-12">
+          <Wrench size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">暂无工具</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -264,27 +266,29 @@ function ToolItem({
   isBuiltIn?: boolean
 }) {
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
-      <Wrench size={14} className="text-gray-400 flex-shrink-0" />
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
+        <Wrench size={14} className="text-indigo-600 dark:text-indigo-400" />
+      </div>
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium">{tool.name}</span>
-        <p className="text-xs text-gray-500 truncate">{tool.description}</p>
+        <span className="text-sm font-medium text-surface-800 dark:text-surface-200">{tool.name}</span>
+        <p className="text-xs text-muted truncate">{tool.description}</p>
       </div>
       {isBuiltIn ? (
-        <span className="text-xs text-gray-400">内置</span>
+        <span className="text-[10px] px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 text-muted rounded-full font-medium">内置</span>
       ) : (
         <div className="flex items-center gap-1">
-          <button onClick={onToggle} className="text-gray-500">
+          <button onClick={onToggle} className="text-muted">
             {tool.enabled ? (
-              <ToggleRight size={18} className="text-primary-500" />
+              <ToggleRight size={18} className="text-accent-500" />
             ) : (
               <ToggleLeft size={18} />
             )}
           </button>
-          <button onClick={onEdit} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+          <button onClick={onEdit} className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all">
             <Edit2 size={12} />
           </button>
-          <button onClick={onDelete} className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500">
+          <button onClick={onDelete} className="p-1.5 rounded-lg text-muted hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-all">
             <Trash2 size={12} />
           </button>
         </div>

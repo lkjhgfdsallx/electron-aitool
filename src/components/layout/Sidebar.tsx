@@ -1,17 +1,16 @@
-import { Plus, PanelLeftClose, PanelLeft, FileText, Bot, Plug, Settings, Keyboard, HelpCircle, Database } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeft, Settings } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
+import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 
 interface SidebarProps {
-  onOpenPromptManager?: () => void
-  onOpenAgentManager?: () => void
-  onOpenMCP?: () => void
-  onOpenSettings?: () => void
-  onOpenKnowledgeBase?: () => void
+  viewMode: ViewMode
+  onOpenSettings?: (section?: SettingsSection) => void
+  onBackToChat?: () => void
 }
 
-export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP, onOpenKnowledgeBase }: SidebarProps) {
+export function Sidebar({ viewMode, onOpenSettings, onBackToChat }: SidebarProps) {
   const { createConversation } = useConversationStore()
   const { sidebarCollapsed, toggleSidebar } = useSettingsStore()
 
@@ -35,40 +34,20 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP, on
           <Plus size={18} />
         </button>
 
-        <div className="w-8 my-1">
-          <div className="divider-gradient" />
-        </div>
-
-        <button
-          onClick={onOpenAgentManager}
-          className="p-2.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 transition-all"
-          title="Agent 管理"
-        >
-          <Bot size={18} />
-        </button>
-        <button
-          onClick={onOpenPromptManager}
-          className="p-2.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-all"
-          title="提示词管理"
-        >
-          <FileText size={18} />
-        </button>
-        <button
-          onClick={onOpenMCP}
-          className="p-2.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all"
-          title="MCP 配置"
-        >
-          <Plug size={18} />
-        </button>
-        <button
-          onClick={onOpenKnowledgeBase}
-          className="p-2.5 rounded-xl hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 transition-all"
-          title="知识库"
-        >
-          <Database size={18} />
-        </button>
-
         <div className="flex-1" />
+
+        {/* 设置入口 */}
+        <button
+          onClick={viewMode === 'settings' ? onBackToChat : () => onOpenSettings?.()}
+          className={`p-2.5 rounded-xl transition-all ${
+            viewMode === 'settings'
+              ? 'bg-accent-50 dark:bg-accent-900/20 text-accent-600 dark:text-accent-400'
+              : 'hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+          }`}
+          title={viewMode === 'settings' ? '返回对话' : '设置'}
+        >
+          <Settings size={18} />
+        </button>
 
         <button
           onClick={toggleSidebar}
@@ -118,40 +97,6 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP, on
         </button>
       </div>
 
-      {/* 功能入口 */}
-      <div className="px-3 py-1.5">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onOpenAgentManager}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-800 hover:text-accent-600 dark:hover:text-accent-400 transition-all"
-          >
-            <Bot size={13} />
-            <span>Agent</span>
-          </button>
-          <button
-            onClick={onOpenPromptManager}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-800 hover:text-primary-600 dark:hover:text-primary-400 transition-all"
-          >
-            <FileText size={13} />
-            <span>提示词</span>
-          </button>
-          <button
-            onClick={onOpenMCP}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-800 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all"
-          >
-            <Plug size={13} />
-            <span>MCP</span>
-          </button>
-          <button
-            onClick={onOpenKnowledgeBase}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-800 hover:text-violet-600 dark:hover:text-violet-400 transition-all"
-          >
-            <Database size={13} />
-            <span>知识库</span>
-          </button>
-        </div>
-      </div>
-
       {/* 分隔线 */}
       <div className="px-4">
         <div className="divider-gradient" />
@@ -160,6 +105,21 @@ export function Sidebar({ onOpenPromptManager, onOpenAgentManager, onOpenMCP, on
       {/* 对话列表 */}
       <div className="flex-1 min-h-0">
         <ConversationList />
+      </div>
+
+      {/* 底部设置入口 */}
+      <div className="px-3 py-2 border-t border-surface-200/80 dark:border-surface-700/60">
+        <button
+          onClick={viewMode === 'settings' ? onBackToChat : () => onOpenSettings?.()}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all ${
+            viewMode === 'settings'
+              ? 'bg-accent-50 dark:bg-accent-900/20 text-accent-600 dark:text-accent-400 font-medium'
+              : 'text-gray-500 dark:text-gray-400 hover:bg-surface-200/60 dark:hover:bg-surface-800/60 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          <Settings size={16} />
+          <span>{viewMode === 'settings' ? '返回对话' : '设置'}</span>
+        </button>
       </div>
     </div>
   )

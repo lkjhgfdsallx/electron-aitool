@@ -23,10 +23,6 @@ import {
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import type { AIProvider, AIProviderCreateInput, AIModel } from '../../types'
 
-interface AIProviderManagerProps {
-  onClose: () => void
-}
-
 const EMPTY_PROVIDER: AIProviderCreateInput = {
   name: '',
   baseUrl: 'https://api.openai.com/v1',
@@ -34,7 +30,7 @@ const EMPTY_PROVIDER: AIProviderCreateInput = {
   isDefault: false
 }
 
-export function AIProviderManager({ onClose }: AIProviderManagerProps) {
+export function AIProviderManager() {
   const {
     providers,
     addProvider,
@@ -239,19 +235,23 @@ export function AIProviderManager({ onClose }: AIProviderManagerProps) {
 
   if (isCreating) {
     return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-surface-200/80 dark:border-surface-700/60">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+      <div className="space-y-6">
+        {/* 标题 */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
+            <Globe size={20} className="text-accent-500" />
             {editingProvider ? '编辑 AI 源' : '添加 AI 源'}
           </h2>
           <button
             onClick={handleCancel}
-            className="p-1.5 rounded-lg text-muted hover:text-gray-700 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
+            className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
           >
             <X size={18} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
+        {/* 表单卡片 */}
+        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-4">
           {/* 名称 */}
           <div>
             <label className="block text-xs text-muted mb-1.5">
@@ -319,7 +319,7 @@ export function AIProviderManager({ onClose }: AIProviderManagerProps) {
                   className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
                     isManualMode
                       ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400'
-                      : 'text-muted hover:text-gray-600 dark:hover:text-gray-400'
+                      : 'text-muted hover:text-surface-600 dark:hover:text-surface-400'
                   }`}
                   title="切换手动输入模式"
                 >
@@ -353,7 +353,7 @@ export function AIProviderManager({ onClose }: AIProviderManagerProps) {
                   disabled={fetching}
                   className="w-full flex items-center justify-between px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all text-left disabled:opacity-50"
                 >
-                  <span className={`truncate font-mono text-xs ${selectedModelId ? 'text-gray-700 dark:text-gray-300' : 'text-muted'}`}>
+                  <span className={`truncate font-mono text-xs ${selectedModelId ? 'text-surface-700 dark:text-surface-300' : 'text-muted'}`}>
                     {getSelectedModelDisplay()}
                   </span>
                   <ChevronDown size={14} className={`text-muted transition-transform flex-shrink-0 ml-1 ${modelDropdownOpen ? 'rotate-180' : ''}`} />
@@ -399,7 +399,7 @@ export function AIProviderManager({ onClose }: AIProviderManagerProps) {
                             }`}
                           >
                             <div className="min-w-0 flex-1">
-                              <div className={`text-xs truncate ${selectedModelId === model.id ? 'text-accent-700 dark:text-accent-300 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
+                              <div className={`text-xs truncate ${selectedModelId === model.id ? 'text-accent-700 dark:text-accent-300 font-medium' : 'text-surface-700 dark:text-surface-300'}`}>
                                 {model.name}
                               </div>
                               {model.id !== model.name && (
@@ -432,18 +432,18 @@ export function AIProviderManager({ onClose }: AIProviderManagerProps) {
           )}
         </div>
 
-        {/* 底部按钮 */}
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-surface-200/80 dark:border-surface-700/60">
+        {/* 操作按钮 */}
+        <div className="flex items-center gap-3">
           <button
             onClick={handleSave}
             disabled={!form.name.trim() || !form.baseUrl.trim()}
-            className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50 transition-colors text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-xl hover:bg-accent-600 disabled:opacity-50 transition-colors text-sm"
           >
             <Save size={14} /> 保存
           </button>
           <button
             onClick={handleCancel}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 border border-surface-200/80 dark:border-surface-700/60 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+            className="px-4 py-2 text-sm text-muted border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
           >
             取消
           </button>
@@ -455,99 +455,96 @@ export function AIProviderManager({ onClose }: AIProviderManagerProps) {
   // ==================== 列表视图 ====================
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-surface-200/80 dark:border-surface-700/60">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-          <Globe size={18} className="text-accent-500" />
-          AI 源管理
-        </h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleCreate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
-          >
-            <Plus size={14} /> 添加 AI 源
-          </button>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-muted hover:text-gray-700 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-          >
-            <X size={18} />
-          </button>
+    <div className="space-y-6">
+      {/* 标题 + 操作栏 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
+            <Globe size={20} className="text-accent-500" />
+            AI 源管理
+          </h2>
+          <p className="text-sm text-muted mt-1">管理 AI 模型服务提供商的接入配置</p>
         </div>
+        <button
+          onClick={handleCreate}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
+        >
+          <Plus size={14} /> 添加 AI 源
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {providers.length === 0 ? (
-          <div className="text-center py-12 text-muted">
+      {/* Provider 列表 */}
+      {providers.length === 0 ? (
+        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8">
+          <div className="text-center text-muted">
             <Globe size={40} className="mx-auto mb-3 opacity-30" />
             <p className="text-sm">还没有配置 AI 源</p>
             <p className="text-xs mt-1">点击"添加 AI 源"开始配置</p>
           </div>
-        ) : (
-          providers.map((provider) => {
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+          {providers.map((provider) => {
             const defaultModel = provider.defaultModelId
               ? provider.models.find((m) => m.id === provider.defaultModelId)
               : null
             return (
               <div
                 key={provider.id}
-                className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 overflow-hidden"
+                className="flex items-center gap-3 px-5 py-4 hover:bg-surface-50 dark:hover:bg-surface-900/30 transition-colors"
               >
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <div className="w-9 h-9 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0">
-                    <Globe size={16} className="text-accent-600 dark:text-accent-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                        {provider.name}
+                <div className="w-9 h-9 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0">
+                  <Globe size={16} className="text-accent-600 dark:text-accent-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-surface-800 dark:text-surface-200 truncate">
+                      {provider.name}
+                    </span>
+                    {provider.isDefault && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full font-medium">
+                        默认
                       </span>
-                      {provider.isDefault && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full font-medium">
-                          默认
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted truncate font-mono">{provider.baseUrl}</div>
-                    <div className="text-[10px] text-muted mt-0.5">
-                      模型：{defaultModel ? defaultModel.name : provider.defaultModelId || '未选择'}
-                      {provider.models.length > 0 && ` (${provider.models.length} 个可用)`}
-                    </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => provider.isDefault ? undefined : setDefaultProvider(provider.id)}
-                      className={`p-1.5 rounded-lg transition-all ${
-                        provider.isDefault
-                          ? 'text-accent-500'
-                          : 'text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800'
-                      }`}
-                      title={provider.isDefault ? '默认 AI 源' : '设为默认'}
-                    >
-                      {provider.isDefault ? <Star size={14} /> : <StarOff size={14} />}
-                    </button>
-                    <button
-                      onClick={() => handleEdit(provider)}
-                      className="p-1.5 rounded-lg text-muted hover:text-gray-700 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                      title="编辑"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(provider.id)}
-                      className="p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all"
-                      title="删除"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                  <div className="text-xs text-muted truncate font-mono">{provider.baseUrl}</div>
+                  <div className="text-[10px] text-muted mt-0.5">
+                    模型：{defaultModel ? defaultModel.name : provider.defaultModelId || '未选择'}
+                    {provider.models.length > 0 && ` (${provider.models.length} 个可用)`}
                   </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => provider.isDefault ? undefined : setDefaultProvider(provider.id)}
+                    className={`p-1.5 rounded-lg transition-all ${
+                      provider.isDefault
+                        ? 'text-accent-500'
+                        : 'text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800'
+                    }`}
+                    title={provider.isDefault ? '默认 AI 源' : '设为默认'}
+                  >
+                    {provider.isDefault ? <Star size={14} /> : <StarOff size={14} />}
+                  </button>
+                  <button
+                    onClick={() => handleEdit(provider)}
+                    className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
+                    title="编辑"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(provider.id)}
+                    className="p-1.5 rounded-lg text-muted hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-all"
+                    title="删除"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             )
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
     </div>
   )
 }
