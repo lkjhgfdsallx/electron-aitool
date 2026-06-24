@@ -68,6 +68,8 @@ export interface AgentProfile {
   termination: TerminationConfig
   /** 模型配置（覆盖全局） */
   modelConfig: AgentModelConfig
+  /** 绑定的知识库集合 ID 列表（为空则搜索全部） */
+  knowledgeBaseIds?: string[]
   /** 是否启用 */
   enabled: boolean
   createdAt: number

@@ -17,6 +17,7 @@ interface ConversationStore {
   getConversation: (id: string) => Conversation | undefined
   setConversationAgent: (id: string, agentId: string | undefined) => void
   setConversationAIConfig: (id: string, aiConfig: ConversationAIConfig | undefined) => void
+  setConversationKnowledgeBases: (id: string, knowledgeBaseIds: string[] | undefined) => void
 
   // Message Actions
   addMessage: (conversationId: string, input: MessageCreateInput) => Message
@@ -112,6 +113,14 @@ export const useConversationStore = create<ConversationStore>()(
         set((state) => ({
           conversations: state.conversations.map((c) =>
             c.id === id ? { ...c, aiConfig, updatedAt: Date.now() } : c
+          )
+        }))
+      },
+    
+      setConversationKnowledgeBases: (id, knowledgeBaseIds) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, activeKnowledgeBaseIds: knowledgeBaseIds, updatedAt: Date.now() } : c
           )
         }))
       },

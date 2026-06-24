@@ -39,8 +39,13 @@ export interface ElectronAPI {
      * @returns { success: boolean; text?: string; error?: string }
      */
     extractPdfText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
-    /**
-     * 打开保存文件对话框并保存内容
+  /**
+   * 在主进程中提取文件文本内容（支持 PDF/DOCX/HTML/源码/日志等多种格式）
+   * @returns { success: boolean; text?: string; error?: string }
+   */
+  extractText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
+  /**
+   * 打开保存文件对话框并保存内容
      * @returns { success: boolean; filePath?: string; error?: string }
      */
     saveFile: (defaultName: string, content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
@@ -51,6 +56,15 @@ export interface ElectronAPI {
     maximize: () => void
     close: () => void
     isMaximized: () => Promise<boolean>
+  }
+  // 模型文件下载（通过 Node.js 绕过浏览器 CORS 限制）
+  model: {
+    /**
+     * 通过 Node.js 下载模型文件（无 CORS 限制）
+     * @param urls 要下载的文件 URL 列表
+     * @returns 每个文件的字节数组
+     */
+    downloadFiles: (urls: string[]) => Promise<Array<{ url: string; data: number[] }>>
   }
   // 网站分析器
   siteAnalyzer: {
@@ -93,6 +107,7 @@ const electronAPI: ElectronAPI = {
   file: {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
     extractPdfText: (filePath: string) => ipcRenderer.invoke('file:extractPdfText', filePath),
+    extractText: (filePath: string) => ipcRenderer.invoke('file:extractText', filePath),
     saveFile: (defaultName: string, content: string) => ipcRenderer.invoke('file:saveFile', defaultName, content)
   },
   window: {
@@ -100,6 +115,10 @@ const electronAPI: ElectronAPI = {
     maximize: () => ipcRenderer.send('window:maximize'),
     close: () => ipcRenderer.send('window:close'),
     isMaximized: () => ipcRenderer.invoke('window:isMaximized')
+  },
+  model: {
+    downloadFiles: (urls: string[]) =>
+      ipcRenderer.invoke('model:downloadFiles', urls)
   },
   siteAnalyzer: {
     start: (config: Record<string, unknown>) =>

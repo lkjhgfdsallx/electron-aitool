@@ -225,10 +225,15 @@ export async function runAgent(
     memoryContext = memoryService.formatMemoriesAsContext(agent.id)
   }
 
-  // RAG: 检索知识库上下文
+  // RAG: 检索知识库上下文（优先使用 Agent 绑定的知识库集合）
   let knowledgeContext = ''
   try {
-    knowledgeContext = await knowledgeBaseService.searchAndFormatContext(userMessage)
+    const collectionIds = agent.knowledgeBaseIds && agent.knowledgeBaseIds.length > 0
+      ? agent.knowledgeBaseIds
+      : undefined
+    knowledgeContext = await knowledgeBaseService.searchAndFormatContext(
+      userMessage, undefined, undefined, collectionIds
+    )
   } catch {
     // 知识库检索失败不影响正常流程
   }

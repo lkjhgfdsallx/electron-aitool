@@ -409,10 +409,21 @@ export function useChat() {
         branchIndex: currentBranchIdx
       })
 
-      // RAG: 检索知识库上下文
+      // RAG: 检索知识库上下文（优先级：对话级 > Agent级 > 全局）
       let systemPromptWithKB = prompt?.content ?? null
       try {
-        const kbContext = await knowledgeBaseService.searchAndFormatContext(content)
+        // 确定知识库集合范围
+        const conversation = getConversation(convId)
+        let kbCollectionIds: string[] | undefined = undefined
+        if (conversation?.activeKnowledgeBaseIds && conversation.activeKnowledgeBaseIds.length > 0) {
+          // 对话级优先
+          kbCollectionIds = conversation.activeKnowledgeBaseIds
+        }
+        // 普通模式下没有 Agent 绑定的知识库，直接使用对话级或全局
+
+        const kbContext = await knowledgeBaseService.searchAndFormatContext(
+          content, undefined, undefined, kbCollectionIds
+        )
         if (kbContext) {
           systemPromptWithKB = (systemPromptWithKB ?? '') + kbContext
         }

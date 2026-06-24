@@ -2,6 +2,7 @@ import type { Tool, ToolDefinition, ToolExecuteResult } from '../types'
 import { mcpService } from './mcp-service'
 import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
+import { knowledgeBaseService } from './knowledge-base-service'
 
 // ==================== 安全数学表达式求值器 ====================
 // 递归下降解析器，支持：四则运算、幂运算、括号、常见数学函数和常量
@@ -332,6 +333,35 @@ export const toolService = {
           return { success: true, data: JSON.stringify({ expression, result }) }
         } catch (e) {
           const msg = e instanceof Error ? e.message : '计算表达式无效'
+          return { success: false, data: '', error: msg }
+        }
+      }
+
+      case 'knowledge_search': {
+        try {
+          const query = String(args.query ?? '')
+          const topK = Math.min(Number(args.top_k) || 5, 10)
+          const collectionIds = Array.isArray(args.collection_ids)
+            ? (args.collection_ids as string[])
+            : undefined
+          if (!query) {
+            return { success: false, data: '', error: 'knowledge_search 需要 query 参数' }
+          }
+          const results = await knowledgeBaseService.search(query, topK, 0.3, collectionIds)
+          return {
+            success: true,
+            data: JSON.stringify({
+              query,
+              results_count: results.length,
+              results: results.map((r) => ({
+                file_name: r.fileName,
+                score: Math.round(r.score * 1000) / 1000,
+                content: r.chunk.content
+              }))
+            })
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '知识库搜索失败'
           return { success: false, data: '', error: msg }
         }
       }

@@ -34,9 +34,39 @@ export type {
 export type { GlobalConfig, ResolvedAIConfig } from './config'
 export { DEFAULT_GLOBAL_CONFIG } from './config'
 export type {
+  KnowledgeCollection,
+  KnowledgeCollectionCreateInput,
   KnowledgeBaseFile,
   KnowledgeBaseChunk,
-  SearchResult
+  SearchResult,
+  EmbeddingProviderType,
+  EmbeddingProviderConfig,
+  TfidfProviderConfig,
+  LocalModelProviderConfig,
+  OllamaProviderConfig,
+  OpenAIApiProviderConfig,
+  EmbeddingEngineMode,
+  EmbeddingLoadPhase,
+  EmbeddingEngineStatus,
+  WorkerRequest,
+  WorkerResponse,
+  ChunkingMode,
+  ChunkingConfig,
+  RetrievalConfig,
+  FileTypeCategory,
+  FileTypeCategoryDef,
+  KBPageViewMode,
+  SearchMode,
+  KBSearchResult,
+  SimulatorResult
+} from './knowledge-base'
+export {
+  DEFAULT_LOCAL_MODEL_CONFIG,
+  DEFAULT_OLLAMA_CONFIG,
+  DEFAULT_OPENAI_API_CONFIG,
+  DEFAULT_CHUNKING_CONFIG,
+  DEFAULT_RETRIEVAL_CONFIG,
+  FILE_TYPE_CATEGORIES
 } from './knowledge-base'
 export type {
   AIProvider,

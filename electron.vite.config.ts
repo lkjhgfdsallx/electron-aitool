@@ -43,6 +43,9 @@ export default defineConfig({
       postcss: {
         plugins: [tailwindcss, autoprefixer]
       }
+    },
+    worker: {
+      format: 'es'
     }
   }
 })

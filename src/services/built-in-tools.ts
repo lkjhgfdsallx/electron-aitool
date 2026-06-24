@@ -80,6 +80,33 @@ export const BUILT_IN_TOOLS: Tool[] = [
     isMCP: false,
     enabled: true
   },
+  {
+    id: 'builtin:knowledge_search',
+    name: 'knowledge_search',
+    description: '搜索本地知识库中的文档内容。当用户提问涉及已上传的文档、笔记、代码规范等本地资料时使用。返回最相关的文档片段，包含来源文件名和匹配内容。支持指定知识库集合进行定向搜索。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '搜索查询，描述你要查找的内容，例如 "产品定价策略" 或 "React 性能优化"'
+        },
+        top_k: {
+          type: 'number',
+          description: '返回结果数量，默认 5，最大 10'
+        },
+        collection_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '限定搜索范围的知识库集合 ID 列表。不提供则搜索全部知识库。'
+        }
+      },
+      required: ['query']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
 
   // ==================== 高级数学工具 ====================
   // 让小模型也能在 Agent 模式下解答复杂数学问题

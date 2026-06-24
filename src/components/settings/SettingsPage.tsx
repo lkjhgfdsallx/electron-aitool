@@ -4,7 +4,7 @@ import { AIProviderManager } from './AIProviderManager'
 import { AgentManager } from './AgentManager'
 import { PromptManager } from './PromptManager'
 import { MCPConfig } from './MCPConfig'
-import { KnowledgeBasePanel } from './KnowledgeBasePanel'
+import { KnowledgeBaseSettings } from './KnowledgeBaseSettings'
 import { ToolEditor } from './ToolEditor'
 import { ModelParamsSection } from './ModelParamsSection'
 import { UIPreferencesSection } from './UIPreferencesSection'
@@ -35,7 +35,7 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
       case 'tools':
         return <ToolEditor />
       case 'knowledge-base':
-        return <KnowledgeBasePanel />
+        return <KnowledgeBaseSettings />
       case 'model-params':
         return <ModelParamsSection />
       case 'ui-prefs':

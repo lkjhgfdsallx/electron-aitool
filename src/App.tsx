@@ -18,6 +18,10 @@ export default function App() {
     setViewMode('settings')
   }
 
+  const openKnowledgeBase = () => {
+    setViewMode('knowledge-base')
+  }
+
   const closeSettings = () => {
     setViewMode('chat')
   }
@@ -29,6 +33,7 @@ export default function App() {
         <Sidebar
           viewMode={viewMode}
           onOpenSettings={openSettings}
+          onOpenKnowledgeBase={openKnowledgeBase}
           onBackToChat={closeSettings}
         />
       )}

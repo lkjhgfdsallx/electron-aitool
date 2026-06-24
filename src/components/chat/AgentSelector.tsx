@@ -164,16 +164,19 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
 
           {/* 管理入口 */}
           {onOpenAgentManager && (
-            <button
-              onClick={() => {
-                onOpenAgentManager()
-                setIsOpen(false)
-                setSearchTerm('')
-              }}
-              className="w-full text-center text-xs text-accent-500 hover:text-accent-600 py-2 border-t border-surface-200/60 dark:border-surface-700/40 transition-colors"
-            >
-              管理 Agent
-            </button>
+            <div className="border-t border-surface-200/60 dark:border-surface-700/40 px-2 py-2">
+              <button
+                onClick={() => {
+                  onOpenAgentManager()
+                  setIsOpen(false)
+                  setSearchTerm('')
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-accent-600 dark:text-accent-400 bg-accent-50/80 dark:bg-accent-950/20 hover:bg-accent-100 dark:hover:bg-accent-950/40 rounded-lg transition-all"
+              >
+                <Settings2 size={12} />
+                Agent 管理
+              </button>
+            </div>
           )}
         </div>
       )}

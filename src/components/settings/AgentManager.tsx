@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   X,
   Plus,
@@ -17,9 +17,11 @@ import {
   Clock,
   Database,
   Settings,
-  ChevronDown
+  ChevronDown,
+  BookOpen
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
+import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import type {
@@ -57,6 +59,7 @@ const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
   memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: true },
   termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
   modelConfig: {},
+  knowledgeBaseIds: [],
   enabled: true
 }
 
@@ -67,7 +70,12 @@ export function AgentManager() {
   } = useAgentStore()
 
   const { providers } = useAIProviderStore()
+  const { collections, loadCollections } = useKnowledgeCollectionStore()
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
+
+  useEffect(() => {
+    loadCollections()
+  }, [loadCollections])
 
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null)
   const [agentForm, setAgentForm] = useState<AgentProfileCreateInput>(EMPTY_AGENT_INPUT)
@@ -92,6 +100,7 @@ export function AgentManager() {
       memoryConfig: { ...agent.memoryConfig },
       termination: { ...agent.termination },
       modelConfig: { ...agent.modelConfig },
+      knowledgeBaseIds: agent.knowledgeBaseIds ? [...agent.knowledgeBaseIds] : [],
       enabled: agent.enabled
     })
     setEditingAgent(agent)
@@ -284,6 +293,56 @@ export function AgentManager() {
                   </div>
                 </label>
               ))}
+            </div>
+          </div>
+
+          {/* 挂载知识库 */}
+          <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
+              <BookOpen size={14} /> 挂载知识库
+            </h3>
+            <p className="text-xs text-muted">
+              选择 Agent 可访问的知识库集合。不选择任何集合时，Agent 将搜索全部知识库。
+            </p>
+            <div className="space-y-2">
+              {collections.length === 0 ? (
+                <p className="text-xs text-muted py-2">暂无知识库集合，请先在知识库中创建。</p>
+              ) : (
+                collections.map((col) => {
+                  const isSelected = (agentForm.knowledgeBaseIds ?? []).includes(col.id)
+                  return (
+                    <label
+                      key={col.id}
+                      className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'border-accent-300 dark:border-accent-700 bg-accent-50/50 dark:bg-accent-900/20'
+                          : 'border-surface-200/80 dark:border-surface-700/60 hover:bg-surface-50 dark:hover:bg-surface-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          const current = agentForm.knowledgeBaseIds ?? []
+                          if (e.target.checked) {
+                            setAgentForm({ ...agentForm, knowledgeBaseIds: [...current, col.id] })
+                          } else {
+                            setAgentForm({ ...agentForm, knowledgeBaseIds: current.filter((id) => id !== col.id) })
+                          }
+                        }}
+                        className="rounded accent-accent-500"
+                      />
+                      <span className="text-base flex-shrink-0">{col.icon}</span>
+                      <div>
+                        <span className="text-sm font-medium">{col.name}</span>
+                        {col.description && (
+                          <p className="text-xs text-muted">{col.description}</p>
+                        )}
+                      </div>
+                    </label>
+                  )
+                })
+              )}
             </div>
           </div>
 

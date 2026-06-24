@@ -16,6 +16,8 @@ export interface Conversation {
   messageCount: number
   /** 对话分支选择状态：分支点消息 ID → 当前激活的分支索引 */
   activeBranches?: Record<string, number>
+  /** 当前对话激活的知识库集合 ID 列表（用户可在对话中临时切换） */
+  activeKnowledgeBaseIds?: string[]
 }
 
 export type ConversationCreateInput = Omit<Conversation, 'id' | 'createdAt' | 'updatedAt' | 'messageCount'>

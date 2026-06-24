@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { UIPreferences, ThemeMode } from '../types'
+import type {
+  UIPreferences,
+  ThemeMode,
+  EmbeddingProviderConfig,
+  ChunkingConfig,
+  RetrievalConfig
+} from '../types'
+import {
+  DEFAULT_CHUNKING_CONFIG,
+  DEFAULT_RETRIEVAL_CONFIG
+} from '../types'
 
 const DEFAULT_PREFERENCES: UIPreferences = {
   theme: 'system',
@@ -13,6 +23,13 @@ const DEFAULT_PREFERENCES: UIPreferences = {
 }
 
 interface SettingsStore extends UIPreferences {
+  // Embedding 提供者配置
+  embeddingConfig: EmbeddingProviderConfig
+  // 分块配置
+  chunkingConfig: ChunkingConfig
+  // 检索配置
+  retrievalConfig: RetrievalConfig
+
   // Actions
   setTheme: (theme: ThemeMode) => void
   toggleTokenUsage: () => void
@@ -21,6 +38,9 @@ interface SettingsStore extends UIPreferences {
   toggleSidebar: () => void
   setSendWithEnter: (value: boolean) => void
   toggleWebSearch: () => void
+  setEmbeddingConfig: (config: EmbeddingProviderConfig) => void
+  setChunkingConfig: (config: ChunkingConfig) => void
+  setRetrievalConfig: (config: RetrievalConfig) => void
   resetPreferences: () => void
 }
 
@@ -28,6 +48,9 @@ export const useSettingsStore = create<SettingsStore>()(
   persist(
     (set) => ({
       ...DEFAULT_PREFERENCES,
+      embeddingConfig: { type: 'tfidf' },
+      chunkingConfig: { ...DEFAULT_CHUNKING_CONFIG },
+      retrievalConfig: { ...DEFAULT_RETRIEVAL_CONFIG },
 
       setTheme: (theme) => {
         set({ theme })
@@ -50,7 +73,18 @@ export const useSettingsStore = create<SettingsStore>()(
       toggleWebSearch: () =>
         set((state) => ({ webSearchEnabled: !state.webSearchEnabled })),
 
-      resetPreferences: () => set({ ...DEFAULT_PREFERENCES })
+      setEmbeddingConfig: (embeddingConfig) => set({ embeddingConfig }),
+
+      setChunkingConfig: (chunkingConfig) => set({ chunkingConfig }),
+
+      setRetrievalConfig: (retrievalConfig) => set({ retrievalConfig }),
+
+      resetPreferences: () => set({
+        ...DEFAULT_PREFERENCES,
+        embeddingConfig: { type: 'tfidf' },
+        chunkingConfig: { ...DEFAULT_CHUNKING_CONFIG },
+        retrievalConfig: { ...DEFAULT_RETRIEVAL_CONFIG }
+      })
     }),
     {
       name: 'ui-preferences',
@@ -58,6 +92,11 @@ export const useSettingsStore = create<SettingsStore>()(
         return (state) => {
           if (state) {
             applyTheme(state.theme)
+            // 确保旧用户的 retrievalConfig 包含新增的混合权重字段
+            state.retrievalConfig = {
+              ...DEFAULT_RETRIEVAL_CONFIG,
+              ...state.retrievalConfig
+            }
           }
         }
       }

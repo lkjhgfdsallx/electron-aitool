@@ -1,4 +1,4 @@
-import { Plus, PanelLeftClose, PanelLeft, Settings } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeft, Settings, Database } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
@@ -7,10 +7,11 @@ import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 interface SidebarProps {
   viewMode: ViewMode
   onOpenSettings?: (section?: SettingsSection) => void
+  onOpenKnowledgeBase?: () => void
   onBackToChat?: () => void
 }
 
-export function Sidebar({ viewMode, onOpenSettings, onBackToChat }: SidebarProps) {
+export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackToChat }: SidebarProps) {
   const { createConversation } = useConversationStore()
   const { sidebarCollapsed, toggleSidebar } = useSettingsStore()
 
@@ -35,6 +36,19 @@ export function Sidebar({ viewMode, onOpenSettings, onBackToChat }: SidebarProps
         </button>
 
         <div className="flex-1" />
+
+        {/* 知识库入口 */}
+        <button
+          onClick={onOpenKnowledgeBase}
+          className={`p-2.5 rounded-xl transition-all ${
+            viewMode === 'knowledge-base'
+              ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400'
+              : 'hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+          }`}
+          title="知识库"
+        >
+          <Database size={18} />
+        </button>
 
         {/* 设置入口 */}
         <button
@@ -107,8 +121,22 @@ export function Sidebar({ viewMode, onOpenSettings, onBackToChat }: SidebarProps
         <ConversationList />
       </div>
 
-      {/* 底部设置入口 */}
-      <div className="px-3 py-2 border-t border-surface-200/80 dark:border-surface-700/60">
+      {/* 底部导航入口 */}
+      <div className="px-3 py-2 border-t border-surface-200/80 dark:border-surface-700/60 space-y-1">
+        {/* 知识库入口 */}
+        <button
+          onClick={onOpenKnowledgeBase}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all ${
+            viewMode === 'knowledge-base'
+              ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 font-medium'
+              : 'text-gray-500 dark:text-gray-400 hover:bg-surface-200/60 dark:hover:bg-surface-800/60 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          <Database size={16} />
+          <span>知识库</span>
+        </button>
+
+        {/* 设置入口 */}
         <button
           onClick={viewMode === 'settings' ? onBackToChat : () => onOpenSettings?.()}
           className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all ${

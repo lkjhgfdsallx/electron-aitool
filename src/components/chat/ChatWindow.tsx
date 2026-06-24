@@ -1,5 +1,5 @@
-import { useRef, useEffect, useCallback, useMemo } from 'react'
-import { MessageSquareDashed, Bot, Plug, Globe, FileText, Sparkles } from 'lucide-react'
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
+import { MessageSquareDashed, Bot, Plug, Globe, FileText, Sparkles, BookOpen, ChevronDown, Check } from 'lucide-react'
 import { MessageItem } from './MessageItem'
 import { AssistantGroupBubble } from './AssistantGroupBubble'
 import { MessageInput } from './MessageInput'
@@ -9,6 +9,7 @@ import type { SiteAnalyzerFormData } from './SiteAnalyzerForm'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
+import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useChat } from '../../hooks/use-chat'
 import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
 import type { Message, MessageAttachment } from '../../types'
@@ -65,10 +66,31 @@ interface ChatWindowProps {
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation } = useConversationStore()
+  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases } = useConversationStore()
   const { showTimestamp, showTokenUsage } = useSettingsStore()
   const { getAgent } = useAgentStore()
+  const { collections, loadCollections } = useKnowledgeCollectionStore()
   const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask } = useChat()
+
+  const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
+  const kbDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    loadCollections()
+  }, [loadCollections])
+
+  // 点击外部关闭知识库下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (kbDropdownRef.current && !kbDropdownRef.current.contains(e.target as Node)) {
+        setKbDropdownOpen(false)
+      }
+    }
+    if (kbDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [kbDropdownOpen])
 
   // 使用可见消息（支持分支切换）
   const messages = currentConversationId ? getVisibleMessages(currentConversationId) : []
@@ -280,6 +302,82 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
             <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
           </div>
         )}
+
+        {/* 右侧弹性间隔 */}
+        <div className="flex-1" />
+
+        {/* 知识库集合快速切换 */}
+        {collections.length > 0 && currentConversationId && (() => {
+          const selectedIds = currentConversation?.activeKnowledgeBaseIds ?? []
+          const selectedNames = collections
+            .filter((c) => selectedIds.includes(c.id))
+            .map((c) => c.icon + c.name)
+
+          return (
+            <div className="relative flex-shrink-0" ref={kbDropdownRef}>
+              <button
+                onClick={() => setKbDropdownOpen(!kbDropdownOpen)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  selectedIds.length > 0
+                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40'
+                    : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
+                }`}
+                title="选择知识库集合"
+              >
+                <BookOpen size={14} />
+                <span className="hidden sm:inline max-w-[120px] truncate">
+                  {selectedIds.length > 0
+                    ? selectedNames.length > 1
+                      ? `${selectedNames[0]} 等${selectedNames.length}个`
+                      : selectedNames[0]
+                    : '知识库'}
+                </span>
+                <ChevronDown size={12} className={`transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {kbDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
+                    <p className="text-xs font-medium text-surface-600 dark:text-surface-400">选择对话使用的知识库</p>
+                    <p className="text-[10px] text-muted mt-0.5">不选择则搜索全部知识库</p>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto py-1">
+                    {collections.map((col) => {
+                      const isSelected = selectedIds.includes(col.id)
+                      return (
+                        <button
+                          key={col.id}
+                          onClick={() => {
+                            const newIds = isSelected
+                              ? selectedIds.filter((id) => id !== col.id)
+                              : [...selectedIds, col.id]
+                            setConversationKnowledgeBases(currentConversationId, newIds.length > 0 ? newIds : undefined)
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+                            isSelected
+                              ? 'bg-accent-50/50 dark:bg-accent-950/20 text-accent-700 dark:text-accent-300'
+                              : 'text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700'
+                          }`}
+                        >
+                          <span className="text-base flex-shrink-0">{col.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium">{col.name}</span>
+                            {col.description && (
+                              <p className="text-xs text-muted truncate">{col.description}</p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <Check size={14} className="text-accent-500 flex-shrink-0" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* 消息列表 */}

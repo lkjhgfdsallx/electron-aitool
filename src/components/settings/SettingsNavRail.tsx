@@ -11,7 +11,7 @@ import {
   HardDrive
 } from 'lucide-react'
 
-export type ViewMode = 'chat' | 'settings'
+export type ViewMode = 'chat' | 'knowledge-base' | 'settings'
 
 export type SettingsSection =
   | 'ai-providers'
