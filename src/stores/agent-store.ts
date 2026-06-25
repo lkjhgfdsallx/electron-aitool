@@ -7,10 +7,14 @@ import type {
   AgentProfileUpdateInput,
   Prompt,
   PromptCreateInput,
-  PromptUpdateInput
+  PromptUpdateInput,
+  PromptVersion,
+  PromptABTest,
+  PromptChain,
 } from '../types'
 import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT } from '../constants/default-agents'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import { PromptVersionService } from '../services/prompt-version-service'
 
 // ==================== 默认 Agent 配置 ====================
 
@@ -63,6 +67,29 @@ function createDefaultWebsiteAnalyzer(): AgentProfile {
   }
 }
 
+// ==================== Prompt 默认值 ====================
+
+/** 为旧版 Prompt 数据补充新字段默认值 */
+function migratePrompt(p: Record<string, unknown>): Prompt {
+  return {
+    id: p.id as string,
+    name: (p.name as string) ?? '',
+    description: (p.description as string) ?? '',
+    content: (p.content as string) ?? '',
+    sections: (p.sections as Prompt['sections']) ?? undefined,
+    variables: Array.isArray(p.variables) ? p.variables : [],
+    tags: Array.isArray(p.tags) ? p.tags : [],
+    category: (p.category as string) ?? undefined,
+    favorite: (p.favorite as boolean) ?? false,
+    pinned: (p.pinned as boolean) ?? false,
+    currentVersion: (p.currentVersion as number) ?? 1,
+    versionHistory: Array.isArray(p.versionHistory) ? p.versionHistory : [],
+    abTest: (p.abTest as PromptABTest) ?? undefined,
+    createdAt: (p.createdAt as number) ?? Date.now(),
+    updatedAt: (p.updatedAt as number) ?? Date.now(),
+  }
+}
+
 // ==================== Agent Profile Store ====================
 
 interface AgentStore {
@@ -80,9 +107,11 @@ interface AgentStore {
   importAgents: (agents: AgentProfile[]) => void
   exportAgents: () => AgentProfile[]
 
-  // Prompt Actions（向后兼容）
+  // Prompt State
   prompts: Prompt[]
   selectedPromptId: string | null
+
+  // Prompt CRUD
   createPrompt: (input: PromptCreateInput) => Prompt
   updatePrompt: (input: PromptUpdateInput) => void
   deletePrompt: (id: string) => void
@@ -90,6 +119,29 @@ interface AgentStore {
   getPrompt: (id: string) => Prompt | undefined
   importPrompts: (prompts: Prompt[]) => void
   exportPrompts: () => Prompt[]
+
+  // Prompt 标签与分类
+  getAllTags: () => string[]
+  getPromptsByTag: (tag: string) => Prompt[]
+  getPromptsByCategory: (category: string) => Prompt[]
+
+  // Prompt 收藏与置顶
+  toggleFavorite: (id: string) => void
+  togglePinned: (id: string) => void
+
+  // Prompt 版本管理
+  savePromptVersion: (id: string, label?: string) => void
+  rollbackPromptVersion: (promptId: string, versionId: string) => void
+
+  // Prompt A/B 测试
+  setPromptABTest: (promptId: string, test: Omit<PromptABTest, 'id' | 'createdAt'>) => void
+  removePromptABTest: (promptId: string) => void
+
+  // 提示词链
+  promptChains: PromptChain[]
+  createPromptChain: (input: Omit<PromptChain, 'id' | 'createdAt' | 'updatedAt'>) => PromptChain
+  updatePromptChain: (input: Partial<PromptChain> & { id: string }) => void
+  deletePromptChain: (id: string) => void
 }
 
 export const useAgentStore = create<AgentStore>()(
@@ -162,16 +214,28 @@ export const useAgentStore = create<AgentStore>()(
 
       exportAgents: () => get().agents,
 
-      // ==================== Prompt State（向后兼容） ====================
+      // ==================== Prompt State ====================
       prompts: [],
       selectedPromptId: null,
 
       createPrompt: (input) => {
+        const now = Date.now()
         const prompt: Prompt = {
-          ...input,
           id: uuidv4(),
-          createdAt: Date.now(),
-          updatedAt: Date.now()
+          name: input.name,
+          description: input.description,
+          content: input.content,
+          sections: input.sections,
+          variables: input.variables ?? [],
+          tags: input.tags ?? [],
+          category: input.category,
+          favorite: input.favorite ?? false,
+          pinned: input.pinned ?? false,
+          currentVersion: 1,
+          versionHistory: [],
+          abTest: input.abTest,
+          createdAt: now,
+          updatedAt: now,
         }
         set((state) => ({ prompts: [...state.prompts, prompt] }))
         return prompt
@@ -204,7 +268,140 @@ export const useAgentStore = create<AgentStore>()(
         })
       },
 
-      exportPrompts: () => get().prompts
+      exportPrompts: () => get().prompts,
+
+      // ==================== 标签与分类 ====================
+
+      getAllTags: () => {
+        const allTags = new Set<string>()
+        for (const p of get().prompts) {
+          for (const tag of p.tags) {
+            allTags.add(tag)
+          }
+        }
+        return Array.from(allTags).sort()
+      },
+
+      getPromptsByTag: (tag) => {
+        return get().prompts.filter((p) => p.tags.includes(tag))
+      },
+
+      getPromptsByCategory: (category) => {
+        return get().prompts.filter((p) => p.category === category)
+      },
+
+      // ==================== 收藏与置顶 ====================
+
+      toggleFavorite: (id) => {
+        set((state) => ({
+          prompts: state.prompts.map((p) =>
+            p.id === id ? { ...p, favorite: !p.favorite, updatedAt: Date.now() } : p
+          )
+        }))
+      },
+
+      togglePinned: (id) => {
+        set((state) => ({
+          prompts: state.prompts.map((p) =>
+            p.id === id ? { ...p, pinned: !p.pinned, updatedAt: Date.now() } : p
+          )
+        }))
+      },
+
+      // ==================== 版本管理 ====================
+
+      savePromptVersion: (id, label) => {
+        const prompt = get().prompts.find((p) => p.id === id)
+        if (!prompt) return
+
+        const snapshot = PromptVersionService.createSnapshot(prompt, label)
+        const updatedHistory = PromptVersionService.appendVersion(prompt.versionHistory, snapshot)
+
+        set((state) => ({
+          prompts: state.prompts.map((p) =>
+            p.id === id
+              ? {
+                  ...p,
+                  currentVersion: snapshot.version,
+                  versionHistory: updatedHistory,
+                  updatedAt: Date.now(),
+                }
+              : p
+          )
+        }))
+      },
+
+      rollbackPromptVersion: (promptId, versionId) => {
+        const prompt = get().prompts.find((p) => p.id === promptId)
+        if (!prompt) return
+
+        const version = prompt.versionHistory.find((v) => v.id === versionId)
+        if (!version) return
+
+        const rolledBack = PromptVersionService.rollback(version)
+
+        set((state) => ({
+          prompts: state.prompts.map((p) =>
+            p.id === promptId
+              ? { ...p, ...rolledBack, updatedAt: Date.now() }
+              : p
+          )
+        }))
+      },
+
+      // ==================== A/B 测试 ====================
+
+      setPromptABTest: (promptId, test) => {
+        set((state) => ({
+          prompts: state.prompts.map((p) =>
+            p.id === promptId
+              ? {
+                  ...p,
+                  abTest: { ...test, id: uuidv4(), createdAt: Date.now() },
+                  updatedAt: Date.now(),
+                }
+              : p
+          )
+        }))
+      },
+
+      removePromptABTest: (promptId) => {
+        set((state) => ({
+          prompts: state.prompts.map((p) =>
+            p.id === promptId
+              ? { ...p, abTest: undefined, updatedAt: Date.now() }
+              : p
+          )
+        }))
+      },
+
+      // ==================== 提示词链 ====================
+      promptChains: [],
+
+      createPromptChain: (input) => {
+        const chain: PromptChain = {
+          ...input,
+          id: uuidv4(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+        set((state) => ({ promptChains: [...state.promptChains, chain] }))
+        return chain
+      },
+
+      updatePromptChain: (input) => {
+        set((state) => ({
+          promptChains: state.promptChains.map((c) =>
+            c.id === input.id ? { ...c, ...input, updatedAt: Date.now() } : c
+          )
+        }))
+      },
+
+      deletePromptChain: (id) => {
+        set((state) => ({
+          promptChains: state.promptChains.filter((c) => c.id !== id)
+        }))
+      },
     }),
     {
       name: 'agents',
@@ -222,7 +419,6 @@ export const useAgentStore = create<AgentStore>()(
               state.agents = [...state.agents, websiteAnalyzer]
             }
             // 迁移：确保所有已有 Agent 的 enabledToolIds 包含全部工具
-            // （之前 agent-builtin 工具是硬编码始终可用的，移除硬编码后需要补充到配置中）
             const allIds = new Set(DEFAULT_ALL_TOOL_IDS)
             state.agents = state.agents.map((agent) => {
               const existingIds = new Set(agent.enabledToolIds)
@@ -233,6 +429,14 @@ export const useAgentStore = create<AgentStore>()(
                 enabledToolIds: Array.from(new Set([...agent.enabledToolIds, ...DEFAULT_ALL_TOOL_IDS]))
               }
             })
+
+            // 迁移：确保所有 Prompt 具有新字段默认值
+            state.prompts = state.prompts.map((p) => migratePrompt(p as unknown as Record<string, unknown>))
+
+            // 确保 promptChains 存在
+            if (!state.promptChains) {
+              state.promptChains = []
+            }
           }
         }
       }

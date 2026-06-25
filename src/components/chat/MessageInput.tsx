@@ -1,8 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square, Paperclip, FileText, X, Image, FileIcon, Loader2, Globe } from 'lucide-react'
+import { Send, Square, Paperclip, X, Image, FileIcon, Loader2, Globe } from 'lucide-react'
 import { useSettingsStore, usePromptStore } from '../../stores'
 import { extractFileText } from '../../utils/file-extraction'
-import type { MessageAttachment } from '../../types'
+import { PromptSearchPanel } from './PromptSearchPanel'
+import { VariableFillDialog } from './VariableFillDialog'
+import { PromptVariableEngine } from '../../services/prompt-variable-engine'
+import type { MessageAttachment, Prompt, PromptRuntimeContext } from '../../types'
 
 interface MessageInputProps {
   onSend: (content: string, attachments?: MessageAttachment[]) => void
@@ -10,6 +13,7 @@ interface MessageInputProps {
   isStreaming?: boolean
   disabled?: boolean
   onOpenPromptManager?: () => void
+  runtimeContext?: PromptRuntimeContext
 }
 
 /** 支持的文件类型 */
@@ -39,10 +43,6 @@ const FILE_TYPE_LABELS: Record<string, string> = {
   'application/msword': 'Word 文档'
 }
 
-function getFileTypeLabel(type: string): string {
-  return FILE_TYPE_LABELS[type] || type
-}
-
 /** 判断是否为图片类型 */
 function isImageType(type: string): boolean {
   return type.startsWith('image/')
@@ -60,15 +60,19 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager }: MessageInputProps) {
+export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager, runtimeContext }: MessageInputProps) {
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<MessageAttachment[]>([])
-  const [showPromptMenu, setShowPromptMenu] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { sendWithEnter, webSearchEnabled, toggleWebSearch } = useSettingsStore()
   const { prompts } = usePromptStore()
+
+  // Slash 命令面板
+  const [showSlashPanel, setShowSlashPanel] = useState(false)
+  // 变量填写弹窗
+  const [variablePrompt, setVariablePrompt] = useState<Prompt | null>(null)
 
   // 自动调整高度
   useEffect(() => {
@@ -76,6 +80,15 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     if (textarea) {
       textarea.style.height = 'auto'
       textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+    }
+  }, [content])
+
+  // 检测 / 触发 Slash 面板
+  useEffect(() => {
+    if (content === '/' || content.startsWith('/')) {
+      setShowSlashPanel(true)
+    } else {
+      setShowSlashPanel(false)
     }
   }, [content])
 
@@ -89,6 +102,9 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Slash 面板激活时，不拦截方向键和回车
+      if (showSlashPanel) return
+
       if (sendWithEnter) {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault()
@@ -101,7 +117,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
         }
       }
     },
-    [sendWithEnter, handleSend]
+    [sendWithEnter, handleSend, showSlashPanel],
   )
 
   /** 处理文件选择 */
@@ -180,13 +196,31 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }, [])
 
-  /** 选择提示词 */
-  const handleSelectPrompt = useCallback((promptContent: string) => {
-    setContent(prev => {
-      const newContent = prev ? prev + '\n' + promptContent : promptContent
-      return newContent
-    })
-    setShowPromptMenu(false)
+  /** 从 Slash 面板选择提示词 */
+  const handleSlashSelect = useCallback((prompt: Prompt) => {
+    setShowSlashPanel(false)
+
+    // 清除输入的 / 前缀
+    setContent('')
+
+    // 如果提示词有变量，弹出变量填写弹窗
+    if (prompt.variables && prompt.variables.length > 0) {
+      setVariablePrompt(prompt)
+    } else {
+      // 无变量，直接渲染并填入
+      const text = prompt.sections
+        ? prompt.sections.filter((s) => s.enabled).map((s) => s.content).join('\n\n')
+        : prompt.content
+      const rendered = PromptVariableEngine.render(text, prompt.variables || [], {}, runtimeContext)
+      setContent(rendered.content)
+      textareaRef.current?.focus()
+    }
+  }, [runtimeContext])
+
+  /** 变量填写完成 */
+  const handleVariableSubmit = useCallback((renderedContent: string) => {
+    setVariablePrompt(null)
+    setContent(renderedContent)
     textareaRef.current?.focus()
   }, [])
 
@@ -236,7 +270,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isExtracting ? '正在解析文件...' : isStreaming ? 'AI 正在回复...' : '输入消息...'}
+            placeholder={isExtracting ? '正在解析文件...' : isStreaming ? 'AI 正在回复...' : '输入消息...（输入 / 唤起提示词面板）'}
             disabled={disabled || isStreaming || isExtracting}
             rows={1}
             className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400/80 dark:placeholder-gray-500/80 py-2 max-h-[200px]"
@@ -275,76 +309,6 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                 <Globe size={18} />
               </button>
 
-              {/* 提示词按钮 */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowPromptMenu(!showPromptMenu)}
-                  className="flex-shrink-0 p-1.5 text-muted hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-all"
-                  title="插入提示词"
-                >
-                  <FileText size={18} />
-                </button>
-
-                {/* 提示词下拉菜单 */}
-                {showPromptMenu && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-10"
-                      onClick={() => setShowPromptMenu(false)}
-                    />
-                    <div className="absolute left-0 bottom-full z-20 mb-1 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-lg backdrop-blur-sm py-1 min-w-[240px] max-h-[300px] overflow-y-auto">
-                      <div className="px-3 py-1.5 text-xs text-muted border-b border-surface-200/60 dark:border-surface-700/40 flex items-center justify-between">
-                        <span>选择提示词</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShowPromptMenu(false)
-                            onOpenPromptManager?.()
-                          }}
-                          className="text-primary-500 hover:text-primary-600 text-xs"
-                        >
-                          管理
-                        </button>
-                      </div>
-                      {prompts.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-gray-400 text-sm">
-                          <p>暂无提示词</p>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setShowPromptMenu(false)
-                              onOpenPromptManager?.()
-                            }}
-                            className="text-primary-500 hover:text-primary-600 text-xs mt-1"
-                          >
-                            去创建
-                          </button>
-                        </div>
-                      ) : (
-                        prompts.map((prompt) => (
-                          <button
-                            key={prompt.id}
-                            onClick={() => handleSelectPrompt(prompt.content)}
-                            className="flex flex-col w-full px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left"
-                          >
-                            <span className="font-medium text-gray-800 dark:text-gray-200">
-                              {prompt.name}
-                            </span>
-                            {prompt.description && (
-                              <span className="text-xs text-gray-400 truncate">
-                                {prompt.description}
-                              </span>
-                            )}
-                            <span className="text-xs text-gray-400 mt-0.5 truncate">
-                              {prompt.content.slice(0, 60)}{prompt.content.length > 60 ? '...' : ''}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
 
             {/* 发送/停止按钮 */}
@@ -381,9 +345,36 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
 
         {/* 提示文字 */}
         <div className="text-xs text-muted mt-2.5 text-center">
-          {sendWithEnter ? 'Enter 发送，Shift+Enter 换行' : 'Ctrl+Enter 发送，Enter 换行'}
+          {sendWithEnter ? 'Enter 发送，Shift+Enter 换行' : 'Ctrl+Enter 发送，Enter 换行'} · 输入 <kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-800 rounded text-[10px]">/</kbd> 唤起提示词面板
         </div>
       </div>
+
+      {/* Slash 命令面板 */}
+      {showSlashPanel && (
+        <div className="fixed inset-0 z-30" onClick={() => setShowSlashPanel(false)}>
+          <div
+            className="absolute bottom-24 left-1/2 -translate-x-1/2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <PromptSearchPanel
+              prompts={prompts}
+              onSelect={handleSlashSelect}
+              onClose={() => setShowSlashPanel(false)}
+              onOpenPromptManager={onOpenPromptManager}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 变量填写弹窗 */}
+      {variablePrompt && (
+        <VariableFillDialog
+          prompt={variablePrompt}
+          context={runtimeContext}
+          onSubmit={handleVariableSubmit}
+          onCancel={() => setVariablePrompt(null)}
+        />
+      )}
     </div>
   )
 }

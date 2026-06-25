@@ -12,7 +12,7 @@ import { useAgentStore } from '../../stores/agent-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useChat } from '../../hooks/use-chat'
 import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
-import type { Message, MessageAttachment } from '../../types'
+import type { Message, MessageAttachment, PromptRuntimeContext } from '../../types'
 
 /** 消息渲染组：单条消息或多条合并的 assistant 组 */
 type RenderGroup =
@@ -102,6 +102,12 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
 
   // 获取当前对话关联的 Agent
   const currentAgent = currentConversation?.agentId ? getAgent(currentConversation.agentId) : undefined
+
+  // 构建 Prompt 运行时上下文
+  const runtimeContext: PromptRuntimeContext = useMemo(() => ({
+    currentAgentName: currentAgent?.name,
+    defaultModel: currentAgent?.modelConfig?.modelId,
+  }), [currentAgent?.name, currentAgent?.modelConfig?.modelId])
 
   // 自动滚动到底部
   useEffect(() => {
@@ -491,6 +497,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
         onStop={stopGeneration}
         isStreaming={messages.some((m) => m.isStreaming)}
         onOpenPromptManager={onOpenPromptManager}
+        runtimeContext={runtimeContext}
       />
     </div>
   )

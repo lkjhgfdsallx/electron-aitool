@@ -1,7 +1,4 @@
 export type {
-  Prompt,
-  PromptCreateInput,
-  PromptUpdateInput,
   AgentProfile,
   AgentProfileCreateInput,
   AgentProfileUpdateInput,
@@ -14,6 +11,26 @@ export type {
   TerminationConfig,
   AgentModelConfig
 } from './agent'
+export type {
+  Prompt,
+  PromptCreateInput,
+  PromptUpdateInput,
+  PromptVariable,
+  PromptVariableType,
+  PromptSection,
+  PromptSectionType,
+  PromptVersion,
+  PromptABTest,
+  PromptChain,
+  PromptChainNode,
+  VariableValidationResult,
+  VariableRenderResult,
+  PromptRuntimeContext,
+  BuiltinContextVariable,
+  DiffResult,
+  DiffLine,
+} from './prompt'
+export { BUILTIN_CONTEXT_VARIABLES, SECTION_TYPE_META } from './prompt'
 export type {
   Message,
   MessageCreateInput,

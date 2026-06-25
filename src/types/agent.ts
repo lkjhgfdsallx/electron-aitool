@@ -136,16 +136,25 @@ export interface AgentRunContext {
   endedAt?: number
 }
 
-// ==================== 提示词管理相关类型（保留向后兼容） ====================
-
-export interface Prompt {
-  id: string
-  name: string
-  description: string
-  content: string
-  createdAt: number
-  updatedAt: number
-}
-
-export type PromptCreateInput = Omit<Prompt, 'id' | 'createdAt' | 'updatedAt'>
-export type PromptUpdateInput = Partial<Omit<Prompt, 'id' | 'createdAt'>> & { id: string }
+// ==================== 提示词类型已迁移至 prompt.ts ====================
+// 保留 re-export 以维持向后兼容
+export type {
+  Prompt,
+  PromptCreateInput,
+  PromptUpdateInput,
+  PromptVariable,
+  PromptVariableType,
+  PromptSection,
+  PromptSectionType,
+  PromptVersion,
+  PromptABTest,
+  PromptChain,
+  PromptChainNode,
+  VariableValidationResult,
+  VariableRenderResult,
+  PromptRuntimeContext,
+  BuiltinContextVariable,
+  DiffResult,
+  DiffLine,
+} from './prompt'
+export { BUILTIN_CONTEXT_VARIABLES, SECTION_TYPE_META } from './prompt'

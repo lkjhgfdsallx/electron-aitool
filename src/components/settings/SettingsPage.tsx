@@ -58,7 +58,7 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
 
       {/* 右侧内容区 */}
       <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-8 py-6">
+        <div className="max-w-5xl mx-auto px-8 py-6">
           {renderContent()}
         </div>
       </div>
