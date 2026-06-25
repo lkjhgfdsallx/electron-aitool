@@ -267,6 +267,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
           {/* 输入框 */}
           <textarea
             ref={textareaRef}
+            data-chat-input
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}

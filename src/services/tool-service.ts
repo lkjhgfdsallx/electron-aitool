@@ -3,6 +3,7 @@ import { mcpService } from './mcp-service'
 import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
 import { knowledgeBaseService } from './knowledge-base-service'
+import { useToolStatsStore } from '../stores/tool-stats-store'
 
 // ==================== 安全数学表达式求值器 ====================
 // 递归下降解析器，支持：四则运算、幂运算、括号、常见数学函数和常量
@@ -231,21 +232,64 @@ export const toolService = {
       return { success: false, data: '', error: `工具 "${toolName}" 未找到` }
     }
 
+    const startTime = Date.now()
+    let result: ToolExecuteResult
+
     try {
       // 内置工具
       if (tool.isBuiltIn) {
-        return await this.executeBuiltInTool(toolName, args)
+        result = await this.executeBuiltInTool(toolName, args)
       }
-
       // MCP 工具
-      if (tool.isMCP && tool.mcpServerId) {
-        return await mcpService.callTool(tool.mcpServerId, toolName, args)
+      else if (tool.isMCP && tool.mcpServerId) {
+        result = await mcpService.callTool(tool.mcpServerId, toolName, args)
       }
-
-      return { success: false, data: '', error: '未知的工具类型' }
+      // 自定义工具（含 JS 代码）
+      else if (tool.code) {
+        result = await this.executeCustomTool(tool.code, args, tool.timeout)
+      }
+      else {
+        result = { success: false, data: '', error: '未知的工具类型' }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : '工具执行失败'
-      return { success: false, data: '', error: message }
+      result = { success: false, data: '', error: message }
+    }
+
+    // 记录统计
+    const durationMs = result.durationMs ?? (Date.now() - startTime)
+    result.durationMs = durationMs
+    try {
+      useToolStatsStore.getState().recordCall(toolName, result.success, durationMs)
+    } catch {
+      // 统计记录失败不影响工具执行结果
+    }
+
+    return result
+  },
+
+  /**
+   * 执行自定义工具（通过主进程沙箱）
+   */
+  async executeCustomTool(
+    code: string,
+    args: Record<string, unknown>,
+    timeout?: number
+  ): Promise<ToolExecuteResult> {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI?.customTool?.execute) {
+        const response = await window.electronAPI.customTool.execute(code, args, timeout)
+        return {
+          success: response.success,
+          data: response.data ?? '',
+          error: response.error,
+          durationMs: response.durationMs
+        }
+      }
+      return { success: false, data: '', error: '自定义工具执行功能仅在 Electron 环境中可用' }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '自定义工具执行失败'
+      return { success: false, data: '', error: msg }
     }
   },
 

@@ -19,17 +19,6 @@ import { VersionHistory } from './VersionHistory'
 import { PromptChainEditor } from './PromptChainEditor'
 import type { Prompt, PromptCreateInput } from '../../types'
 
-/** 空白 Prompt 模板 */
-const EMPTY_PROMPT: PromptCreateInput = {
-  name: '',
-  description: '',
-  content: '',
-  variables: [],
-  tags: [],
-  favorite: false,
-  pinned: false,
-}
-
 type DetailView = 'editor' | 'playground' | 'versions' | 'chains' | null
 
 export function PromptManager() {

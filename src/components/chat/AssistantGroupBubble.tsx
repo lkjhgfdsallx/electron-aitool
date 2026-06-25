@@ -16,6 +16,8 @@ interface AssistantGroupBubbleProps {
   messages: Message[]
   showTimestamp?: boolean
   showTokenUsage?: boolean
+  showAvatar?: boolean
+  messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
 }
 
@@ -27,6 +29,8 @@ export function AssistantGroupBubble({
   messages,
   showTimestamp = true,
   showTokenUsage = true,
+  showAvatar = true,
+  messageAlignment = 'left-right',
   onRegenerate
 }: AssistantGroupBubbleProps) {
   const [copied, setCopied] = useState(false)
@@ -101,12 +105,25 @@ export function AssistantGroupBubble({
     setTimeout(() => setCopied(false), 2000)
   }, [finalContent])
 
+  const alignmentClass = (() => {
+    switch (messageAlignment) {
+      case 'all-right': return 'ml-auto'
+      case 'full-width': return 'w-full'
+      case 'left-right':
+      case 'all-left':
+      default:
+        return ''
+    }
+  })()
+
   return (
-    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''}`}>
+    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass === 'w-full' ? 'w-full' : alignmentClass}`}>
       {/* 头像 */}
+      {showAvatar && (
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
         <Bot size={16} className="text-white" />
       </div>
+      )}
 
       {/* 内容区域 */}
       <div className="flex-1 min-w-0 selection-boundary-parent">

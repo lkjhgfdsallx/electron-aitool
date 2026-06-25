@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Sidebar } from './components/layout/Sidebar'
 import { MainArea } from './components/layout/MainArea'
 import { initMCPSync } from './stores/mcp-tool-store'
+import { useShortcuts } from './hooks/use-shortcuts'
 import type { ViewMode, SettingsSection } from './components/settings/SettingsNavRail'
 
 export default function App() {
@@ -12,6 +13,13 @@ export default function App() {
   useEffect(() => {
     initMCPSync()
   }, [])
+
+  // 快捷键桥接：将 store 中的快捷键配置注册到 Electron globalShortcut
+  const openSettingsCb = useCallback(() => {
+    setSettingsSection('ai-providers')
+    setViewMode('settings')
+  }, [])
+  useShortcuts({ openSettings: openSettingsCb })
 
   const openSettings = (section: SettingsSection = 'ai-providers') => {
     setSettingsSection(section)

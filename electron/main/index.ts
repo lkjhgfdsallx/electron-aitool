@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, globalShortcut, Notification } from 'electron'
 import { join } from 'path'
 import { writeFile } from 'fs/promises'
 import https from 'https'
@@ -9,6 +9,7 @@ import { generateTitleFromContent } from './title-generator'
 import { extractPdfText } from './pdf-extractor'
 import { extractFileText } from './file-extractor'
 import { setupSiteAnalyzerHandlers } from './site-analyzer-handler'
+import { setupCustomToolHandlers } from './custom-tool-handler'
 import { searchWeb, fetchWebpage } from './web-search'
 
 function createWindow(): BrowserWindow {
@@ -60,6 +61,9 @@ app.whenReady().then(() => {
 
   // 设置网站分析器
   setupSiteAnalyzerHandlers()
+
+  // 设置自定义工具沙箱执行
+  setupCustomToolHandlers()
 
   const mainWindow = createWindow()
 
@@ -247,5 +251,59 @@ function setupIPCHandlers(): void {
 
   ipcMain.handle('window:isMaximized', (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
+  })
+
+  // ---- 快捷键 ----
+  const registeredShortcuts = new Map<string, string>()
+
+  ipcMain.handle('shortcuts:register', (event, id: string, accelerator: string) => {
+    try {
+      // 如果该 id 已注册，先注销旧的
+      if (registeredShortcuts.has(id)) {
+        globalShortcut.unregister(registeredShortcuts.get(id)!)
+      }
+      globalShortcut.register(accelerator, () => {
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('shortcuts:triggered', id)
+        }
+      })
+      registeredShortcuts.set(id, accelerator)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '注册快捷键失败' }
+    }
+  })
+
+  ipcMain.handle('shortcuts:unregister', (_event, id: string) => {
+    try {
+      const accelerator = registeredShortcuts.get(id)
+      if (accelerator) {
+        globalShortcut.unregister(accelerator)
+        registeredShortcuts.delete(id)
+      }
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '注销快捷键失败' }
+    }
+  })
+
+  // ---- 系统通知 ----
+  ipcMain.handle('notification:show', (_event, title: string, body: string) => {
+    try {
+      if (Notification.isSupported()) {
+        const notification = new Notification({ title, body })
+        notification.show()
+      }
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : '通知失败' }
+    }
+  })
+
+  ipcMain.handle('notification:playSound', (_event, _soundName: string) => {
+    // Electron 没有原生播放音频的 API，通过渲染进程的 Web Audio API 播放
+    // 此处返回成功，由渲染进程自行播放
+    return { success: true }
   })
 }

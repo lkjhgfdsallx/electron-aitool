@@ -21,12 +21,28 @@ export interface Tool {
   isMCP: boolean
   mcpServerId?: string
   enabled: boolean
+  /** 自定义工具的 JS 函数体（async 箭头函数） */
+  code?: string
+  /** 执行超时时间（毫秒），默认 5000 */
+  timeout?: number
 }
 
 export interface ToolExecuteResult {
   success: boolean
   data: string
   error?: string
+  /** 执行耗时（毫秒） */
+  durationMs?: number
+}
+
+/** 工具调用统计 */
+export interface ToolCallStats {
+  toolName: string
+  callCount: number
+  successCount: number
+  failureCount: number
+  totalDurationMs: number
+  lastCalledAt: number // timestamp
 }
 
 export type ToolCreateInput = Omit<Tool, 'id' | 'isBuiltIn' | 'isMCP' | 'mcpServerId'>

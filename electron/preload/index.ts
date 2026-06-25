@@ -57,6 +57,35 @@ export interface ElectronAPI {
     close: () => void
     isMaximized: () => Promise<boolean>
   }
+  // 快捷键
+  shortcuts: {
+    /**
+     * 注册全局快捷键
+     * @param accelerator Electron 加速器字符串，如 'Ctrl+N'
+     * @param id 快捷键唯一标识
+     * @returns 是否注册成功
+     */
+    register: (id: string, accelerator: string) => Promise<{ success: boolean; error?: string }>
+    /**
+     * 注销快捷键
+     */
+    unregister: (id: string) => Promise<{ success: boolean }>
+    /**
+     * 监听快捷键触发
+     */
+    onTriggered: (callback: (id: string) => void) => () => void
+  }
+  // 通知
+  notification: {
+    /**
+     * 显示系统通知
+     */
+    show: (title: string, body: string) => Promise<{ success: boolean }>
+    /**
+     * 播放提示音
+     */
+    playSound: (soundName: string) => Promise<{ success: boolean }>
+  }
   // 模型文件下载（通过 Node.js 绕过浏览器 CORS 限制）
   model: {
     /**
@@ -65,6 +94,21 @@ export interface ElectronAPI {
      * @returns 每个文件的字节数组
      */
     downloadFiles: (urls: string[]) => Promise<Array<{ url: string; data: number[] }>>
+  }
+  // 自定义工具沙箱执行
+  customTool: {
+    /**
+     * 在主进程沙箱中执行自定义 JS 函数
+     * @param code JS 函数体，格式: async (params) => { ... }
+     * @param args 传入的参数对象
+     * @param timeout 超时时间（毫秒），默认 5000
+     * @returns 执行结果
+     */
+    execute: (
+      code: string,
+      args: Record<string, unknown>,
+      timeout?: number
+    ) => Promise<{ success: boolean; data?: string; error?: string; durationMs?: number }>
   }
   // 网站分析器
   siteAnalyzer: {
@@ -120,6 +164,10 @@ const electronAPI: ElectronAPI = {
     downloadFiles: (urls: string[]) =>
       ipcRenderer.invoke('model:downloadFiles', urls)
   },
+  customTool: {
+    execute: (code: string, args: Record<string, unknown>, timeout?: number) =>
+      ipcRenderer.invoke('custom-tool:execute', code, args, timeout)
+  },
   siteAnalyzer: {
     start: (config: Record<string, unknown>) =>
       ipcRenderer.invoke('siteAnalyzer:start', config),
@@ -134,6 +182,25 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.removeListener('siteAnalyzer:progress', handler)
       }
     }
+  },
+  shortcuts: {
+    register: (id: string, accelerator: string) =>
+      ipcRenderer.invoke('shortcuts:register', id, accelerator),
+    unregister: (id: string) =>
+      ipcRenderer.invoke('shortcuts:unregister', id),
+    onTriggered: (callback: (id: string) => void) => {
+      const handler = (_event: unknown, id: string) => callback(id)
+      ipcRenderer.on('shortcuts:triggered', handler)
+      return () => {
+        ipcRenderer.removeListener('shortcuts:triggered', handler)
+      }
+    }
+  },
+  notification: {
+    show: (title: string, body: string) =>
+      ipcRenderer.invoke('notification:show', title, body),
+    playSound: (soundName: string) =>
+      ipcRenderer.invoke('notification:playSound', soundName)
   }
 }
 

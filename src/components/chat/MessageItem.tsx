@@ -41,6 +41,8 @@ interface MessageItemProps {
   message: Message
   showTimestamp?: boolean
   showTokenUsage?: boolean
+  showAvatar?: boolean
+  messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
   onEdit?: (messageId: string, content: string) => void
   /** 编辑并重新发送（创建对话分支） */
@@ -65,6 +67,8 @@ export function MessageItem({
   message,
   showTimestamp = true,
   showTokenUsage = true,
+  showAvatar = true,
+  messageAlignment = 'left-right',
   onRegenerate,
   onEdit,
   onEditAndResend,
@@ -125,10 +129,12 @@ export function MessageItem({
   // 工具消息特殊显示
   if (message.role === 'tool') {
     return (
-      <div className="flex gap-3 px-4 py-2 ml-10 animate-fade-in">
-        <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
-          <Wrench size={14} className="text-white" />
-        </div>
+      <div className={`flex gap-3 px-4 py-2 ${showAvatar ? 'ml-10' : 'ml-0'} animate-fade-in`}>
+        {showAvatar && (
+          <div className="flex-shrink-0 w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
+            <Wrench size={14} className="text-white" />
+          </div>
+        )}
         <div className="flex-1 min-w-0 selection-boundary-parent rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 p-3">
           <div className="text-xs text-muted mb-1">
             工具结果: {message.toolName}
@@ -149,14 +155,33 @@ export function MessageItem({
   // 是否为分支点（用户消息且有多个分支）
   const isForkPoint = message.role === 'user' && (message.branchCount ?? 0) > 1
 
+  // 根据对齐方式计算容器样式
+  const isUser = message.role === 'user'
+  const alignmentClass = (() => {
+    switch (messageAlignment) {
+      case 'left-right':
+        return isUser ? 'ml-auto' : 'mr-auto'
+      case 'all-left':
+        return ''
+      case 'all-right':
+        return 'ml-auto'
+      case 'full-width':
+        return 'w-full'
+      default:
+        return isUser ? 'ml-auto' : 'mr-auto'
+    }
+  })()
+
   return (
-    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''}`}>
+    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass === 'w-full' ? 'w-full' : ''}`}>
       {/* 头像 */}
+      {showAvatar && (
       <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full ${role.bgClass} flex items-center justify-center`}
+        className={`flex-shrink-0 w-8 h-8 rounded-full ${role.bgClass} flex items-center justify-center ${messageAlignment === 'all-right' && isUser ? 'order-2' : ''}`}
       >
         <RoleIcon size={16} className="text-white" />
       </div>
+      )}
 
       {/* 内容区域 */}
       <div className="flex-1 min-w-0 selection-boundary-parent">

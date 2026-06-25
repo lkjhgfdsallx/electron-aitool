@@ -4,6 +4,7 @@ import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
 import { knowledgeBaseService } from '../services/knowledge-base-service'
 import { useConversationStore } from '../stores/conversation-store'
@@ -107,7 +108,8 @@ export function useChat() {
    */
   const getAvailableTools = useCallback((): Tool[] => {
     const mcpTools = useMCPToolStore.getState().mcpTools
-    return [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...mcpTools]
+    const customTools = useCustomToolStore.getState().customTools.filter((t) => t.enabled)
+    return [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...mcpTools, ...customTools]
   }, [])
 
   /**

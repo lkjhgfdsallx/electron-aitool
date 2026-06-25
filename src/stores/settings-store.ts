@@ -5,9 +5,13 @@ import type {
   ThemeMode,
   EmbeddingProviderConfig,
   ChunkingConfig,
-  RetrievalConfig
+  RetrievalConfig,
+  CodeHighlightTheme,
+  MessageAlignment,
+  ShortcutConfig
 } from '../types'
 import {
+  DEFAULT_SHORTCUT_CONFIG,
   DEFAULT_CHUNKING_CONFIG,
   DEFAULT_RETRIEVAL_CONFIG
 } from '../types'
@@ -16,10 +20,21 @@ const DEFAULT_PREFERENCES: UIPreferences = {
   theme: 'system',
   showTokenUsage: true,
   showTimestamp: true,
-  fontSize: 'medium',
+  fontSize: 14,
+  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  codeFontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+  codeFontSize: 13,
+  codeHighlightTheme: 'github-dark',
+  messageAlignment: 'left-right',
+  showAvatar: true,
   sidebarCollapsed: false,
+  sidebarWidth: 280,
   sendWithEnter: true,
-  webSearchEnabled: false
+  webSearchEnabled: false,
+  enableNotification: true,
+  enableSound: false,
+  notificationSound: 'default',
+  shortcuts: { ...DEFAULT_SHORTCUT_CONFIG }
 }
 
 interface SettingsStore extends UIPreferences {
@@ -34,10 +49,22 @@ interface SettingsStore extends UIPreferences {
   setTheme: (theme: ThemeMode) => void
   toggleTokenUsage: () => void
   toggleTimestamp: () => void
-  setFontSize: (size: UIPreferences['fontSize']) => void
+  setFontSize: (size: number) => void
+  setFontFamily: (family: string) => void
+  setCodeFontFamily: (family: string) => void
+  setCodeFontSize: (size: number) => void
+  setCodeHighlightTheme: (theme: CodeHighlightTheme) => void
+  setMessageAlignment: (alignment: MessageAlignment) => void
+  toggleAvatar: () => void
   toggleSidebar: () => void
+  setSidebarWidth: (width: number) => void
   setSendWithEnter: (value: boolean) => void
   toggleWebSearch: () => void
+  setEnableNotification: (value: boolean) => void
+  setEnableSound: (value: boolean) => void
+  setNotificationSound: (sound: string) => void
+  setShortcuts: (shortcuts: ShortcutConfig) => void
+  setShortcut: (action: keyof ShortcutConfig, binding: ShortcutConfig[keyof ShortcutConfig]) => void
   setEmbeddingConfig: (config: EmbeddingProviderConfig) => void
   setChunkingConfig: (config: ChunkingConfig) => void
   setRetrievalConfig: (config: RetrievalConfig) => void
@@ -65,13 +92,45 @@ export const useSettingsStore = create<SettingsStore>()(
 
       setFontSize: (fontSize) => set({ fontSize }),
 
+      setFontFamily: (fontFamily) => set({ fontFamily }),
+
+      setCodeFontFamily: (codeFontFamily) => set({ codeFontFamily }),
+
+      setCodeFontSize: (codeFontSize) => set({ codeFontSize }),
+
+      setCodeHighlightTheme: (codeHighlightTheme) => {
+        set({ codeHighlightTheme })
+        applyCodeHighlightTheme(codeHighlightTheme)
+      },
+
+      setMessageAlignment: (messageAlignment) => set({ messageAlignment }),
+
+      toggleAvatar: () =>
+        set((state) => ({ showAvatar: !state.showAvatar })),
+
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+      setSidebarWidth: (sidebarWidth) =>
+        set({ sidebarWidth: Math.max(200, Math.min(480, sidebarWidth)) }),
 
       setSendWithEnter: (sendWithEnter) => set({ sendWithEnter }),
 
       toggleWebSearch: () =>
         set((state) => ({ webSearchEnabled: !state.webSearchEnabled })),
+
+      setEnableNotification: (enableNotification) => set({ enableNotification }),
+
+      setEnableSound: (enableSound) => set({ enableSound }),
+
+      setNotificationSound: (notificationSound) => set({ notificationSound }),
+
+      setShortcuts: (shortcuts) => set({ shortcuts }),
+
+      setShortcut: (action, binding) =>
+        set((state) => ({
+          shortcuts: { ...state.shortcuts, [action]: binding }
+        })),
 
       setEmbeddingConfig: (embeddingConfig) => set({ embeddingConfig }),
 
@@ -92,6 +151,7 @@ export const useSettingsStore = create<SettingsStore>()(
         return (state) => {
           if (state) {
             applyTheme(state.theme)
+            applyCodeHighlightTheme(state.codeHighlightTheme)
             // 确保旧用户的 retrievalConfig 包含新增的混合权重字段
             state.retrievalConfig = {
               ...DEFAULT_RETRIEVAL_CONFIG,
@@ -116,4 +176,12 @@ function applyTheme(theme: ThemeMode): void {
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     root.classList.toggle('dark', prefersDark)
   }
+}
+
+/** 应用代码高亮主题 */
+function applyCodeHighlightTheme(_theme: CodeHighlightTheme): void {
+  // 高亮主题通过 MarkdownRenderer 的动态 CSS import 生效
+  // 此处仅触发 re-render，具体实现在 MarkdownRenderer 中
+  // 通过 data-code-theme 属性让 CSS 变量生效
+  document.documentElement.setAttribute('data-code-theme', _theme)
 }

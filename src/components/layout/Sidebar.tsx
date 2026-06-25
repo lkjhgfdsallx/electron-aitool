@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Plus, PanelLeftClose, PanelLeft, Settings, Database } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { useConversationStore } from '../../stores/conversation-store'
@@ -13,7 +14,45 @@ interface SidebarProps {
 
 export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackToChat }: SidebarProps) {
   const { createConversation } = useConversationStore()
-  const { sidebarCollapsed, toggleSidebar } = useSettingsStore()
+  const { sidebarCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth } = useSettingsStore()
+
+  // ---- 拖拽调整宽度 ----
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartX = useRef(0)
+  const dragStartWidth = useRef(sidebarWidth)
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+    dragStartX.current = e.clientX
+    dragStartWidth.current = sidebarWidth
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - dragStartX.current
+      setSidebarWidth(dragStartWidth.current + delta)
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    // 防止拖拽时选中文本
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isDragging, setSidebarWidth])
 
   if (sidebarCollapsed) {
     return (
@@ -75,7 +114,10 @@ export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackT
   }
 
   return (
-    <div className="flex-shrink-0 w-64 border-r border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-950 flex flex-col animate-fade-in">
+    <div
+      className="flex-shrink-0 border-r border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-950 flex flex-col animate-fade-in relative"
+      style={{ width: sidebarWidth }}
+    >
       {/* 品牌区 */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center justify-between mb-3">
@@ -148,6 +190,18 @@ export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackT
           <Settings size={16} />
           <span>{viewMode === 'settings' ? '返回对话' : '设置'}</span>
         </button>
+      </div>
+
+      {/* 拖拽调整宽度的手柄 */}
+      <div
+        onMouseDown={handleDragStart}
+        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize group/drag z-10 ${
+          isDragging ? 'bg-accent-500/30' : 'hover:bg-accent-400/20'
+        }`}
+      >
+        <div className={`absolute top-1/2 -translate-y-1/2 right-0 w-0.5 h-8 rounded-full transition-colors ${
+          isDragging ? 'bg-accent-500' : 'bg-transparent group-hover/drag:bg-accent-400/60'
+        }`} />
       </div>
     </div>
   )

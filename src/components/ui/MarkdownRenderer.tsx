@@ -1,7 +1,22 @@
-import { useMemo, useCallback, type MouseEvent } from 'react'
+import { useMemo, useCallback, useEffect, type MouseEvent } from 'react'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
+import { useSettingsStore } from '../../stores/settings-store'
+import type { CodeHighlightTheme } from '../../types'
+
+/** 动态加载 highlight.js 主题 CSS */
+const HLJS_THEME_MAP: Record<CodeHighlightTheme, () => Promise<unknown>> = {
+  'github-dark': () => import('highlight.js/styles/github-dark.css'),
+  'github': () => import('highlight.js/styles/github.css'),
+  'vs2015': () => import('highlight.js/styles/vs2015.css'),
+  'atom-one-dark': () => import('highlight.js/styles/atom-one-dark.css'),
+  'atom-one-light': () => import('highlight.js/styles/atom-one-light.css'),
+  'monokai-sublime': () => import('highlight.js/styles/monokai-sublime.css'),
+  'nord': () => import('highlight.js/styles/nord.css'),
+  'tokyo-night-dark': () => import('highlight.js/styles/tokyo-night-dark.css'),
+  'night-owl': () => import('highlight.js/styles/night-owl.css'),
+}
 
 // 自定义 renderer：同步代码高亮，避免 marked-highlight 导致 marked.parse() 返回 Promise
 const renderer = new marked.Renderer()
@@ -168,6 +183,13 @@ interface MarkdownRendererProps {
 }
 
 export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+  const codeHighlightTheme = useSettingsStore((s) => s.codeHighlightTheme)
+
+  // 动态加载代码高亮主题
+  useEffect(() => {
+    HLJS_THEME_MAP[codeHighlightTheme]?.()
+  }, [codeHighlightTheme])
+
   const html = useMemo(() => {
     if (!content) return ''
     try {

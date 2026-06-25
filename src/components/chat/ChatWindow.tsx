@@ -67,7 +67,7 @@ interface ChatWindowProps {
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases } = useConversationStore()
-  const { showTimestamp, showTokenUsage } = useSettingsStore()
+  const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
   const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask } = useChat()
@@ -466,6 +466,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                     messages={group.messages}
                     showTimestamp={showTimestamp}
                     showTokenUsage={showTokenUsage}
+                    showAvatar={showAvatar}
+                    messageAlignment={messageAlignment}
                     onRegenerate={regenerateMessage}
                   />
                 )
@@ -477,6 +479,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                   message={msg}
                   showTimestamp={showTimestamp}
                   showTokenUsage={showTokenUsage}
+                  showAvatar={showAvatar}
+                  messageAlignment={messageAlignment}
                   onRegenerate={regenerateMessage}
                   onEditAndResend={editAndResend}
                   onHumanInput={handleHumanInput}
