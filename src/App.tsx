@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Sidebar } from './components/layout/Sidebar'
 import { MainArea } from './components/layout/MainArea'
+import { TitleBar } from './components/layout/TitleBar'
 import { initMCPSync } from './stores/mcp-tool-store'
 import { useShortcuts } from './hooks/use-shortcuts'
 import type { ViewMode, SettingsSection } from './components/settings/SettingsNavRail'
@@ -35,7 +36,12 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 overflow-hidden select-none">
+    <div className="flex flex-col h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 overflow-hidden select-none">
+      {/* 自定义标题栏 - 替代 Electron 原生标题栏 */}
+      <TitleBar />
+
+      {/* 主内容区域 */}
+      <div className="flex flex-1 min-h-0">
       {/* 侧边栏 - 仅在对话模式下显示 */}
       {viewMode === 'chat' && (
         <Sidebar
@@ -53,6 +59,7 @@ export default function App() {
         onOpenSettings={openSettings}
         onCloseSettings={closeSettings}
       />
+      </div>
     </div>
   )
 }

@@ -19,9 +19,8 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    frame: false,
     autoHideMenuBar: true,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 15, y: 12 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
