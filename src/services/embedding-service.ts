@@ -15,6 +15,7 @@
  * - openai-api: OpenAI 兼容的 Embedding API
  */
 
+import { openDB, type IDBPDatabase } from 'idb'
 import type {
   EmbeddingProviderConfig,
   EmbeddingEngineStatus,
@@ -37,6 +38,114 @@ const MODEL_FILES = [
   'special_tokens_map.json',
   'onnx/model_quantized.onnx'
 ]
+
+// ==================== 模型文件 IndexedDB 持久化缓存 ====================
+//
+// 问题：之前模型文件仅存于内存（Map），Worker 销毁或页面刷新后全部丢失，
+//       导致用户每次打开知识库设置都要重新下载模型（~30MB），体验极差。
+//
+// 方案：使用 IndexedDB 持久化缓存下载的模型文件。
+//       下载前先检查缓存，命中则直接使用；下载后写入缓存供下次使用。
+//       缓存 key 为 modelId（如 'Xenova/all-MiniLM-L6-v2'），
+//       value 为该模型所有文件的 { fileName, data } 数组。
+
+const MODEL_CACHE_DB_NAME = 'ModelFileCache'
+const MODEL_CACHE_DB_VERSION = 1
+const MODEL_CACHE_STORE = 'modelFiles'
+
+/** 缓存记录结构 */
+interface ModelCacheRecord {
+  /** 缓存 key = modelId */
+  id: string
+  /** 模型所有文件 */
+  files: PreDownloadedFile[]
+  /** 缓存写入时间 */
+  cachedAt: number
+}
+
+/** 打开模型缓存数据库 */
+async function openModelCacheDB(): Promise<IDBPDatabase> {
+  return openDB(MODEL_CACHE_DB_NAME, MODEL_CACHE_DB_VERSION, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(MODEL_CACHE_STORE)) {
+        db.createObjectStore(MODEL_CACHE_STORE, { keyPath: 'id' })
+      }
+    }
+  })
+}
+
+/**
+ * 从 IndexedDB 读取已缓存的模型文件。
+ * 如果缓存命中且文件数量匹配，返回 PreDownloadedFile[]；否则返回 null。
+ */
+async function getCachedModelFiles(modelId: string): Promise<PreDownloadedFile[] | null> {
+  try {
+    const db = await openModelCacheDB()
+    const record: ModelCacheRecord | undefined = await db.get(MODEL_CACHE_STORE, modelId)
+    if (record && record.files && record.files.length >= MODEL_FILES.length) {
+      console.log(`[EmbeddingService] IndexedDB 缓存命中: ${modelId} (${record.files.length} 个文件, 缓存于 ${new Date(record.cachedAt).toLocaleString()})`)
+      return record.files
+    }
+    return null
+  } catch (err) {
+    console.warn('[EmbeddingService] 读取模型缓存失败:', err)
+    return null
+  }
+}
+
+/**
+ * 将下载的模型文件写入 IndexedDB 持久化缓存。
+ */
+async function saveModelFilesToCache(modelId: string, files: PreDownloadedFile[]): Promise<void> {
+  try {
+    const db = await openModelCacheDB()
+    const record: ModelCacheRecord = {
+      id: modelId,
+      files,
+      cachedAt: Date.now()
+    }
+    await db.put(MODEL_CACHE_STORE, record)
+    const totalSize = files.reduce((sum, f) => sum + f.data.length, 0)
+    console.log(`[EmbeddingService] 模型文件已缓存到 IndexedDB: ${modelId} (${files.length} 个文件, ${Math.round(totalSize / 1024 / 1024)}MB)`)
+  } catch (err) {
+    // 缓存写入失败不影响主流程，仅打印警告
+    console.warn('[EmbeddingService] 写入模型缓存失败（不影响使用）:', err)
+  }
+}
+
+/**
+ * 清除本地模型的 IndexedDB 缓存。
+ * 供缓存管理 UI 调用。
+ */
+export async function clearModelFileCache(): Promise<void> {
+  try {
+    const db = await openModelCacheDB()
+    await db.clear(MODEL_CACHE_STORE)
+    console.log('[EmbeddingService] 模型文件缓存已清除')
+  } catch (err) {
+    console.warn('[EmbeddingService] 清除模型缓存失败:', err)
+  }
+}
+
+/**
+ * 获取模型文件缓存的统计信息。
+ * 供缓存管理 UI 调用。
+ */
+export async function getModelFileCacheStats(): Promise<{ sizeBytes: number; recordCount: number }> {
+  try {
+    const db = await openModelCacheDB()
+    const records: ModelCacheRecord[] = await db.getAll(MODEL_CACHE_STORE)
+    let sizeBytes = 0
+    for (const record of records) {
+      for (const file of record.files) {
+        sizeBytes += file.data.length
+      }
+    }
+    return { sizeBytes, recordCount: records.length }
+  } catch {
+    return { sizeBytes: 0, recordCount: 0 }
+  }
+}
 
 // ==================== TF-IDF 分词器 ====================
 
@@ -388,28 +497,40 @@ export const embeddingService = {
         const mirror = lmConfig.mirrorUrl || 'https://huggingface.co'
         const baseUrl = `${mirror.replace(/\/+$/, '')}/${lmConfig.modelId}/resolve/main`
 
-        // 检测是否运行在 Electron 环境且有 model API
-        const hasElectronModelAPI = typeof window !== 'undefined'
-          && !!window.electronAPI?.model?.downloadFiles
+        // ---- 优先从 IndexedDB 持久化缓存读取 ----
+        updateStatus({ loadPhase: 'downloading', loadProgress: 2, loadPhaseDetail: '正在检查本地缓存...' })
+        preDownloadedFiles = await getCachedModelFiles(lmConfig.modelId)
 
-        if (hasElectronModelAPI) {
-          updateStatus({ loadPhase: 'downloading', loadProgress: 2, loadPhaseDetail: '正在通过 Electron 代理下载模型文件...' })
+        if (preDownloadedFiles) {
+          // 缓存命中，跳过网络下载
+          updateStatus({ loadProgress: 80, loadPhaseDetail: `从本地缓存加载 ${preDownloadedFiles.length} 个模型文件（无需下载）` })
+        } else {
+          // 缓存未命中，通过网络下载
+          const hasElectronModelAPI = typeof window !== 'undefined'
+            && !!window.electronAPI?.model?.downloadFiles
 
-          try {
-            const urls = MODEL_FILES.map(f => `${baseUrl}/${f}`)
-            const results = await window.electronAPI.model.downloadFiles(urls) as Array<{ url: string; data: number[] }>
+          if (hasElectronModelAPI) {
+            updateStatus({ loadPhase: 'downloading', loadProgress: 5, loadPhaseDetail: '首次使用，正在下载模型文件...' })
 
-            // 将 URL 映射回文件名
-            preDownloadedFiles = results.map(r => {
-              const fileName = r.url.replace(`${baseUrl}/`, '')
-              return { fileName, data: r.data }
-            })
+            try {
+              const urls = MODEL_FILES.map(f => `${baseUrl}/${f}`)
+              const results = await window.electronAPI.model.downloadFiles(urls) as Array<{ url: string; data: number[] }>
 
-            updateStatus({ loadProgress: 80, loadPhaseDetail: `已下载 ${preDownloadedFiles.length} 个模型文件` })
-          } catch (dlErr) {
-            // 下载失败不阻塞，Worker 会自行尝试浏览器 fetch 回退
-            console.warn('[EmbeddingService] Electron 代理下载失败，Worker 将尝试浏览器 fetch:', dlErr)
-            preDownloadedFiles = null
+              // 将 URL 映射回文件名
+              preDownloadedFiles = results.map(r => {
+                const fileName = r.url.replace(`${baseUrl}/`, '')
+                return { fileName, data: r.data }
+              })
+
+              updateStatus({ loadProgress: 80, loadPhaseDetail: `已下载 ${preDownloadedFiles.length} 个模型文件` })
+
+              // ---- 下载成功后写入 IndexedDB 持久化缓存 ----
+              await saveModelFilesToCache(lmConfig.modelId, preDownloadedFiles)
+            } catch (dlErr) {
+              // 下载失败不阻塞，Worker 会自行尝试浏览器 fetch 回退
+              console.warn('[EmbeddingService] Electron 代理下载失败，Worker 将尝试浏览器 fetch:', dlErr)
+              preDownloadedFiles = null
+            }
           }
         }
       }

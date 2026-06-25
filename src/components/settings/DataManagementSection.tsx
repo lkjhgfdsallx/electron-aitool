@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Database,
   Download,
@@ -32,7 +32,7 @@ import {
   type BackupProgressCallback
 } from '../../services/backup-service'
 import {
-  getCacheStats,
+  getCacheStatsStream,
   clearCache,
   formatBytes,
   getStorageEstimate,
@@ -370,24 +370,44 @@ function CacheSection() {
   const [clearing, setClearing] = useState<string | null>(null)
   const [status, setStatus] = useState<StatusMessage | null>(null)
   const [storageEstimate, setStorageEstimate] = useState<{ usage: number; quota: number } | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const loadStats = useCallback(async () => {
+    // 取消上一次未完成的流式加载
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    // 先清空旧数据，立即进入加载态
+    setRegions([])
     setLoading(true)
+
     try {
-      const [stats, estimate] = await Promise.all([
-        getCacheStats(),
-        getStorageEstimate()
-      ])
-      setRegions(stats)
-      setStorageEstimate(estimate)
+      // 并行发起存储配额查询（独立于逐条加载）
+      getStorageEstimate().then((estimate) => {
+        if (!controller.signal.aborted) setStorageEstimate(estimate)
+      })
+
+      // 逐条流式加载缓存区域
+      for await (const region of getCacheStatsStream()) {
+        if (controller.signal.aborted) break
+        setRegions((prev) => [...prev, region])
+      }
     } catch (e) {
-      console.error('加载缓存统计失败:', e)
+      if (!controller.signal.aborted) {
+        console.error('加载缓存统计失败:', e)
+      }
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) {
+        setLoading(false)
+      }
     }
   }, [])
 
-  useEffect(() => { loadStats() }, [loadStats])
+  useEffect(() => {
+    loadStats()
+    return () => { abortRef.current?.abort() }
+  }, [loadStats])
 
   const handleClear = async (region: CacheRegion) => {
     const confirmed = confirm(

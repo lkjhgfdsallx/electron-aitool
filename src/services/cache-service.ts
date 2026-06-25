@@ -5,6 +5,7 @@
  */
 
 import { openDB } from 'idb'
+import { getModelFileCacheStats, clearModelFileCache } from './embedding-service'
 
 // ==================== 类型 ====================
 
@@ -217,7 +218,213 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
     })
   } catch { /* 数据库不存在 */ }
 
+  // 本地模型文件缓存
+  try {
+    const modelCacheStats = await getModelFileCacheStats()
+    regions.push({
+      key: 'model-files',
+      name: '本地 Embedding 模型缓存',
+      description: 'transformers.js 本地模型文件（ONNX、tokenizer 等），避免重复下载',
+      storage: 'indexedDB',
+      sizeBytes: modelCacheStats.sizeBytes,
+      recordCount: modelCacheStats.recordCount,
+      clearable: true
+    })
+  } catch { /* 数据库不存在 */ }
+
   return regions
+}
+
+/**
+ * 流式获取各缓存区域统计（逐条返回）
+ * 使用 AsyncGenerator 实现，每计算完一个区域即 yield，UI 可逐条渲染
+ */
+export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
+  // ---- localStorage 缓存（同步，快速逐条返回） ----
+
+  // 对话消息
+  const convSize = getLocalStorageItemSize('conversations')
+  let convCount = 0
+  try {
+    const convData = JSON.parse(localStorage.getItem('conversations') || '{}')
+    convCount = (convData.state?.conversations?.length) ?? 0
+  } catch { /* ignore */ }
+  yield {
+    key: 'conversations',
+    name: '对话消息缓存',
+    description: '所有对话的元数据和消息记录',
+    storage: 'localStorage',
+    sizeBytes: convSize,
+    recordCount: convCount,
+    clearable: true
+  }
+
+  // AI 源配置（含模型列表缓存）
+  const aiProvSize = getLocalStorageItemSize('ai-providers')
+  let modelCount = 0
+  try {
+    const aiData = JSON.parse(localStorage.getItem('ai-providers') || '{}')
+    const providers = aiData.state?.providers ?? []
+    modelCount = providers.reduce((sum: number, p: { models?: unknown[] }) => sum + (p.models?.length ?? 0), 0)
+  } catch { /* ignore */ }
+  yield {
+    key: 'ai-providers-models',
+    name: 'AI 源模型缓存',
+    description: 'AI Provider 配置及已获取的模型列表',
+    storage: 'localStorage',
+    sizeBytes: aiProvSize,
+    recordCount: modelCount,
+    clearable: true
+  }
+
+  // 全局配置
+  const configSize = getLocalStorageItemSize('global-config')
+  yield {
+    key: 'global-config',
+    name: '全局配置',
+    description: 'API Key、MCP 服务器、模型参数等配置',
+    storage: 'localStorage',
+    sizeBytes: configSize,
+    recordCount: 1,
+    clearable: false
+  }
+
+  // UI 偏好
+  const uiSize = getLocalStorageItemSize('ui-preferences')
+  yield {
+    key: 'ui-preferences',
+    name: '界面偏好设置',
+    description: '主题、字体、快捷键等界面配置',
+    storage: 'localStorage',
+    sizeBytes: uiSize,
+    recordCount: 1,
+    clearable: false
+  }
+
+  // Agent + 提示词
+  const agentSize = getLocalStorageItemSize('agent-store')
+  let agentCount = 0
+  let promptCount = 0
+  try {
+    const agentData = JSON.parse(localStorage.getItem('agent-store') || '{}')
+    agentCount = agentData.state?.agents?.length ?? 0
+    promptCount = agentData.state?.prompts?.length ?? 0
+  } catch { /* ignore */ }
+  yield {
+    key: 'agent-store',
+    name: 'Agent 与提示词',
+    description: 'Agent 配置和提示词模板',
+    storage: 'localStorage',
+    sizeBytes: agentSize,
+    recordCount: agentCount + promptCount,
+    clearable: false
+  }
+
+  // 自定义工具
+  const toolSize = getLocalStorageItemSize('custom-tools')
+  let toolCount = 0
+  try {
+    const toolData = JSON.parse(localStorage.getItem('custom-tools') || '{}')
+    toolCount = toolData.state?.customTools?.length ?? 0
+  } catch { /* ignore */ }
+  yield {
+    key: 'custom-tools',
+    name: '自定义工具',
+    description: '用户自定义的工具定义',
+    storage: 'localStorage',
+    sizeBytes: toolSize,
+    recordCount: toolCount,
+    clearable: false
+  }
+
+  // 工具调用统计
+  const statsSize = getLocalStorageItemSize('tool-stats')
+  let statsCount = 0
+  try {
+    const statsData = JSON.parse(localStorage.getItem('tool-stats') || '{}')
+    statsCount = Object.keys(statsData.state?.stats ?? {}).length
+  } catch { /* ignore */ }
+  yield {
+    key: 'tool-stats',
+    name: '工具调用统计',
+    description: '各工具的调用次数、成功率、耗时统计',
+    storage: 'localStorage',
+    sizeBytes: statsSize,
+    recordCount: statsCount,
+    clearable: true
+  }
+
+  // ---- IndexedDB 缓存（异步，较慢，逐条返回） ----
+
+  // 知识库文件
+  try {
+    const kbDb = await openDB('KnowledgeBase')
+    const fileMetadata = await kbDb.getAll('fileMetadata')
+    const chunks = await kbDb.getAll('chunks')
+
+    // 估算知识库文件大小
+    let kbFileSize = 0
+    try {
+      const fileDataRecords = await kbDb.getAll('fileData')
+      for (const record of fileDataRecords) {
+        if (record?.data) {
+          kbFileSize += record.data.byteLength ?? 0
+        }
+      }
+    } catch { /* ignore */ }
+
+    yield {
+      key: 'kb-files',
+      name: '知识库文件数据',
+      description: '已上传的原始文件二进制数据',
+      storage: 'indexedDB',
+      sizeBytes: kbFileSize,
+      recordCount: fileMetadata.length,
+      clearable: true
+    }
+
+    // 估算 chunks 大小
+    const chunksSize = new Blob([JSON.stringify(chunks)]).size
+    yield {
+      key: 'kb-embeddings',
+      name: 'Embeddings 向量缓存',
+      description: '知识库文件的向量分块和语义嵌入',
+      storage: 'indexedDB',
+      sizeBytes: chunksSize,
+      recordCount: chunks.length,
+      clearable: true
+    }
+  } catch { /* 数据库不存在 */ }
+
+  // 网站分析报告
+  try {
+    const reportDb = await openDB('SiteAnalyzerReports')
+    const reports = await reportDb.getAll('reports')
+    const reportsSize = reports.reduce((sum, r) => sum + new Blob([r.html || '']).size, 0)
+    yield {
+      key: 'site-reports',
+      name: '网站分析报告',
+      description: '已生成的网站分析 HTML 报告',
+      storage: 'indexedDB',
+      sizeBytes: reportsSize,
+      recordCount: reports.length,
+      clearable: true
+    }
+  } catch { /* 数据库不存在 */ }
+
+  // 本地模型文件缓存
+  try {
+    const modelCacheStats = await getModelFileCacheStats()
+    yield {
+      key: 'model-files',
+      name: '本地 Embedding 模型缓存',
+      description: 'transformers.js 本地模型文件（ONNX、tokenizer 等），避免重复下载',
+      storage: 'indexedDB',
+      sizeBytes: modelCacheStats.sizeBytes,
+      recordCount: modelCacheStats.recordCount,
+      clearable: true
+    }
+  } catch { /* 数据库不存在 */ }
 }
 
 // ==================== 缓存清理 ====================
@@ -250,6 +457,10 @@ export async function clearCache(regionKey: string): Promise<void> {
 
     case 'site-reports':
       await clearSiteReports()
+      break
+
+    case 'model-files':
+      await clearModelFileCache()
       break
 
     default:
