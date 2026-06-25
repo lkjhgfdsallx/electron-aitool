@@ -17,6 +17,21 @@ import { generateTitleFromContent } from '../utils/conversation-utils'
 import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
 
 /** 将进度事件类型映射到阶段 */
+/** 检查通知设置并在 AI 回复完成时发送系统通知和播放提示音 */
+function notifyIfReady(title: string, body: string): void {
+  try {
+    const { enableNotification, enableSound, notificationSound } = useSettingsStore.getState()
+    if (enableNotification && window.electronAPI?.notification?.show) {
+      window.electronAPI.notification.show(title, body)
+    }
+    if (enableSound && window.electronAPI?.notification?.playSound) {
+      window.electronAPI.notification.playSound(notificationSound || 'default')
+    }
+  } catch {
+    // 静默失败，不影响主流程
+  }
+}
+
 function mapProgressTypeToPhase(type: string): SiteAnalyzerLiveProgress['phase'] {
   switch (type) {
     case 'started': return 'browser'
@@ -266,6 +281,9 @@ export function useChat() {
                 agentSteps: [...agentSteps]
               })
               isStreamingRef.current = false
+              if (status === 'completed') {
+                notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
+              }
             }
           },
           onError: (error) => {
@@ -501,6 +519,7 @@ export function useChat() {
                 content: fullContent,
                 isStreaming: false
               })
+              notifyIfReady('AI 回复完成', (fullContent || '已完成').slice(0, 100))
             }
             isStreamingRef.current = false
           },
@@ -873,6 +892,9 @@ export function useChat() {
                   agentSteps: [...agentSteps]
                 })
                 isStreamingRef.current = false
+                if (status === 'completed') {
+                  notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
+                }
               }
             },
             onError: (error) => {
@@ -1127,6 +1149,9 @@ export function useChat() {
                 agentSteps: [...agentSteps]
               })
               isStreamingRef.current = false
+              if (status === 'completed') {
+                notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
+              }
             }
           },
           onError: (error) => {
@@ -1334,6 +1359,9 @@ export function useChat() {
                   agentSteps: [...agentSteps]
                 })
                 isStreamingRef.current = false
+                if (status === 'completed') {
+                  notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
+                }
               }
             },
             onError: (error) => {

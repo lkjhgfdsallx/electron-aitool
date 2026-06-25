@@ -152,6 +152,7 @@ export const useSettingsStore = create<SettingsStore>()(
           if (state) {
             applyTheme(state.theme)
             applyCodeHighlightTheme(state.codeHighlightTheme)
+            applyCSSVariables(state)
             // 确保旧用户的 retrievalConfig 包含新增的混合权重字段
             state.retrievalConfig = {
               ...DEFAULT_RETRIEVAL_CONFIG,
@@ -184,4 +185,20 @@ function applyCodeHighlightTheme(_theme: CodeHighlightTheme): void {
   // 此处仅触发 re-render，具体实现在 MarkdownRenderer 中
   // 通过 data-code-theme 属性让 CSS 变量生效
   document.documentElement.setAttribute('data-code-theme', _theme)
+}
+
+/** 将字体/字号/侧边栏宽度写入 CSS 自定义属性 */
+export function applyCSSVariables(prefs: {
+  fontFamily: string
+  codeFontFamily: string
+  fontSize: number
+  codeFontSize: number
+  sidebarWidth: number
+}): void {
+  const root = document.documentElement
+  root.style.setProperty('--msg-font', prefs.fontFamily)
+  root.style.setProperty('--code-font', prefs.codeFontFamily)
+  root.style.setProperty('--msg-font-size', `${prefs.fontSize}px`)
+  root.style.setProperty('--code-font-size', `${prefs.codeFontSize}px`)
+  root.style.setProperty('--sidebar-width', `${prefs.sidebarWidth}px`)
 }

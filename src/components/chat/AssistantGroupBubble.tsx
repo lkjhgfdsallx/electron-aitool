@@ -107,17 +107,21 @@ export function AssistantGroupBubble({
 
   const alignmentClass = (() => {
     switch (messageAlignment) {
-      case 'all-right': return 'ml-auto'
-      case 'full-width': return 'w-full'
       case 'left-right':
+        return 'self-start'
       case 'all-left':
+        return 'self-start'
+      case 'all-right':
+        return 'self-end'
+      case 'full-width':
+        return 'self-stretch'
       default:
-        return ''
+        return 'self-start'
     }
   })()
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass === 'w-full' ? 'w-full' : alignmentClass}`}>
+    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass}`}>
       {/* 头像 */}
       {showAvatar && (
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">

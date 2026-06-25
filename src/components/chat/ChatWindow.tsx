@@ -457,7 +457,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
             </div>
           )
         ) : (
-          <div className="max-w-3xl mx-auto py-4">
+          <div className="max-w-3xl mx-auto py-4 flex flex-col">
             {renderGroups.map((group, idx) => {
               if (group.type === 'assistant-group') {
                 return (

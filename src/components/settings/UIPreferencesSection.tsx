@@ -4,7 +4,7 @@ import {
   Monitor, ChevronDown
 } from 'lucide-react'
 import hljs from 'highlight.js'
-import { useSettingsStore } from '../../stores/settings-store'
+import { useSettingsStore, applyCSSVariables } from '../../stores/settings-store'
 import type { CodeHighlightTheme, MessageAlignment } from '../../types'
 
 /** 动态加载 highlight.js 主题 CSS（与 MarkdownRenderer 保持一致） */
@@ -203,14 +203,9 @@ export function UIPreferencesSection() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.codeHighlightTheme])
 
-  // 应用字体和字号到 CSS 变量
+  // 实时应用字体/字号到 CSS 变量（设置变更时立即生效）
   useEffect(() => {
-    const root = document.documentElement
-    root.style.setProperty('--msg-font', settings.fontFamily)
-    root.style.setProperty('--code-font', settings.codeFontFamily)
-    root.style.setProperty('--msg-font-size', `${settings.fontSize}px`)
-    root.style.setProperty('--code-font-size', `${settings.codeFontSize}px`)
-    root.style.setProperty('--sidebar-width', `${settings.sidebarWidth}px`)
+    applyCSSVariables(settings)
   }, [settings.fontFamily, settings.codeFontFamily, settings.fontSize, settings.codeFontSize, settings.sidebarWidth])
 
   const toggleItems = [

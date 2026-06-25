@@ -155,25 +155,25 @@ export function MessageItem({
   // 是否为分支点（用户消息且有多个分支）
   const isForkPoint = message.role === 'user' && (message.branchCount ?? 0) > 1
 
-  // 根据对齐方式计算容器样式
+  // 根据对齐方式计算容器样式（配合 flex-col 父容器使用 self-*）
   const isUser = message.role === 'user'
   const alignmentClass = (() => {
     switch (messageAlignment) {
       case 'left-right':
-        return isUser ? 'ml-auto' : 'mr-auto'
+        return isUser ? 'self-end' : 'self-start'
       case 'all-left':
-        return ''
+        return 'self-start'
       case 'all-right':
-        return 'ml-auto'
+        return 'self-end'
       case 'full-width':
-        return 'w-full'
+        return 'self-stretch'
       default:
-        return isUser ? 'ml-auto' : 'mr-auto'
+        return isUser ? 'self-end' : 'self-start'
     }
   })()
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass === 'w-full' ? 'w-full' : ''}`}>
+    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass}`}>
       {/* 头像 */}
       {showAvatar && (
       <div
