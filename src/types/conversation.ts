@@ -18,6 +18,8 @@ export interface Conversation {
   activeBranches?: Record<string, number>
   /** 当前对话激活的知识库集合 ID 列表（用户可在对话中临时切换） */
   activeKnowledgeBaseIds?: string[]
+  /** 最后一条消息的预览文本（缓存，避免渲染时加载全部消息） */
+  lastMessagePreview?: string
 }
 
 export type ConversationCreateInput = Omit<Conversation, 'id' | 'createdAt' | 'updatedAt' | 'messageCount'>

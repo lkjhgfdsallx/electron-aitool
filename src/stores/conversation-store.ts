@@ -3,6 +3,12 @@ import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import type { Conversation, Message, MessageCreateInput, ConversationAIConfig } from '../types'
 
+/** 从消息内容生成预览文本 */
+function generatePreview(content: string): string {
+  const cleaned = content.replace(/[#*`>\[\]()!]/g, '').replace(/\n+/g, ' ').trim()
+  return cleaned.length > 50 ? cleaned.substring(0, 50) + '...' : cleaned || '暂无内容'
+}
+
 interface ConversationStore {
   conversations: Conversation[]
   currentConversationId: string | null
@@ -133,6 +139,7 @@ export const useConversationStore = create<ConversationStore>()(
           id: uuidv4(),
           timestamp: Date.now()
         }
+        const preview = generatePreview(message.content || '')
         set((state) => {
           const convMessages = state.messages[conversationId] ?? []
           return {
@@ -142,7 +149,7 @@ export const useConversationStore = create<ConversationStore>()(
             },
             conversations: state.conversations.map((c) =>
               c.id === conversationId
-                ? { ...c, messageCount: c.messageCount + 1, updatedAt: Date.now() }
+                ? { ...c, messageCount: c.messageCount + 1, updatedAt: Date.now(), lastMessagePreview: preview }
                 : c
             )
           }
@@ -153,26 +160,45 @@ export const useConversationStore = create<ConversationStore>()(
       updateMessage: (messageId, updates) => {
         set((state) => {
           const newMessages: Record<string, Message[]> = {}
+          let updatedConvId: string | null = null
+          let updatedLastMsg: Message | null = null
           for (const [convId, msgs] of Object.entries(state.messages)) {
-            newMessages[convId] = msgs.map((m) =>
+            const mapped = msgs.map((m) =>
               m.id === messageId ? { ...m, ...updates } : m
             )
+            newMessages[convId] = mapped
+            // 检查是否是该对话的最后一条消息被更新
+            if (mapped.length > 0 && mapped[mapped.length - 1].id === messageId) {
+              updatedConvId = convId
+              updatedLastMsg = mapped[mapped.length - 1]
+            }
           }
-          return { messages: newMessages }
+          const conversations = updatedConvId && updatedLastMsg
+            ? state.conversations.map((c) =>
+                c.id === updatedConvId
+                  ? { ...c, lastMessagePreview: generatePreview(updatedLastMsg!.content || '') }
+                  : c
+              )
+            : state.conversations
+          return { messages: newMessages, conversations }
         })
       },
 
       deleteMessage: (conversationId, messageId) => {
         set((state) => {
           const convMessages = state.messages[conversationId] ?? []
+          const newConvMessages = convMessages.filter((m) => m.id !== messageId)
+          const newPreview = newConvMessages.length > 0
+            ? generatePreview(newConvMessages[newConvMessages.length - 1].content || '')
+            : undefined
           return {
             messages: {
               ...state.messages,
-              [conversationId]: convMessages.filter((m) => m.id !== messageId)
+              [conversationId]: newConvMessages
             },
             conversations: state.conversations.map((c) =>
               c.id === conversationId
-                ? { ...c, messageCount: Math.max(0, c.messageCount - 1) }
+                ? { ...c, messageCount: Math.max(0, c.messageCount - 1), lastMessagePreview: newPreview }
                 : c
             )
           }
@@ -185,7 +211,7 @@ export const useConversationStore = create<ConversationStore>()(
         set((state) => ({
           messages: { ...state.messages, [conversationId]: [] },
           conversations: state.conversations.map((c) =>
-            c.id === conversationId ? { ...c, messageCount: 0 } : c
+            c.id === conversationId ? { ...c, messageCount: 0, lastMessagePreview: undefined } : c
           )
         }))
       },
@@ -266,6 +292,23 @@ export const useConversationStore = create<ConversationStore>()(
     }),
     {
       name: 'conversations',
+      version: 2,
+      // 迁移：为旧对话补充 lastMessagePreview 缓存
+      migrate: (persistedState: unknown, version: number) => {
+        if (version < 2) {
+          const state = persistedState as { conversations: Conversation[]; messages: Record<string, Message[]> }
+          if (state.conversations && state.messages) {
+            state.conversations = state.conversations.map((c) => {
+              if (c.lastMessagePreview !== undefined) return c
+              const msgs = state.messages[c.id]
+              if (!msgs || msgs.length === 0) return c
+              const lastMsg = msgs[msgs.length - 1]
+              return { ...c, lastMessagePreview: generatePreview(lastMsg.content || '') }
+            })
+          }
+        }
+        return persistedState
+      },
       // 只持久化最近100个对话的消息，避免 localStorage 过大
       partialize: (state) => {
         const recentConvs = state.conversations.slice(0, 100)

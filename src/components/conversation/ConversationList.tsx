@@ -1,10 +1,9 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react'
 import {
   Search,
   Pin,
   Trash2,
   MessageSquare,
-  Bot,
   MoreHorizontal,
   PenLine,
   Download
@@ -12,6 +11,7 @@ import {
 import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { exportConversationToJson } from '../../utils/conversation-utils'
+import type { Conversation } from '../../types'
 
 /** 相对时间格式化 */
 function formatRelativeTime(timestamp: number): string {
@@ -48,21 +48,6 @@ function getDateGroup(timestamp: number): string {
   return '更早'
 }
 
-/** 获取对话最后一条消息的预览 */
-function getLastMessagePreview(
-  conv: { id: string; messageCount: number },
-  getMessages: (id: string) => { role: string; content: string }[]
-): string {
-  if (conv.messageCount === 0) return '暂无消息'
-  const msgs = getMessages(conv.id)
-  if (msgs.length === 0) return '暂无消息'
-  const lastMsg = msgs[msgs.length - 1]
-  const content = lastMsg.content || ''
-  // 截断并清理 markdown
-  const cleaned = content.replace(/[#*`>\[\]()!]/g, '').replace(/\n+/g, ' ').trim()
-  return cleaned.length > 50 ? cleaned.substring(0, 50) + '...' : cleaned || '暂无内容'
-}
-
 /** 骨架屏组件 */
 function SkeletonList() {
   return (
@@ -80,12 +65,198 @@ function SkeletonList() {
   )
 }
 
-export function ConversationList() {
-  const [searchQuery, setSearchQuery] = useState('')
+// ==================== 虚拟滚动相关类型 ====================
+
+/** 虚拟列表行：分组标题 或 对话项 */
+type VirtualRow =
+  | { type: 'header'; label: string; key: string }
+  | { type: 'item'; conv: Conversation; key: string }
+
+const HEADER_HEIGHT = 32  // 分组标题行高 (px)
+const ITEM_HEIGHT = 76    // 对话项行高估算 (px)
+const BUFFER_COUNT = 8    // 上下各多渲染的条数
+
+// ==================== 对话项组件（memo 优化） ====================
+
+interface ConversationItemProps {
+  conv: Conversation
+  isActive: boolean
+  onSelect: (id: string) => void
+  agentAvatar?: string
+  onContextMenu: (id: string) => void
+  contextMenuId: string | null
+  onRename: (id: string, title: string) => void
+  onTogglePin: (id: string) => void
+  onExport: (conv: Conversation) => void
+  onDelete: (id: string) => void
+}
+
+const ConversationItem = memo(function ConversationItem({
+  conv,
+  isActive,
+  onSelect,
+  agentAvatar,
+  onContextMenu,
+  contextMenuId,
+  onRename,
+  onTogglePin,
+  onExport,
+  onDelete
+}: ConversationItemProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
+
+  const handleRename = useCallback(() => {
+    if (editTitle.trim()) {
+      onRename(conv.id, editTitle.trim())
+    }
+    setEditingId(null)
+  }, [editTitle, conv.id, onRename])
+
+  // 使用缓存的预览文本，不再调用 getMessages
+  const preview = conv.lastMessagePreview || '暂无消息'
+
+  return (
+    <div
+      onClick={() => onSelect(conv.id)}
+      className={`relative group flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+        isActive
+          ? 'bg-accent-50 dark:bg-accent-950/30 shadow-sm'
+          : 'hover:bg-surface-100 dark:hover:bg-surface-800/60'
+      }`}
+      style={{ contain: 'content' }}
+    >
+      {/* 图标 */}
+      <div className={`flex-shrink-0 mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
+        conv.agentId
+          ? 'bg-accent-100 dark:bg-accent-900/40 text-accent-600 dark:text-accent-400'
+          : isActive
+            ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
+            : 'bg-surface-200 dark:bg-surface-700 text-gray-500 dark:text-gray-400'
+      }`}>
+        {conv.agentId ? (
+          <span>{agentAvatar || '🤖'}</span>
+        ) : (
+          <MessageSquare size={14} />
+        )}
+      </div>
+
+      {/* 内容 */}
+      <div className="flex-1 min-w-0">
+        {editingId === conv.id ? (
+          <input
+            type="text"
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename()
+              if (e.key === 'Escape') setEditingId(null)
+            }}
+            autoFocus
+            className="w-full text-sm bg-transparent border-b-2 border-accent-500 outline-none py-0.5"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <span className={`text-sm truncate ${
+              isActive
+                ? 'text-accent-700 dark:text-accent-300 font-medium'
+                : 'text-gray-700 dark:text-gray-300'
+            }`}>
+              {conv.title}
+            </span>
+            {conv.agentId && (
+              <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full font-medium leading-none">
+                Agent
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* 最后消息预览 */}
+        <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5 leading-relaxed">
+          {preview}
+        </p>
+
+        {/* 时间 */}
+        <span className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5 block">
+          {formatRelativeTime(conv.updatedAt)}
+        </span>
+      </div>
+
+      {/* 置顶图标 */}
+      {conv.isPinned && (
+        <Pin size={10} className="flex-shrink-0 mt-1 text-accent-400 fill-accent-400" />
+      )}
+
+      {/* 操作按钮 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onContextMenu(conv.id)
+        }}
+        className="flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-all"
+      >
+        <MoreHorizontal size={14} className="text-gray-400" />
+      </button>
+
+      {/* 上下文菜单 */}
+      {contextMenuId === conv.id && (
+        <div
+          className="absolute right-0 top-full z-50 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-elevated py-1.5 min-w-[140px] animate-scale-in origin-top-right"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => {
+              setEditingId(conv.id)
+              setEditTitle(conv.title)
+              onContextMenu('')
+            }}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          >
+            <PenLine size={14} className="text-gray-400" /> 重命名
+          </button>
+          <button
+            onClick={() => {
+              onTogglePin(conv.id)
+              onContextMenu('')
+            }}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          >
+            <Pin size={14} className="text-gray-400" /> {conv.isPinned ? '取消置顶' : '置顶'}
+          </button>
+          <button
+            onClick={() => onExport(conv)}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          >
+            <Download size={14} className="text-gray-400" /> 导出原始对话
+          </button>
+          <div className="mx-3 my-1 border-t border-surface-100 dark:border-surface-700" />
+          <button
+            onClick={() => {
+              onDelete(conv.id)
+              onContextMenu('')
+            }}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
+          >
+            <Trash2 size={14} /> 删除
+          </button>
+        </div>
+      )}
+    </div>
+  )
+})
+
+// ==================== 主组件 ====================
+
+export function ConversationList() {
+  const [searchQuery, setSearchQuery] = useState('')
   const [contextMenuId, setContextMenuId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [containerHeight, setContainerHeight] = useState(600)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const {
     conversations,
@@ -105,6 +276,19 @@ export function ConversationList() {
     return () => clearTimeout(timer)
   }, [])
 
+  // 监听容器尺寸
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height)
+      }
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
+
   // 过滤和排序对话
   const filteredConversations = useMemo(() => {
     let filtered = conversations
@@ -119,8 +303,9 @@ export function ConversationList() {
     })
   }, [conversations, searchQuery])
 
-  // 按日期分组
-  const groupedConversations = useMemo(() => {
+  // 构建虚拟行列表（分组标题 + 对话项）
+  const virtualRows = useMemo(() => {
+    const rows: VirtualRow[] = []
     const groups: { label: string; items: typeof filteredConversations }[] = []
     const groupMap = new Map<string, typeof filteredConversations>()
 
@@ -132,7 +317,6 @@ export function ConversationList() {
       groupMap.get(label)!.push(conv)
     }
 
-    // 按顺序排列分组
     const order = ['置顶', '今天', '昨天', '本周', '本月', '更早']
     for (const label of order) {
       const items = groupMap.get(label)
@@ -141,17 +325,70 @@ export function ConversationList() {
       }
     }
 
-    return groups
+    for (const group of groups) {
+      rows.push({ type: 'header', label: group.label, key: `header-${group.label}` })
+      for (const conv of group.items) {
+        rows.push({ type: 'item', conv, key: conv.id })
+      }
+    }
+
+    return rows
   }, [filteredConversations])
 
-  const handleRename = (id: string) => {
-    if (editTitle.trim()) {
-      renameConversation(id, editTitle.trim())
+  // 计算每行的累积偏移和总高度
+  const { rowOffsets, totalHeight } = useMemo(() => {
+    const offsets: number[] = []
+    let offset = 0
+    for (const row of virtualRows) {
+      offsets.push(offset)
+      offset += row.type === 'header' ? HEADER_HEIGHT : ITEM_HEIGHT
     }
-    setEditingId(null)
-  }
+    return { rowOffsets: offsets, totalHeight: offset }
+  }, [virtualRows])
 
-  const handleExportRaw = useCallback(async (conv: typeof conversations[0]) => {
+  // 计算可见范围
+  const { startIndex, endIndex } = useMemo(() => {
+    if (virtualRows.length === 0) return { startIndex: 0, endIndex: 0 }
+
+    const viewportTop = scrollTop
+    const viewportBottom = scrollTop + containerHeight
+
+    // 二分查找第一个可见行
+    let start = 0
+    let end = virtualRows.length - 1
+    while (start < end) {
+      const mid = Math.floor((start + end) / 2)
+      const rowBottom = rowOffsets[mid] + (virtualRows[mid].type === 'header' ? HEADER_HEIGHT : ITEM_HEIGHT)
+      if (rowBottom < viewportTop) {
+        start = mid + 1
+      } else {
+        end = mid
+      }
+    }
+
+    // 从 start 开始找到最后一个可见行
+    let visibleEnd = start
+    while (visibleEnd < virtualRows.length && rowOffsets[visibleEnd] < viewportBottom) {
+      visibleEnd++
+    }
+
+    // 加上缓冲区
+    const bufferedStart = Math.max(0, start - BUFFER_COUNT)
+    const bufferedEnd = Math.min(virtualRows.length, visibleEnd + BUFFER_COUNT)
+
+    return { startIndex: bufferedStart, endIndex: bufferedEnd }
+  }, [scrollTop, containerHeight, virtualRows, rowOffsets])
+
+  // 滚动事件处理
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (container) {
+      setScrollTop(container.scrollTop)
+    }
+  }, [])
+
+  // 导出对话
+  const handleExportRaw = useCallback(async (conv: Conversation) => {
     const messages = getMessages(conv.id)
     const jsonContent = exportConversationToJson(conv, messages as unknown as Array<Record<string, unknown>>)
     const safeTitle = conv.title.replace(/[<>:"/\\|?*]/g, '_').slice(0, 50)
@@ -180,6 +417,21 @@ export function ConversationList() {
     setContextMenuId(null)
   }, [getMessages])
 
+  // 上下文菜单切换
+  const handleContextMenu = useCallback((id: string) => {
+    setContextMenuId((prev) => (prev === id ? null : id))
+  }, [])
+
+  // 获取 Agent 头像
+  const getAgentAvatar = useCallback((agentId?: string) => {
+    if (!agentId) return undefined
+    return getAgent(agentId)?.avatar
+  }, [getAgent])
+
+  // 可见行切片
+  const visibleRows = virtualRows.slice(startIndex, endIndex)
+  const paddingTop = rowOffsets[startIndex] ?? 0
+
   return (
     <div className="flex flex-col h-full">
       {/* 搜索框 */}
@@ -199,8 +451,12 @@ export function ConversationList() {
         </div>
       </div>
 
-      {/* 对话列表 */}
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      {/* 对话列表（虚拟滚动） */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-2 pb-2"
+        onScroll={handleScroll}
+      >
         {isLoading ? (
           <SkeletonList />
         ) : filteredConversations.length === 0 ? (
@@ -219,153 +475,39 @@ export function ConversationList() {
             )}
           </div>
         ) : (
-          groupedConversations.map((group) => (
-            <div key={group.label} className="mb-1">
-              {/* 分组标题 */}
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                {group.label}
-              </div>
-
-              {/* 对话项 */}
-              <div className="space-y-0.5">
-                {group.items.map((conv) => {
-                  const preview = getLastMessagePreview(conv, getMessages)
-                  const agent = conv.agentId ? getAgent(conv.agentId) : undefined
-
+          <div style={{ height: totalHeight, position: 'relative' }}>
+            <div style={{ paddingTop }}>
+              {visibleRows.map((row) => {
+                if (row.type === 'header') {
                   return (
                     <div
-                      key={conv.id}
-                      onClick={() => selectConversation(conv.id)}
-                      className={`relative group flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
-                        currentConversationId === conv.id
-                          ? 'bg-accent-50 dark:bg-accent-950/30 shadow-sm'
-                          : 'hover:bg-surface-100 dark:hover:bg-surface-800/60'
-                      }`}
+                      key={row.key}
+                      className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider"
                     >
-                      {/* 图标 */}
-                      <div className={`flex-shrink-0 mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
-                        conv.agentId
-                          ? 'bg-accent-100 dark:bg-accent-900/40 text-accent-600 dark:text-accent-400'
-                          : currentConversationId === conv.id
-                            ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400'
-                            : 'bg-surface-200 dark:bg-surface-700 text-gray-500 dark:text-gray-400'
-                      }`}>
-                        {conv.agentId ? (
-                          <span>{agent?.avatar || '🤖'}</span>
-                        ) : (
-                          <MessageSquare size={14} />
-                        )}
-                      </div>
-
-                      {/* 内容 */}
-                      <div className="flex-1 min-w-0">
-                        {editingId === conv.id ? (
-                          <input
-                            type="text"
-                            value={editTitle}
-                            onChange={(e) => setEditTitle(e.target.value)}
-                            onBlur={() => handleRename(conv.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleRename(conv.id)
-                              if (e.key === 'Escape') setEditingId(null)
-                            }}
-                            autoFocus
-                            className="w-full text-sm bg-transparent border-b-2 border-accent-500 outline-none py-0.5"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-sm truncate ${
-                              currentConversationId === conv.id
-                                ? 'text-accent-700 dark:text-accent-300 font-medium'
-                                : 'text-gray-700 dark:text-gray-300'
-                            }`}>
-                              {conv.title}
-                            </span>
-                            {conv.agentId && (
-                              <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full font-medium leading-none">
-                                Agent
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 最后消息预览 */}
-                        <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5 leading-relaxed">
-                          {preview}
-                        </p>
-
-                        {/* 时间 */}
-                        <span className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5 block">
-                          {formatRelativeTime(conv.updatedAt)}
-                        </span>
-                      </div>
-
-                      {/* 置顶图标 */}
-                      {conv.isPinned && (
-                        <Pin size={10} className="flex-shrink-0 mt-1 text-accent-400 fill-accent-400" />
-                      )}
-
-                      {/* 操作按钮 */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setContextMenuId(contextMenuId === conv.id ? null : conv.id)
-                        }}
-                        className="flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-all"
-                      >
-                        <MoreHorizontal size={14} className="text-gray-400" />
-                      </button>
-
-                      {/* 上下文菜单 */}
-                      {contextMenuId === conv.id && (
-                        <div
-                          className="absolute right-0 top-full z-50 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-elevated py-1.5 min-w-[140px] animate-scale-in origin-top-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={() => {
-                              setEditingId(conv.id)
-                              setEditTitle(conv.title)
-                              setContextMenuId(null)
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
-                          >
-                            <PenLine size={14} className="text-gray-400" /> 重命名
-                          </button>
-                          <button
-                            onClick={() => {
-                              togglePin(conv.id)
-                              setContextMenuId(null)
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
-                          >
-                            <Pin size={14} className="text-gray-400" /> {conv.isPinned ? '取消置顶' : '置顶'}
-                          </button>
-                          <button
-                            onClick={() => handleExportRaw(conv)}
-                            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
-                          >
-                            <Download size={14} className="text-gray-400" /> 导出原始对话
-                          </button>
-                          <div className="mx-3 my-1 border-t border-surface-100 dark:border-surface-700" />
-                          <button
-                            onClick={() => {
-                              deleteConversation(conv.id)
-                              setContextMenuId(null)
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
-                          >
-                            <Trash2 size={14} /> 删除
-                          </button>
-                        </div>
-                      )}
+                      {row.label}
                     </div>
                   )
-                })}
-              </div>
+                }
+
+                const conv = row.conv
+                return (
+                  <ConversationItem
+                    key={conv.id}
+                    conv={conv}
+                    isActive={currentConversationId === conv.id}
+                    onSelect={selectConversation}
+                    agentAvatar={getAgentAvatar(conv.agentId)}
+                    onContextMenu={handleContextMenu}
+                    contextMenuId={contextMenuId}
+                    onRename={renameConversation}
+                    onTogglePin={togglePin}
+                    onExport={handleExportRaw}
+                    onDelete={deleteConversation}
+                  />
+                )
+              })}
             </div>
-          ))
+          </div>
         )}
       </div>
     </div>
