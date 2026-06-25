@@ -6,11 +6,13 @@ import {
   MessageSquare,
   MoreHorizontal,
   PenLine,
-  Download
+  FileText,
+  Code,
+  FileJson
 } from 'lucide-react'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
-import { exportConversationToJson } from '../../utils/conversation-utils'
+import { exportConversation, type ExportFormat } from '../../services/export-service'
 import type { Conversation } from '../../types'
 
 /** 相对时间格式化 */
@@ -87,7 +89,7 @@ interface ConversationItemProps {
   contextMenuId: string | null
   onRename: (id: string, title: string) => void
   onTogglePin: (id: string) => void
-  onExport: (conv: Conversation) => void
+  onExport: (conv: Conversation, format: ExportFormat) => void
   onDelete: (id: string) => void
 }
 
@@ -227,10 +229,22 @@ const ConversationItem = memo(function ConversationItem({
             <Pin size={14} className="text-gray-400" /> {conv.isPinned ? '取消置顶' : '置顶'}
           </button>
           <button
-            onClick={() => onExport(conv)}
+            onClick={() => onExport(conv, 'markdown')}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            <Download size={14} className="text-gray-400" /> 导出原始对话
+            <FileText size={14} className="text-gray-400" /> 导出 Markdown
+          </button>
+          <button
+            onClick={() => onExport(conv, 'json')}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          >
+            <FileJson size={14} className="text-gray-400" /> 导出 JSON
+          </button>
+          <button
+            onClick={() => onExport(conv, 'html')}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          >
+            <Code size={14} className="text-gray-400" /> 导出 HTML
           </button>
           <div className="mx-3 my-1 border-t border-surface-100 dark:border-surface-700" />
           <button
@@ -388,26 +402,24 @@ export function ConversationList() {
   }, [])
 
   // 导出对话
-  const handleExportRaw = useCallback(async (conv: Conversation) => {
+  const handleExport = useCallback(async (conv: Conversation, format: ExportFormat) => {
     const messages = getMessages(conv.id)
-    const jsonContent = exportConversationToJson(conv, messages as unknown as Array<Record<string, unknown>>)
-    const safeTitle = conv.title.replace(/[<>:"/\\|?*]/g, '_').slice(0, 50)
-    const defaultName = `${safeTitle}_原始对话.json`
+    const { content, fileName, mimeType } = exportConversation(conv, messages, format)
 
     try {
       if (window.electronAPI?.file?.saveFile) {
-        const result = await window.electronAPI.file.saveFile(defaultName, jsonContent)
+        const result = await window.electronAPI.file.saveFile(fileName, content)
         if (result.success) {
           console.log('导出成功:', result.filePath)
         } else if (result.error !== '用户取消') {
           console.error('导出失败:', result.error)
         }
       } else {
-        const blob = new Blob([jsonContent], { type: 'application/json' })
+        const blob = new Blob([content], { type: mimeType })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = defaultName
+        a.download = fileName
         a.click()
         URL.revokeObjectURL(url)
       }
@@ -501,7 +513,7 @@ export function ConversationList() {
                     contextMenuId={contextMenuId}
                     onRename={renameConversation}
                     onTogglePin={togglePin}
-                    onExport={handleExportRaw}
+                    onExport={handleExport}
                     onDelete={deleteConversation}
                   />
                 )

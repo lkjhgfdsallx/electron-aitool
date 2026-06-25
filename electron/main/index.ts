@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, globalShortcut, Notification } from 'electron'
 import { join } from 'path'
-import { writeFile } from 'fs/promises'
+import { writeFile, readFile } from 'fs/promises'
 import https from 'https'
 import http from 'http'
 import { is } from '@electron-toolkit/utils'
@@ -228,6 +228,65 @@ function setupIPCHandlers(): void {
       return {
         success: false,
         error: error instanceof Error ? error.message : '保存文件失败'
+      }
+    }
+  })
+
+  // 保存二进制文件（zip 备份等）
+  ipcMain.handle('file:saveZip', async (_event, defaultName: string, data: number[]) => {
+    try {
+      const win = BrowserWindow.fromWebContents(_event.sender)
+      if (!win) return { success: false, error: '无法获取窗口' }
+
+      const { canceled, filePath } = await dialog.showSaveDialog(win, {
+        title: '保存备份文件',
+        defaultPath: defaultName,
+        filters: [
+          { name: 'ZIP 压缩文件', extensions: ['zip'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      })
+
+      if (canceled || !filePath) return { success: false, error: '用户取消' }
+
+      const buffer = Buffer.from(data)
+      await writeFile(filePath, buffer)
+      return { success: true, filePath }
+    } catch (error) {
+      console.error('保存 zip 文件失败:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '保存 zip 文件失败'
+      }
+    }
+  })
+
+  // 打开文件对话框并读取文件内容
+  ipcMain.handle('file:openFile', async (_event, filters?: Array<{ name: string; extensions: string[] }>) => {
+    try {
+      const win = BrowserWindow.fromWebContents(_event.sender)
+      if (!win) return { success: false, error: '无法获取窗口' }
+
+      const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: '选择备份文件',
+        filters: filters ?? [
+          { name: 'ZIP 压缩文件', extensions: ['zip'] },
+          { name: 'JSON 文件', extensions: ['json'] },
+          { name: '所有文件', extensions: ['*'] }
+        ],
+        properties: ['openFile']
+      })
+
+      if (canceled || filePaths.length === 0) return { success: false, error: '用户取消' }
+
+      const filePath = filePaths[0]
+      const buffer = await readFile(filePath)
+      return { success: true, data: Array.from(buffer), filePath }
+    } catch (error) {
+      console.error('读取文件失败:', error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '读取文件失败'
       }
     }
   })

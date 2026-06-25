@@ -36,19 +36,27 @@ export interface ElectronAPI {
     getPathForFile: (file: File) => string
     /**
      * 在主进程中提取 PDF 文本（Node.js 环境，更可靠）
-     * @returns { success: boolean; text?: string; error?: string }
      */
     extractPdfText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
-  /**
-   * 在主进程中提取文件文本内容（支持 PDF/DOCX/HTML/源码/日志等多种格式）
-   * @returns { success: boolean; text?: string; error?: string }
-   */
-  extractText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
-  /**
-   * 打开保存文件对话框并保存内容
-     * @returns { success: boolean; filePath?: string; error?: string }
+    /**
+     * 在主进程中提取文件文本内容（支持 PDF/DOCX/HTML/源码/日志等多种格式）
+     */
+    extractText: (filePath: string) => Promise<{ success: boolean; text?: string; error?: string }>
+    /**
+     * 打开保存文件对话框并保存文本内容
      */
     saveFile: (defaultName: string, content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
+    /**
+     * 保存二进制文件（如 zip 备份文件）
+     * @param defaultName 默认文件名
+     * @param data 文件二进制数据（number 数组）
+     */
+    saveZip: (defaultName: string, data: number[]) => Promise<{ success: boolean; filePath?: string; error?: string }>
+    /**
+     * 打开文件选择对话框并读取文件为 number 数组
+     * @returns { success: boolean; data?: number[]; filePath?: string; error?: string }
+     */
+    openFile: (filters?: Array<{ name: string; extensions: string[] }>) => Promise<{ success: boolean; data?: number[]; filePath?: string; error?: string }>
   }
   // 窗口控制
   window: {
@@ -152,7 +160,9 @@ const electronAPI: ElectronAPI = {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
     extractPdfText: (filePath: string) => ipcRenderer.invoke('file:extractPdfText', filePath),
     extractText: (filePath: string) => ipcRenderer.invoke('file:extractText', filePath),
-    saveFile: (defaultName: string, content: string) => ipcRenderer.invoke('file:saveFile', defaultName, content)
+    saveFile: (defaultName: string, content: string) => ipcRenderer.invoke('file:saveFile', defaultName, content),
+    saveZip: (defaultName: string, data: number[]) => ipcRenderer.invoke('file:saveZip', defaultName, data),
+    openFile: (filters?: Array<{ name: string; extensions: string[] }>) => ipcRenderer.invoke('file:openFile', filters)
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
