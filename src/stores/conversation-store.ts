@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import type { Conversation, Message, MessageCreateInput, ConversationAIConfig } from '../types'
+import { STORE_VERSIONS } from '../utils/store-migration'
 
 /** 从消息内容生成预览文本 */
 function generatePreview(content: string): string {
@@ -292,7 +293,7 @@ export const useConversationStore = create<ConversationStore>()(
     }),
     {
       name: 'conversations',
-      version: 2,
+      version: STORE_VERSIONS.CONVERSATIONS,
       // 迁移：为旧对话补充 lastMessagePreview 缓存
       migrate: (persistedState: unknown, version: number) => {
         if (version < 2) {

@@ -15,6 +15,7 @@ import {
   DEFAULT_CHUNKING_CONFIG,
   DEFAULT_RETRIEVAL_CONFIG
 } from '../types'
+import { STORE_VERSIONS } from '../utils/store-migration'
 
 const DEFAULT_PREFERENCES: UIPreferences = {
   theme: 'system',
@@ -147,17 +148,24 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'ui-preferences',
+      version: STORE_VERSIONS.SETTINGS,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as SettingsStore
+        // v0 → v1: 确保 retrievalConfig 包含新增的混合权重字段
+        if (version < 1) {
+          state.retrievalConfig = {
+            ...DEFAULT_RETRIEVAL_CONFIG,
+            ...state.retrievalConfig
+          }
+        }
+        return state
+      },
       onRehydrateStorage: () => {
         return (state) => {
           if (state) {
             applyTheme(state.theme)
             applyCodeHighlightTheme(state.codeHighlightTheme)
             applyCSSVariables(state)
-            // 确保旧用户的 retrievalConfig 包含新增的混合权重字段
-            state.retrievalConfig = {
-              ...DEFAULT_RETRIEVAL_CONFIG,
-              ...state.retrievalConfig
-            }
           }
         }
       }

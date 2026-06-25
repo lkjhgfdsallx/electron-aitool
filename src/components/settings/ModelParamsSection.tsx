@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Cpu, Save, RotateCcw, Check } from 'lucide-react'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
+import { ConfigHierarchyView } from './ConfigHierarchyView'
 
 export function ModelParamsSection() {
   const config = useGlobalConfigStore()
@@ -130,6 +131,9 @@ export function ModelParamsSection() {
           </div>
         )}
       </div>
+
+      {/* 配置层级可视化 */}
+      <ConfigHierarchyView />
     </div>
   )
 }

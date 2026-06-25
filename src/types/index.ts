@@ -98,6 +98,11 @@ export type {
   ProviderRequestConfig,
   LocalModelConfig
 } from './ai-provider'
+export type {
+  SettingItemMeta,
+  SettingsRegistry,
+  GroupedSettingsRegistry
+} from './settings-meta'
 
 // ==================== 界面偏好类型 ====================
 

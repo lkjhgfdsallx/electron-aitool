@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import { useGlobalConfigStore } from './global-config-store'
 import { fetchModels, testConnection, fetchModelsWithRetry } from '../services/model-fetcher'
+import { STORE_VERSIONS } from '../utils/store-migration'
 
 // ==================== AI Provider Store ====================
 
@@ -348,6 +349,29 @@ export const useAIProviderStore = create<AIProviderStore>()(
     }),
     {
       name: 'ai-providers',
+      version: STORE_VERSIONS.AI_PROVIDERS,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as { providers: AIProvider[] }
+        if (version < 1) {
+          // v0 → v1: 为现有 provider 添加新字段的默认值
+          if (state.providers && state.providers.length > 0) {
+            state.providers = state.providers.map((p) => ({
+              ...p,
+              type: p.type || (p.baseUrl.includes('localhost') || p.baseUrl.includes('127.0.0.1') ? 'local' : 'remote'),
+              health: p.health || { status: 'unknown' },
+              requestConfig: p.requestConfig || {},
+              localConfig: p.localConfig || {},
+              models: p.models.map((m) => ({
+                ...m,
+                tags: m.tags || [],
+                deprecated: m.deprecated || false,
+                unavailable: m.unavailable || false
+              }))
+            }))
+          }
+        }
+        return state
+      },
       onRehydrateStorage: () => {
         return (state) => {
           if (!state) return
@@ -379,21 +403,6 @@ export const useAIProviderStore = create<AIProviderStore>()(
                 activeProviderId: migratedProvider.id
               })
             }
-          } else {
-            // 数据迁移：为现有 provider 添加新字段的默认值
-            state.providers = state.providers.map((p) => ({
-              ...p,
-              type: p.type || (p.baseUrl.includes('localhost') || p.baseUrl.includes('127.0.0.1') ? 'local' : 'remote'),
-              health: p.health || { status: 'unknown' },
-              requestConfig: p.requestConfig || {},
-              localConfig: p.localConfig || {},
-              models: p.models.map((m) => ({
-                ...m,
-                tags: m.tags || [],
-                deprecated: m.deprecated || false,
-                unavailable: m.unavailable || false
-              }))
-            }))
           }
         }
       }

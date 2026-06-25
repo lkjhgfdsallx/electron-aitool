@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { ToolCallStats } from '../types'
+import { STORE_VERSIONS } from '../utils/store-migration'
 
 /**
  * 工具使用统计 Store
@@ -82,7 +83,12 @@ export const useToolStatsStore = create<ToolStatsStore>()(
       }
     }),
     {
-      name: 'tool-stats'
+      name: 'tool-stats',
+      version: STORE_VERSIONS.TOOL_STATS,
+      migrate: (persistedState: unknown, _version: number) => {
+        // 未来版本迁移在此添加
+        return persistedState
+      }
     }
   )
 )

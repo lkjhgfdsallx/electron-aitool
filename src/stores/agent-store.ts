@@ -15,6 +15,7 @@ import type {
 import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT } from '../constants/default-agents'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
 import { PromptVersionService } from '../services/prompt-version-service'
+import { STORE_VERSIONS } from '../utils/store-migration'
 
 // ==================== 默认 Agent 配置 ====================
 
@@ -405,10 +406,40 @@ export const useAgentStore = create<AgentStore>()(
     }),
     {
       name: 'agents',
+      version: STORE_VERSIONS.AGENTS,
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as {
+          agents: AgentProfile[]
+          prompts: Prompt[]
+          promptChains?: PromptChain[]
+        }
+        if (version < 1) {
+          // 确保所有已有 Agent 的 enabledToolIds 包含全部工具
+          const allIds = new Set(DEFAULT_ALL_TOOL_IDS)
+          state.agents = state.agents.map((agent) => {
+            const existingIds = new Set(agent.enabledToolIds)
+            const hasAllTools = Array.from(allIds).every((id) => existingIds.has(id))
+            if (hasAllTools) return agent
+            return {
+              ...agent,
+              enabledToolIds: Array.from(new Set([...agent.enabledToolIds, ...DEFAULT_ALL_TOOL_IDS]))
+            }
+          })
+
+          // 确保所有 Prompt 具有新字段默认值
+          state.prompts = state.prompts.map((p) => migratePrompt(p as unknown as Record<string, unknown>))
+
+          // 确保 promptChains 存在
+          if (!state.promptChains) {
+            state.promptChains = []
+          }
+        }
+        return state
+      },
       onRehydrateStorage: () => {
         return (state) => {
           if (state) {
-            // 确保默认 Agent 存在
+            // 确保默认 Agent 存在（需要读取其他 store，放 onRehydrateStorage）
             if (!state.agents.some((a) => a.id === DEFAULT_AGENT_ID)) {
               const defaultAgent = createDefaultRequirementAnalyst()
               state.agents = [...state.agents, defaultAgent]
@@ -417,25 +448,6 @@ export const useAgentStore = create<AgentStore>()(
             if (!state.agents.some((a) => a.id === WEBSITE_ANALYZER_AGENT_ID)) {
               const websiteAnalyzer = createDefaultWebsiteAnalyzer()
               state.agents = [...state.agents, websiteAnalyzer]
-            }
-            // 迁移：确保所有已有 Agent 的 enabledToolIds 包含全部工具
-            const allIds = new Set(DEFAULT_ALL_TOOL_IDS)
-            state.agents = state.agents.map((agent) => {
-              const existingIds = new Set(agent.enabledToolIds)
-              const hasAllTools = Array.from(allIds).every((id) => existingIds.has(id))
-              if (hasAllTools) return agent
-              return {
-                ...agent,
-                enabledToolIds: Array.from(new Set([...agent.enabledToolIds, ...DEFAULT_ALL_TOOL_IDS]))
-              }
-            })
-
-            // 迁移：确保所有 Prompt 具有新字段默认值
-            state.prompts = state.prompts.map((p) => migratePrompt(p as unknown as Record<string, unknown>))
-
-            // 确保 promptChains 存在
-            if (!state.promptChains) {
-              state.promptChains = []
             }
           }
         }

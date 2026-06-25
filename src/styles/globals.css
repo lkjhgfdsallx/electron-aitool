@@ -482,4 +482,24 @@ button:active:not(:disabled) {
   .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 1; -webkit-line-clamp: 1; }
   .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 2; -webkit-line-clamp: 2; }
   .line-clamp-3 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; line-clamp: 3; -webkit-line-clamp: 3; }
+
+  /* 设置搜索定位高亮动画 */
+  .setting-highlight {
+    animation: setting-flash 2s ease-out;
+    border-radius: 8px;
+  }
+  @keyframes setting-flash {
+    0% {
+      background-color: rgba(139, 92, 246, 0.2);
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    }
+    50% {
+      background-color: rgba(139, 92, 246, 0.1);
+      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.15);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: none;
+    }
+  }
 }

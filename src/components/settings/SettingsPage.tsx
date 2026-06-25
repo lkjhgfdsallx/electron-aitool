@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { SettingsNavRail, type SettingsSection } from './SettingsNavRail'
 import { AIProviderManager } from './AIProviderManager'
 import { AgentManager } from './AgentManager'
@@ -9,6 +9,7 @@ import { ToolEditor } from './ToolEditor'
 import { ModelParamsSection } from './ModelParamsSection'
 import { UIPreferencesSection } from './UIPreferencesSection'
 import { DataManagementSection } from './DataManagementSection'
+import { SettingsSearchBar } from './SettingsSearchBar'
 
 interface SettingsPageProps {
   defaultSection?: SettingsSection
@@ -21,6 +22,11 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
   const handleNavigateToSection = (section: string) => {
     setActiveSection(section as SettingsSection)
   }
+
+  // 搜索结果导航回调
+  const handleSearchNavigate = useCallback((section: SettingsSection, _settingId: string) => {
+    setActiveSection(section)
+  }, [])
 
   const renderContent = () => {
     switch (activeSection) {
@@ -48,7 +54,7 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
   }
 
   return (
-    <div className="flex w-full h-full animate-fade-in">
+    <div className="flex w-full h-full animate-fade-in" data-settings-page>
       {/* 左侧导航栏 */}
       <SettingsNavRail
         activeSection={activeSection}
@@ -59,6 +65,12 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
       {/* 右侧内容区 */}
       <div className="flex-1 min-w-0 overflow-y-auto">
         <div className="max-w-5xl mx-auto px-8 py-6">
+          {/* 全局搜索栏 */}
+          <div className="mb-6">
+            <SettingsSearchBar onNavigate={handleSearchNavigate} />
+          </div>
+
+          {/* 设置内容 */}
           {renderContent()}
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Tool, ToolCreateInput } from '../types'
+import { STORE_VERSIONS } from '../utils/store-migration'
 
 /**
  * 自定义工具持久化 Store
@@ -65,7 +66,12 @@ export const useCustomToolStore = create<CustomToolStore>()(
       }
     }),
     {
-      name: 'custom-tools'
+      name: 'custom-tools',
+      version: STORE_VERSIONS.CUSTOM_TOOLS,
+      migrate: (persistedState: unknown, _version: number) => {
+        // 未来版本迁移在此添加
+        return persistedState
+      }
     }
   )
 )

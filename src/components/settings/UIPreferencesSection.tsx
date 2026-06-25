@@ -83,12 +83,14 @@ const NOTIFICATION_SOUNDS = [
 
 function SectionIcon({ icon: Icon, title, desc }: { icon: typeof Palette; title: string; desc: string }) {
   return (
-    <div className="mb-4">
-      <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-        <Icon size={16} className="text-accent-500" />
-        {title}
-      </h3>
-      <p className="text-xs text-muted mt-0.5 ml-6">{desc}</p>
+    <div className="flex items-center justify-between mb-4">
+      <div>
+        <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
+          <Icon size={16} className="text-accent-500" />
+          {title}
+        </h3>
+        <p className="text-xs text-muted mt-0.5">{desc}</p>
+      </div>
     </div>
   )
 }
@@ -99,7 +101,7 @@ function ToggleRow({ label, desc, value, onChange }: {
   label: string; desc: string; value: boolean; onChange: () => void
 }) {
   return (
-    <div className="flex items-center justify-between px-5 py-3">
+    <div className="flex items-center justify-between py-3">
       <div>
         <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
         <p className="text-xs text-muted mt-0.5">{desc}</p>
@@ -127,7 +129,7 @@ function SliderRow({ label, desc, value, min, max, step, unit, onChange }: {
   onChange: (v: number) => void
 }) {
   return (
-    <div className="px-5 py-3">
+    <div className="py-3">
       <div className="flex items-center justify-between mb-2">
         <div>
           <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
@@ -162,7 +164,7 @@ function SelectRow<T extends string>({ label, desc, value, options, onChange }: 
   onChange: (v: T) => void
 }) {
   return (
-    <div className="flex items-center justify-between px-5 py-3">
+    <div className="flex items-center justify-between py-3">
       <div>
         <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
         <p className="text-xs text-muted mt-0.5">{desc}</p>
@@ -249,7 +251,7 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 1. 字体与排版 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={Type} title="字体与排版" desc="调节消息和代码的字体、字号" />
 
         <SelectRow
@@ -292,7 +294,7 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 2. 代码高亮主题 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={Code2} title="代码高亮" desc="选择代码块的语法高亮风格" />
 
         <SelectRow
@@ -304,7 +306,7 @@ export function UIPreferencesSection() {
         />
 
         {/* 主题预览 */}
-        <div className="px-5 py-3">
+        <div className="py-3">
           <p className="text-xs text-muted mb-2">预览：</p>
           <pre className="rounded-lg p-3 text-xs overflow-x-auto bg-surface-800 text-gray-200">
             <code
@@ -316,10 +318,10 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 3. 消息布局 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={Layout} title="消息布局" desc="控制消息对齐方式和头像显示" />
 
-        <div className="px-5 py-3">
+        <div className="py-3">
           <label className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-2 block">
             消息对齐方式
           </label>
@@ -351,7 +353,7 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 4. 侧边栏行为 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={PanelLeft} title="侧边栏" desc="调整侧边栏宽度和行为" />
 
         <SliderRow
@@ -367,7 +369,7 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 5. 通知设置 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={Bell} title="通知设置" desc="后台对话完成时的通知行为" />
 
         <ToggleRow
@@ -396,7 +398,7 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 6. 快捷键自定义 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={Keyboard} title="快捷键" desc="自定义键盘快捷键绑定" />
 
         <ShortcutRow
@@ -432,7 +434,7 @@ export function UIPreferencesSection() {
       </div>
 
       {/* ---- 7. 基础开关（保留原有） ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
         <SectionIcon icon={Monitor} title="显示选项" desc="基础显示和交互开关" />
         {toggleItems.map((item) => (
           <ToggleRow key={item.label} {...item} />
@@ -494,7 +496,7 @@ function ShortcutRow({ label, binding, onChange }: {
   }, [recording, onChange])
 
   return (
-    <div className="flex items-center justify-between px-5 py-3">
+    <div className="flex items-center justify-between py-3">
       <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
       <button
         onClick={() => setRecording(!recording)}
