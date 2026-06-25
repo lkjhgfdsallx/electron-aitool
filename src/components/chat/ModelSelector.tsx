@@ -1,9 +1,19 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Globe, Check, Settings } from 'lucide-react'
+import { ChevronDown, Globe, Check, Settings, Home, Wifi, WifiOff, Loader2, AlertCircle } from 'lucide-react'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
+import type { ConnectionStatus } from '../../types'
+
+// 连接状态颜色映射
+const STATUS_DOT_COLORS: Record<ConnectionStatus, string> = {
+  unknown: 'bg-surface-400',
+  checking: 'bg-accent-500 animate-pulse',
+  online: 'bg-green-500',
+  offline: 'bg-orange-500',
+  error: 'bg-red-500'
+}
 
 interface ModelSelectorProps {
   conversationId?: string
@@ -16,7 +26,7 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const { providers } = useAIProviderStore()
+  const { providers, checkConnection } = useAIProviderStore()
   const { getConversation, setConversationAIConfig } = useConversationStore()
   const { activeProviderId, updateConfig } = useGlobalConfigStore()
 
@@ -94,6 +104,11 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
     setIsOpen(false)
   }
 
+  const handleTestConnection = (e: React.MouseEvent, providerId: string) => {
+    e.stopPropagation()
+    checkConnection(providerId)
+  }
+
   if (providers.length === 0) {
     return (
       <button
@@ -109,7 +124,7 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
   const dropdownPanel = isOpen ? createPortal(
     <div
       ref={dropdownRef}
-      className="fixed z-[9999] w-72 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden"
+      className="fixed z-[9999] w-80 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden"
       style={{ top: dropdownPos.top, right: dropdownPos.right }}
     >
       <div className="max-h-80 overflow-y-auto">
@@ -118,6 +133,9 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
           const defaultModel = provider.defaultModelId
             ? provider.models.find((m) => m.id === provider.defaultModelId)
             : null
+          const health = provider.health
+          const statusDot = STATUS_DOT_COLORS[health?.status || 'unknown']
+
           return (
             <div
               key={provider.id}
@@ -128,8 +146,14 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
                   : 'hover:bg-accent-50/50 dark:hover:bg-accent-950/20 border-l-2 border-transparent'
               }`}
             >
-              <div className="w-8 h-8 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0">
-                <Globe size={14} className="text-accent-600 dark:text-accent-400" />
+              <div className="w-8 h-8 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0 relative">
+                {provider.type === 'local' ? (
+                  <Home size={14} className="text-accent-600 dark:text-accent-400" />
+                ) : (
+                  <Globe size={14} className="text-accent-600 dark:text-accent-400" />
+                )}
+                {/* 连接状态小圆点 */}
+                <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-surface-800 ${statusDot}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className={`text-xs truncate ${
@@ -138,14 +162,46 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
                     : 'text-gray-700 dark:text-gray-300'
                 }`}>
                   {provider.name}
+                  {provider.type === 'local' && (
+                    <span className="ml-1 text-[9px] text-green-500">本地</span>
+                  )}
                 </div>
                 <div className="text-[10px] text-muted truncate">
                   {defaultModel ? defaultModel.name : provider.defaultModelId || '未选择模型'}
                 </div>
+                {/* 连接状态信息 */}
+                {health && health.status !== 'unknown' && (
+                  <div className="text-[9px] text-muted mt-0.5 flex items-center gap-1">
+                    {health.status === 'online' && health.latencyMs && (
+                      <span className="text-green-500">延迟 {health.latencyMs}ms</span>
+                    )}
+                    {health.status === 'error' && health.lastError && (
+                      <span className="text-red-500 truncate">{health.lastError}</span>
+                    )}
+                    {health.lastCheckedAt && (
+                      <span className="opacity-60">· {formatTimeAgo(health.lastCheckedAt)}</span>
+                    )}
+                  </div>
+                )}
               </div>
-              {isActive && (
-                <Check size={14} className="text-accent-500 flex-shrink-0" />
-              )}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {/* 测试连接按钮 */}
+                <button
+                  onClick={(e) => handleTestConnection(e, provider.id)}
+                  disabled={health?.status === 'checking'}
+                  className="p-1 rounded text-muted hover:text-accent-500 transition-colors disabled:opacity-50"
+                  title="测试连接"
+                >
+                  {health?.status === 'checking' ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Wifi size={12} />
+                  )}
+                </button>
+                {isActive && (
+                  <Check size={14} className="text-accent-500 flex-shrink-0" />
+                )}
+              </div>
             </div>
           )
         })}
@@ -171,7 +227,8 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
         onClick={handleToggle}
         className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/60 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all shadow-sm max-w-[200px]"
       >
-        <Globe size={12} className="text-accent-500 flex-shrink-0" />
+        {/* 连接状态指示 */}
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT_COLORS[currentProvider?.health?.status || 'unknown']}`} />
         <span className="text-gray-600 dark:text-gray-400 truncate">
           {currentProvider ? `${currentProvider.name} · ${currentModelName}` : '选择 AI 源'}
         </span>
@@ -182,4 +239,14 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
       {dropdownPanel}
     </>
   )
+}
+
+// 辅助函数
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  return `${Math.floor(diff / 86400000)}天前`
 }

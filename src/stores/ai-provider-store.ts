@@ -1,9 +1,17 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { AIProvider, AIProviderCreateInput, AIProviderUpdateInput, AIModel, ResolvedAIConfig } from '../types'
+import type {
+  AIProvider,
+  AIProviderCreateInput,
+  AIProviderUpdateInput,
+  AIModel,
+  ResolvedAIConfig,
+  ConnectionHealth,
+  ProviderRequestConfig
+} from '../types'
 import { useGlobalConfigStore } from './global-config-store'
-import { fetchModels } from '../services/model-fetcher'
+import { fetchModels, testConnection, fetchModelsWithRetry } from '../services/model-fetcher'
 
 // ==================== AI Provider Store ====================
 
@@ -22,9 +30,18 @@ interface AIProviderStore {
   addModelToProvider: (providerId: string, model: AIModel) => void
   removeModelFromProvider: (providerId: string, modelId: string) => void
   setProviderModels: (providerId: string, models: AIModel[]) => void
+  updateModel: (providerId: string, modelId: string, updates: Partial<AIModel>) => void
+
+  // 连接健康检查
+  checkConnection: (providerId: string) => Promise<ConnectionHealth>
+  checkAllConnections: () => Promise<void>
+
+  // 请求配置
+  updateRequestConfig: (providerId: string, config: Partial<ProviderRequestConfig>) => void
 
   // 解析配置
   resolveConfig: (providerId?: string, modelId?: string) => ResolvedAIConfig | null
+  getRequestConfig: (providerId?: string) => ProviderRequestConfig | undefined
 
   // 导入导出
   importProviders: (providers: AIProvider[]) => void
@@ -43,6 +60,10 @@ export const useAIProviderStore = create<AIProviderStore>()(
           ...input,
           id: uuidv4(),
           models: input.models || [],
+          type: input.type || (input.baseUrl.includes('localhost') || input.baseUrl.includes('127.0.0.1') ? 'local' : 'remote'),
+          health: { status: 'unknown' },
+          requestConfig: input.requestConfig || {},
+          localConfig: input.localConfig || {},
           createdAt: Date.now(),
           updatedAt: Date.now()
         }
@@ -111,7 +132,12 @@ export const useAIProviderStore = create<AIProviderStore>()(
         if (!provider) throw new Error('Provider 不存在')
 
         try {
-          const models = await fetchModels(provider.baseUrl, provider.apiKey)
+          const models = await fetchModelsWithRetry(
+            provider.baseUrl,
+            provider.apiKey,
+            undefined,
+            provider.requestConfig
+          )
           set((state) => ({
             providers: state.providers.map((p) =>
               p.id === providerId
@@ -160,6 +186,77 @@ export const useAIProviderStore = create<AIProviderStore>()(
               ? { ...p, models, modelsFetchedAt: Date.now(), updatedAt: Date.now() }
               : p
           )
+        }))
+      },
+
+      updateModel: (providerId, modelId, updates) => {
+        set((state) => ({
+          providers: state.providers.map((p) => {
+            if (p.id !== providerId) return p
+            return {
+              ...p,
+              models: p.models.map((m) =>
+                m.id === modelId ? { ...m, ...updates } : m
+              ),
+              updatedAt: Date.now()
+            }
+          })
+        }))
+      },
+
+      // ==================== 连接健康检查 ====================
+
+      checkConnection: async (providerId) => {
+        const provider = get().getProvider(providerId)
+        if (!provider) throw new Error('Provider 不存在')
+
+        // 设置为检查中状态
+        set((state) => ({
+          providers: state.providers.map((p) =>
+            p.id === providerId
+              ? { ...p, health: { ...p.health, status: 'checking' as const } }
+              : p
+          )
+        }))
+
+        const health = await testConnection(
+          provider.baseUrl,
+          provider.apiKey,
+          provider.requestConfig
+        )
+
+        // 更新健康状态
+        set((state) => ({
+          providers: state.providers.map((p) =>
+            p.id === providerId
+              ? { ...p, health, updatedAt: Date.now() }
+              : p
+          )
+        }))
+
+        return health
+      },
+
+      checkAllConnections: async () => {
+        const providers = get().providers
+        const promises = providers.map((p) =>
+          get().checkConnection(p.id).catch(() => undefined)
+        )
+        await Promise.allSettled(promises)
+      },
+
+      // ==================== 请求配置 ====================
+
+      updateRequestConfig: (providerId, config) => {
+        set((state) => ({
+          providers: state.providers.map((p) => {
+            if (p.id !== providerId) return p
+            return {
+              ...p,
+              requestConfig: { ...p.requestConfig, ...config },
+              updatedAt: Date.now()
+            }
+          })
         }))
       },
 
@@ -216,6 +313,27 @@ export const useAIProviderStore = create<AIProviderStore>()(
         }
       },
 
+      /**
+       * 获取指定 provider 的请求配置
+       */
+      getRequestConfig: (providerId) => {
+        const state = get()
+        const globalConfig = useGlobalConfigStore.getState()
+
+        let provider: AIProvider | undefined
+        if (providerId) {
+          provider = state.providers.find((p) => p.id === providerId)
+        }
+        if (!provider && globalConfig.activeProviderId) {
+          provider = state.providers.find((p) => p.id === globalConfig.activeProviderId)
+        }
+        if (!provider) {
+          provider = state.providers.find((p) => p.isDefault) || state.providers[0]
+        }
+
+        return provider?.requestConfig
+      },
+
       // ==================== 导入导出 ====================
 
       importProviders: (providers) => {
@@ -237,16 +355,21 @@ export const useAIProviderStore = create<AIProviderStore>()(
           if (state.providers.length === 0) {
             const globalConfig = useGlobalConfigStore.getState()
             if (globalConfig.apiKey && globalConfig.baseUrl) {
+              const isLocal = globalConfig.baseUrl.includes('localhost') || globalConfig.baseUrl.includes('127.0.0.1')
               const migratedProvider: AIProvider = {
                 id: 'migrated-default',
                 name: '默认',
                 baseUrl: globalConfig.baseUrl,
                 apiKey: globalConfig.apiKey,
+                type: isLocal ? 'local' : 'remote',
                 models: globalConfig.defaultModel
                   ? [{ id: globalConfig.defaultModel, name: globalConfig.defaultModel }]
                   : [],
                 defaultModelId: globalConfig.defaultModel || undefined,
                 isDefault: true,
+                health: { status: 'unknown' },
+                requestConfig: {},
+                localConfig: {},
                 createdAt: Date.now(),
                 updatedAt: Date.now()
               }
@@ -256,6 +379,21 @@ export const useAIProviderStore = create<AIProviderStore>()(
                 activeProviderId: migratedProvider.id
               })
             }
+          } else {
+            // 数据迁移：为现有 provider 添加新字段的默认值
+            state.providers = state.providers.map((p) => ({
+              ...p,
+              type: p.type || (p.baseUrl.includes('localhost') || p.baseUrl.includes('127.0.0.1') ? 'local' : 'remote'),
+              health: p.health || { status: 'unknown' },
+              requestConfig: p.requestConfig || {},
+              localConfig: p.localConfig || {},
+              models: p.models.map((m) => ({
+                ...m,
+                tags: m.tags || [],
+                deprecated: m.deprecated || false,
+                unavailable: m.unavailable || false
+              }))
+            }))
           }
         }
       }

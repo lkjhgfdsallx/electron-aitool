@@ -57,6 +57,7 @@ export function useChat() {
 
   const globalConfig = useGlobalConfigStore()
   const resolveConfig = useAIProviderStore((s) => s.resolveConfig)
+  const getRequestConfig = useAIProviderStore((s) => s.getRequestConfig)
   const { getAgent, getPrompt, selectedPromptId } = useAgentStore()
 
   /**
@@ -77,6 +78,23 @@ export function useChat() {
       return resolveConfig()
     },
     [resolveConfig, getConversation]
+  )
+
+  /**
+   * 解析当前对话的请求配置（与 resolveCurrentConfig 对应）
+   */
+  const resolveCurrentRequestConfig = useCallback(
+    (conversationId?: string, agent?: AgentProfile) => {
+      if (agent?.modelConfig?.providerId) {
+        return getRequestConfig(agent.modelConfig.providerId)
+      }
+      const conv = conversationId ? getConversation(conversationId) : undefined
+      if (conv?.aiConfig) {
+        return getRequestConfig(conv.aiConfig.providerId)
+      }
+      return getRequestConfig()
+    },
+    [getRequestConfig, getConversation]
   )
 
   const isStreamingRef = useRef(false)
@@ -332,7 +350,7 @@ export function useChat() {
         }
       )
     },
-    [resolveCurrentConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex]
+    [resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex]
   )
 
   /**
@@ -492,12 +510,14 @@ export function useChat() {
             })
             isStreamingRef.current = false
           }
-        }
+        },
+        resolveCurrentRequestConfig(convId)
       )
     },
     [
       currentConversationId,
       resolveCurrentConfig,
+      resolveCurrentRequestConfig,
       selectedPromptId,
       getPrompt,
       getAgent,
@@ -598,7 +618,8 @@ export function useChat() {
               })
               isStreamingRef.current = false
             }
-          }
+          },
+          resolveCurrentRequestConfig(conversationId)
         )
         return
       }
@@ -749,10 +770,11 @@ export function useChat() {
             })
             isStreamingRef.current = false
           }
-        }
+        },
+        resolveCurrentRequestConfig(conversationId)
       )
     },
-    [resolveCurrentConfig, selectedPromptId, getPrompt, addMessage, updateMessage, getMessages, getVisibleMessages]
+    [resolveCurrentConfig, resolveCurrentRequestConfig, selectedPromptId, getPrompt, addMessage, updateMessage, getMessages, getVisibleMessages]
   )
 
   /**
@@ -974,13 +996,15 @@ export function useChat() {
               updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
               isStreamingRef.current = false
             }
-          }
+          },
+          resolveCurrentRequestConfig(currentConversationId)
         )
       }
     },
     [
       currentConversationId,
       resolveCurrentConfig,
+      resolveCurrentRequestConfig,
       selectedPromptId,
       getPrompt,
       getAgent,
@@ -1177,7 +1201,7 @@ export function useChat() {
         }
       )
     },
-    [currentConversationId, resolveCurrentConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent]
+    [currentConversationId, resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent]
   )
 
   /**
@@ -1433,13 +1457,15 @@ export function useChat() {
               updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
               isStreamingRef.current = false
             }
-          }
+          },
+          resolveCurrentRequestConfig(currentConversationId)
         )
       }
     },
     [
       currentConversationId,
       resolveCurrentConfig,
+      resolveCurrentRequestConfig,
       selectedPromptId,
       getPrompt,
       getAgent,

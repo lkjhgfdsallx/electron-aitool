@@ -19,6 +19,7 @@ import type {
   WorkerRequest,
   WorkerResponse
 } from '../types/knowledge-base'
+import { pipeline, env as transformersEnv } from '@xenova/transformers'
 
 // ==================== 工具函数 ====================
 
@@ -214,21 +215,7 @@ async function initLocalModel(config: LocalModelProviderConfig): Promise<LocalMo
   const { modelId, mirrorUrl } = config
   const effectiveMirror = mirrorUrl || 'https://huggingface.co'
 
-  postProgress('downloading', 0, `正在加载 transformers.js 库...`)
-
-  // 动态导入 transformers.js（v2.x）
-  let transformers: typeof import('@xenova/transformers')
-  try {
-    transformers = await import('@xenova/transformers')
-  } catch (err) {
-    throw {
-      message: 'transformers.js 库加载失败',
-      detail: formatError('transformers.js', '@xenova/transformers', err, '请确认 @xenova/transformers 已正确安装'),
-      recoverable: false
-    }
-  }
-
-  const { pipeline, env } = transformers
+  postProgress('downloading', 0, `正在准备模型文件缓存...`)
 
   // ==================== 第一步：准备模型文件缓存 ====================
   // 计算 transformers.js 使用的远程 URL 前缀（与 hub.js pathJoin 行为一致）
@@ -273,14 +260,14 @@ async function initLocalModel(config: LocalModelProviderConfig): Promise<LocalMo
 
   // ==================== 第二步：配置 transformers.js 环境 ====================
   // 禁用本地文件系统加载
-  env.allowLocalModels = false
+  transformersEnv.allowLocalModels = false
   // 设置远程主机为镜像站（用于缓存 key 匹配）
-  env.remoteHost = effectiveMirror.endsWith('/') ? effectiveMirror : `${effectiveMirror}/`
+  transformersEnv.remoteHost = effectiveMirror.endsWith('/') ? effectiveMirror : `${effectiveMirror}/`
   // 禁用浏览器默认缓存（我们使用自定义缓存）
-  env.useBrowserCache = false
+  transformersEnv.useBrowserCache = false
   // 启用自定义缓存
-  env.useCustomCache = true
-  env.customCache = createCustomCacheAdapter(fileCache)
+  transformersEnv.useCustomCache = true
+  transformersEnv.customCache = createCustomCacheAdapter(fileCache)
 
   // ==================== 第三步：通过 pipeline 加载模型 ====================
   postProgress('loading', 80, '正在从缓存加载模型到内存...')
@@ -299,8 +286,8 @@ async function initLocalModel(config: LocalModelProviderConfig): Promise<LocalMo
     })
   } catch (err) {
     // 清理自定义缓存配置
-    env.useCustomCache = false
-    env.customCache = null
+    transformersEnv.useCustomCache = false
+    transformersEnv.customCache = null
 
     const errDetail = err instanceof Error ? `${err.message}\n${err.stack}` : String(err)
     throw {
@@ -316,8 +303,8 @@ async function initLocalModel(config: LocalModelProviderConfig): Promise<LocalMo
   }
 
   // 模型加载完成，清理自定义缓存配置
-  env.useCustomCache = false
-  env.customCache = null
+  transformersEnv.useCustomCache = false
+  transformersEnv.customCache = null
 
   // 探测向量维度
   postProgress('loading', 96, '正在探测向量维度...')

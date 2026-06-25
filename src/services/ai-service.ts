@@ -1,4 +1,4 @@
-import type { Message, ResolvedAIConfig, ToolDefinition } from '../types'
+import type { Message, ResolvedAIConfig, ToolDefinition, ProviderRequestConfig } from '../types'
 
 export interface StreamCallbacks {
   onToken: (token: string) => void
@@ -24,6 +24,7 @@ interface ChatCompletionMessage {
 /**
  * AI 服务 - 兼容 OpenAI API 格式的流式请求
  * 支持：OpenAI、DeepSeek、Ollama 等兼容接口
+ * 增强：支持自定义请求头、超时、重试
  */
 export const aiService = {
   /**
@@ -35,7 +36,8 @@ export const aiService = {
     systemPrompt: string | null,
     tools: ToolDefinition[],
     signal: AbortSignal,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    requestConfig?: ProviderRequestConfig
   ): Promise<void> {
     const apiKey = config.apiKey
     const baseUrl = config.baseUrl.replace(/\/+$/, '')
@@ -43,7 +45,9 @@ export const aiService = {
     const temperature = config.temperature
     const maxTokens = config.maxTokens
 
-    if (!apiKey) {
+    // 对于本地模型，apiKey 可以为空
+    const isLocal = config.baseUrl.includes('localhost') || config.baseUrl.includes('127.0.0.1')
+    if (!apiKey && !isLocal) {
       callbacks.onError('请先配置 API Key')
       return
     }
@@ -157,15 +161,78 @@ export const aiService = {
       body.tool_choice = 'auto'
     }
 
+    // 构建请求 headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    }
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+
+    // 合并自定义 headers
+    if (requestConfig?.customHeaders) {
+      Object.assign(headers, requestConfig.customHeaders)
+    }
+
+    // 重试逻辑
+    const maxRetries = requestConfig?.maxRetries || 0
+    let lastError: string = ''
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await this._doStreamRequest(
+          `${baseUrl}/chat/completions`,
+          headers,
+          body,
+          signal,
+          requestConfig?.timeout,
+          callbacks
+        )
+        return // 成功则直接返回
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          // 用户主动取消，不重试
+          callbacks.onDone()
+          return
+        }
+        lastError = error instanceof Error ? error.message : '未知错误'
+        if (attempt < maxRetries) {
+          // 指数退避等待
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
+        }
+      }
+    }
+
+    callbacks.onError(lastError)
+  },
+
+  /**
+   * 执行单次流式请求
+   */
+  async _doStreamRequest(
+    url: string,
+    headers: Record<string, string>,
+    body: Record<string, unknown>,
+    signal: AbortSignal,
+    timeout?: number,
+    callbacks?: StreamCallbacks
+  ): Promise<void> {
+    // 超时处理
+    const controller = new AbortController()
+    const timeoutMs = timeout || 30000
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    // 合并外部 signal
+    if (signal) {
+      signal.addEventListener('abort', () => controller.abort())
+    }
+
     try {
-      const response = await fetch(`${baseUrl}/chat/completions`, {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
+        headers,
         body: JSON.stringify(body),
-        signal
+        signal: controller.signal
       })
 
       if (!response.ok) {
@@ -177,14 +244,12 @@ export const aiService = {
         } catch {
           errorMessage = errorText || errorMessage
         }
-        callbacks.onError(errorMessage)
-        return
+        throw new Error(errorMessage)
       }
 
       const reader = response.body?.getReader()
       if (!reader) {
-        callbacks.onError('无法读取响应流')
-        return
+        throw new Error('无法读取响应流')
       }
 
       const decoder = new TextDecoder()
@@ -212,7 +277,7 @@ export const aiService = {
           if (data === '[DONE]') {
             // 处理累积的工具调用
             if (currentToolCalls.length > 0) {
-              callbacks.onToolCalls?.(
+              callbacks?.onToolCalls?.(
                 currentToolCalls.map((tc) => ({
                   id: tc.id,
                   name: tc.name,
@@ -220,7 +285,7 @@ export const aiService = {
                 }))
               )
             }
-            callbacks.onDone()
+            callbacks?.onDone()
             return
           }
 
@@ -231,12 +296,12 @@ export const aiService = {
 
             // 处理推理内容（DeepSeek R1 等模型）
             if (delta.reasoning_content) {
-              callbacks.onReasoningToken?.(delta.reasoning_content)
+              callbacks?.onReasoningToken?.(delta.reasoning_content)
             }
 
             // 处理普通内容
             if (delta.content) {
-              callbacks.onToken(delta.content)
+              callbacks?.onToken(delta.content)
             }
 
             // 处理工具调用增量
@@ -260,7 +325,7 @@ export const aiService = {
 
             // 处理 token 用量
             if (parsed.usage) {
-              callbacks.onUsage?.({
+              callbacks?.onUsage?.({
                 promptTokens: parsed.usage.prompt_tokens,
                 completionTokens: parsed.usage.completion_tokens,
                 totalTokens: parsed.usage.total_tokens
@@ -272,14 +337,9 @@ export const aiService = {
         }
       }
 
-      callbacks.onDone()
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        callbacks.onDone()
-        return
-      }
-      const message = error instanceof Error ? error.message : '未知错误'
-      callbacks.onError(message)
+      callbacks?.onDone()
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 }

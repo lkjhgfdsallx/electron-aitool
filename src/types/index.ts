@@ -73,7 +73,12 @@ export type {
   AIProviderCreateInput,
   AIProviderUpdateInput,
   AIModel,
-  ConversationAIConfig
+  ConversationAIConfig,
+  ProviderType,
+  ConnectionStatus,
+  ConnectionHealth,
+  ProviderRequestConfig,
+  LocalModelConfig
 } from './ai-provider'
 
 // ==================== 界面偏好类型 ====================
