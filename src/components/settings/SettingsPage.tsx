@@ -10,6 +10,7 @@ import { ModelParamsSection } from './ModelParamsSection'
 import { UIPreferencesSection } from './UIPreferencesSection'
 import { DataManagementSection } from './DataManagementSection'
 import { SettingsSearchBar } from './SettingsSearchBar'
+import { WorkspaceSettings } from './WorkspaceSettings'
 
 interface SettingsPageProps {
   defaultSection?: SettingsSection
@@ -40,6 +41,8 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
         return <MCPConfig />
       case 'tools':
         return <ToolEditor />
+      case 'workspace':
+        return <WorkspaceSettings />
       case 'knowledge-base':
         return <KnowledgeBaseSettings />
       case 'model-params':

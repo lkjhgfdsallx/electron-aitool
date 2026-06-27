@@ -12,15 +12,15 @@ import type {
   PromptABTest,
   PromptChain,
 } from '../types'
-import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT } from '../constants/default-agents'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT, WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT } from '../constants/default-agents'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 import { PromptVersionService } from '../services/prompt-version-service'
 import { STORE_VERSIONS } from '../utils/store-migration'
 
 // ==================== 默认 Agent 配置 ====================
 
 // 默认选中所有工具的 ID
-const DEFAULT_ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
+const DEFAULT_ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS].map((t) => t.id)
 
 const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 'systemPrompt' | 'createdAt' | 'updatedAt'> = {
   avatar: '🤖',
@@ -63,6 +63,20 @@ function createDefaultWebsiteAnalyzer(): AgentProfile {
     description: '自动化分析网站功能模块、API接口，生成交互式报告',
     avatar: '🌐',
     systemPrompt: WEBSITE_ANALYZER_PROMPT,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+}
+
+/** 创建默认的工作区 AI 领导 Agent */
+function createDefaultWorkspaceLeader(): AgentProfile {
+  return {
+    ...DEFAULT_AGENT_PROFILE,
+    id: WORKSPACE_LEADER_AGENT_ID,
+    name: 'AI 领导',
+    description: '工作区的 AI 项目领导，负责协调任务、规划执行并交付高质量成果',
+    avatar: '👑',
+    systemPrompt: WORKSPACE_LEADER_PROMPT,
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -434,6 +448,14 @@ export const useAgentStore = create<AgentStore>()(
             state.promptChains = []
           }
         }
+        if (version < 2) {
+          // v2: 强制同步 Leader Agent 的系统提示词为最新版本
+          state.agents = state.agents.map((agent) =>
+            agent.id === WORKSPACE_LEADER_AGENT_ID
+              ? { ...agent, systemPrompt: WORKSPACE_LEADER_PROMPT, updatedAt: Date.now() }
+              : agent
+          )
+        }
         return state
       },
       onRehydrateStorage: () => {
@@ -448,6 +470,18 @@ export const useAgentStore = create<AgentStore>()(
             if (!state.agents.some((a) => a.id === WEBSITE_ANALYZER_AGENT_ID)) {
               const websiteAnalyzer = createDefaultWebsiteAnalyzer()
               state.agents = [...state.agents, websiteAnalyzer]
+            }
+            // 确保工作区 AI 领导 Agent 存在，并同步最新的系统提示词
+            if (!state.agents.some((a) => a.id === WORKSPACE_LEADER_AGENT_ID)) {
+              const leader = createDefaultWorkspaceLeader()
+              state.agents = [...state.agents, leader]
+            } else {
+              // 强制同步最新提示词（使用不可变更新确保 Zustand 正确检测变更）
+              state.agents = state.agents.map((a) =>
+                a.id === WORKSPACE_LEADER_AGENT_ID
+                  ? { ...a, systemPrompt: WORKSPACE_LEADER_PROMPT, updatedAt: Date.now() }
+                  : a
+              )
             }
           }
         }

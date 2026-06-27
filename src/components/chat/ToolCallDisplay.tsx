@@ -37,7 +37,7 @@ export function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
   if (!toolCalls || toolCalls.length === 0) return null
 
   return (
-    <div className="mb-2 space-y-2">
+    <div className="mb-2 space-y-2 overflow-hidden">
       {toolCalls.map((tc) => {
         const isExpanded = expandedCalls.has(tc.id)
         const status = statusConfig[tc.status]

@@ -137,6 +137,106 @@ export interface ElectronAPI {
      */
     onProgress: (callback: (progress: unknown) => void) => () => void
   }
+  // 工作区
+  workspace: {
+    /** 文件系统操作 */
+    fs: {
+      /** 读取目录内容（文件树浏览） */
+      readDir: (dirPath: string) => Promise<{
+        success: boolean
+        entries?: Array<{ name: string; path: string; isDirectory: boolean; size: number; ext: string }>
+        error?: string
+      }>
+      /** 读取文件文本内容（文件预览，大文件自动截断） */
+      readFile: (filePath: string, maxBytes?: number) => Promise<{
+        success: boolean
+        content?: string
+        truncated?: boolean
+        totalSize?: number
+        error?: string
+      }>
+      /** 写入文件内容（创建或覆盖） */
+      writeFile: (filePath: string, content: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      /** 创建目录（递归） */
+      createDir: (dirPath: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      /** 删除文件 */
+      deleteFile: (filePath: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+    }
+    /** 版本控制（VCS）相关操作 */
+    vcs: {
+      /** 初始化 .ai-workspace-vcs 目录结构 */
+      init: (folderPath: string) => Promise<{ success: boolean; error?: string }>
+      /** 创建存档点 */
+      createCheckpoint: (params: {
+        folderPath: string
+        checkpointId: string
+        description: string
+        type: string
+        workspaceId: string
+        conversationId?: string
+        filePaths?: string[]
+      }) => Promise<{ success: boolean; checkpointId?: string; error?: string }>
+      /** 列出存档点索引 */
+      listCheckpoints: (folderPath: string) => Promise<{ success: boolean; checkpoints?: unknown[]; error?: string }>
+      /** 获取存档点详情 */
+      getCheckpointDetail: (folderPath: string, checkpointId: string) => Promise<{ success: boolean; detail?: unknown; error?: string }>
+      /** 还原到指定存档点 */
+      restoreCheckpoint: (folderPath: string, checkpointId: string) => Promise<{ success: boolean; error?: string }>
+      /** 保存压缩前的消息历史快照 */
+      saveMessages: (folderPath: string, checkpointId: string, messages: unknown[]) => Promise<{ success: boolean; error?: string }>
+      /** 加载压缩前的消息历史快照 */
+      loadMessages: (folderPath: string, checkpointId: string) => Promise<{ success: boolean; messages?: unknown[]; error?: string }>
+      /** 清理超出限制的旧存档点 */
+      cleanup: (folderPath: string, maxCheckpoints: number) => Promise<{ success: boolean; removed?: number; error?: string }>
+      /** 保存工作区会话（消息 + 终端历史） */
+      saveSession: (folderPath: string, sessionData: unknown) => Promise<{ success: boolean; error?: string }>
+      /** 加载工作区会话（消息 + 终端历史） */
+      loadSession: (folderPath: string) => Promise<{ success: boolean; session?: unknown; error?: string }>
+    }
+    /** 文件监控 */
+    watcher: {
+      /** 开始监控工作区目录文件变更 */
+      start: (folderPath: string) => Promise<{ success: boolean; error?: string }>
+      /** 停止监控 */
+      stop: (folderPath: string) => Promise<{ success: boolean; error?: string }>
+      /** 查询监控状态 */
+      status: (folderPath: string) => Promise<{ active: boolean; watching: boolean }>
+      /** 监听文件变更事件 */
+      onChange: (callback: (data: { folderPath: string; events: unknown[]; timestamp: number }) => void) => () => void
+    }
+    /** 命令执行 */
+    command: {
+      /** 执行 shell 命令 */
+      execute: (params: {
+        commandId: string
+        command: string
+        workingDir: string
+        timeoutMs?: number
+        env?: Record<string, string>
+      }) => Promise<{ success: boolean; exitCode: number | null; stdout: string; stderr: string; error?: string; durationMs: number }>
+      /** 中止正在执行的命令 */
+      abort: (commandId: string) => Promise<{ success: boolean; error?: string }>
+      /** 获取正在执行的命令列表 */
+      running: () => Promise<Array<{ commandId: string; startTime: number; runningTime: number }>>
+      /** 评估命令风险等级 */
+      assessRisk: (command: string) => Promise<'safe' | 'medium' | 'high' | 'critical'>
+      /** 监听命令实时输出 */
+      onOutput: (callback: (data: { commandId: string; stream: string; chunk: string; timestamp: number }) => void) => () => void
+      /** 监听命令完成事件 */
+      onComplete: (callback: (data: { commandId: string; exitCode: number | null; killed: boolean; timestamp: number }) => void) => () => void
+    }
+    /** 选择文件夹对话框 */
+    selectFolder: () => Promise<{ success: boolean; folderPath?: string; canceled?: boolean; error?: string }>
+  }
 }
 
 const electronAPI: ElectronAPI = {
@@ -211,6 +311,83 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('notification:show', title, body),
     playSound: (soundName: string) =>
       ipcRenderer.invoke('notification:playSound', soundName)
+  },
+  workspace: {
+    fs: {
+      readDir: (dirPath: string) =>
+        ipcRenderer.invoke('workspace:fs:readDir', dirPath),
+      readFile: (filePath: string, maxBytes?: number) =>
+        ipcRenderer.invoke('workspace:fs:readFile', filePath, maxBytes),
+      writeFile: (filePath: string, content: string) =>
+        ipcRenderer.invoke('workspace:fs:writeFile', filePath, content),
+      createDir: (dirPath: string) =>
+        ipcRenderer.invoke('workspace:fs:createDir', dirPath),
+      deleteFile: (filePath: string) =>
+        ipcRenderer.invoke('workspace:fs:deleteFile', filePath),
+    },
+    vcs: {
+      init: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:vcs:init', folderPath),
+      createCheckpoint: (params) =>
+        ipcRenderer.invoke('workspace:vcs:create-checkpoint', params),
+      listCheckpoints: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:vcs:list-checkpoints', folderPath),
+      getCheckpointDetail: (folderPath: string, checkpointId: string) =>
+        ipcRenderer.invoke('workspace:vcs:get-checkpoint-detail', folderPath, checkpointId),
+      restoreCheckpoint: (folderPath: string, checkpointId: string) =>
+        ipcRenderer.invoke('workspace:vcs:restore-checkpoint', folderPath, checkpointId),
+      saveMessages: (folderPath: string, checkpointId: string, messages: unknown[]) =>
+        ipcRenderer.invoke('workspace:vcs:save-messages', folderPath, checkpointId, messages),
+      loadMessages: (folderPath: string, checkpointId: string) =>
+        ipcRenderer.invoke('workspace:vcs:load-messages', folderPath, checkpointId),
+      cleanup: (folderPath: string, maxCheckpoints: number) =>
+        ipcRenderer.invoke('workspace:vcs:cleanup', folderPath, maxCheckpoints),
+      saveSession: (folderPath: string, sessionData: unknown) =>
+        ipcRenderer.invoke('workspace:vcs:save-session', folderPath, sessionData),
+      loadSession: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:vcs:load-session', folderPath),
+    },
+    watcher: {
+      start: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:watcher:start', folderPath),
+      stop: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:watcher:stop', folderPath),
+      status: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:watcher:status', folderPath),
+      onChange: (callback: (data: { folderPath: string; events: unknown[]; timestamp: number }) => void) => {
+        const handler = (_event: unknown, data: { folderPath: string; events: unknown[]; timestamp: number }) => callback(data)
+        ipcRenderer.on('workspace:watcher:on-change', handler)
+        return () => {
+          ipcRenderer.removeListener('workspace:watcher:on-change', handler)
+        }
+      },
+    },
+    command: {
+      execute: (params) =>
+        ipcRenderer.invoke('workspace:command:execute', params),
+      abort: (commandId: string) =>
+        ipcRenderer.invoke('workspace:command:abort', commandId),
+      running: () =>
+        ipcRenderer.invoke('workspace:command:running'),
+      assessRisk: (command: string) =>
+        ipcRenderer.invoke('workspace:command:assess-risk', command),
+      onOutput: (callback: (data: { commandId: string; stream: string; chunk: string; timestamp: number }) => void) => {
+        const handler = (_event: unknown, data: { commandId: string; stream: string; chunk: string; timestamp: number }) => callback(data)
+        ipcRenderer.on('workspace:command:output', handler)
+        return () => {
+          ipcRenderer.removeListener('workspace:command:output', handler)
+        }
+      },
+      onComplete: (callback: (data: { commandId: string; exitCode: number | null; killed: boolean; timestamp: number }) => void) => {
+        const handler = (_event: unknown, data: { commandId: string; exitCode: number | null; killed: boolean; timestamp: number }) => callback(data)
+        ipcRenderer.on('workspace:command:complete', handler)
+        return () => {
+          ipcRenderer.removeListener('workspace:command:complete', handler)
+        }
+      },
+    },
+    selectFolder: () =>
+      ipcRenderer.invoke('workspace:select-folder'),
   }
 }
 

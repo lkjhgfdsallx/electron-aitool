@@ -2,6 +2,8 @@ import { ChatWindow } from '../chat/ChatWindow'
 import { TopBar } from './TopBar'
 import { SettingsPage } from '../settings/SettingsPage'
 import { KnowledgeBasePage } from '../knowledge-base/KnowledgeBasePage'
+import { WorkspacePage } from '../workspace/WorkspacePage'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
 import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 
 interface MainAreaProps {
@@ -28,6 +30,13 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
             onBack={onCloseSettings}
           />
         )
+      case 'workspace':
+        return (
+          <WorkspacePage
+            onBackToChat={onCloseSettings}
+            onOpenSettings={(section) => onOpenSettings(section as SettingsSection)}
+          />
+        )
       case 'chat':
       default:
         return (
@@ -43,25 +52,24 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
     }
   }
 
-  if (viewMode === 'knowledge-base' || viewMode === 'settings') {
-    return (
-      <div className="flex-1 flex flex-col min-w-0 relative">
-        {renderContent()}
-      </div>
-    )
-  }
-
   return (
     <div className="flex-1 flex flex-col min-w-0 relative">
-      <TopBar
-        viewMode={viewMode}
-        onOpenSettings={() => onOpenSettings()}
-        onBackToChat={onCloseSettings}
-      />
-
-      <div className="flex-1 flex min-h-0">
-        <ChatWindow onOpenAgentManager={() => onOpenSettings('agents')} onOpenPromptManager={() => onOpenSettings('prompts')} />
-      </div>
+      <ErrorBoundary>
+        {viewMode === 'knowledge-base' || viewMode === 'settings' || viewMode === 'workspace' ? (
+          renderContent()
+        ) : (
+          <>
+            <TopBar
+              viewMode={viewMode}
+              onOpenSettings={() => onOpenSettings()}
+              onBackToChat={onCloseSettings}
+            />
+            <div className="flex-1 flex min-h-0">
+              <ChatWindow onOpenAgentManager={() => onOpenSettings('agents')} onOpenPromptManager={() => onOpenSettings('prompts')} />
+            </div>
+          </>
+        )}
+      </ErrorBoundary>
     </div>
   )
 }

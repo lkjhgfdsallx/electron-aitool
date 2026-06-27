@@ -305,7 +305,8 @@ export function ConversationList() {
 
   // 过滤和排序对话
   const filteredConversations = useMemo(() => {
-    let filtered = conversations
+    // 过滤掉工作区对话（workspaceId 不为空的对话由工作区面板管理）
+    let filtered = conversations.filter((c) => !c.workspaceId)
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter((c) => c.title.toLowerCase().includes(query))

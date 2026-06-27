@@ -103,6 +103,25 @@ export type {
   SettingsRegistry,
   GroupedSettingsRegistry
 } from './settings-meta'
+export type {
+  Workspace,
+  WorkspaceCreateInput,
+  WorkspaceUpdateInput,
+  CheckpointIndex,
+  CheckpointDetail,
+  CheckpointFileChange,
+  CheckpointPolicy,
+  CheckpointType,
+  CommandPolicy,
+  CommandRiskLevel,
+  CommandApprovalResult,
+  CommandApprovalRequest,
+  ContextConfig,
+  FolderSelectResult,
+  CreateCheckpointParams,
+  RestoreConfirmInfo,
+} from './workspace'
+export { DEFAULT_CONTEXT_CONFIG, DEFAULT_WORKSPACE_INPUT } from './workspace'
 
 // ==================== 界面偏好类型 ====================
 

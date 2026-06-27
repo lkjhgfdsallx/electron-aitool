@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../services/built-in-tools'
+import type { WorkspaceContext } from '../services/agent-engine'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
 import { knowledgeBaseService } from '../services/knowledge-base-service'
@@ -12,9 +13,19 @@ import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
 import { useMCPToolStore } from '../stores/mcp-tool-store'
 import { useAIProviderStore } from '../stores/ai-provider-store'
+import { useWorkspaceStore } from '../stores/workspace-store'
 import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
+
+/** 根据 finishReason 生成截断/中断提示（'length' 已由自动续写机制处理） */
+function getFinishNotice(finishReason?: string): string | null {
+  if (!finishReason || finishReason === 'stop' || finishReason === 'length') return null
+  if (finishReason === 'abort') {
+    return '\n\n> ⚠️ **回复中断**：流连接在生成过程中异常断开，输出可能不完整。请检查网络连接或 API 服务状态。'
+  }
+  return null
+}
 
 /** 将进度事件类型映射到阶段 */
 /** 检查通知设置并在 AI 回复完成时发送系统通知和播放提示音 */
@@ -58,6 +69,141 @@ export function useChat() {
   const abortControllerRef = useRef<AbortController | null>(null)
   // 网站分析开始时间（用于在进度面板中显示耗时）
   const siteAnalyzerStartTimeRef = useRef<number>(0)
+
+  /** 根据对话的工作区关联，构建 WorkspaceContext 传递给 agent-engine */
+  const buildWorkspaceContext = useCallback((conversationId: string): WorkspaceContext | undefined => {
+    const conv = useConversationStore.getState().conversations.find((c) => c.id === conversationId)
+    if (!conv?.workspaceId) return undefined
+    const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
+    if (!ws) return undefined
+    const agents = useAgentStore.getState().agents
+    const teamAgents = ws.teamAgentIds
+      .map((id) => agents.find((a) => a.id === id))
+      .filter((a): a is NonNullable<typeof a> => !!a)
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
+
+    // 构建子任务分派回调（真正运行子 Agent 并返回结果）
+    const dispatchSubTask = async (agentId: string, taskDescription: string): Promise<string> => {
+      const agentStore = useAgentStore.getState()
+      const targetAgent = agentStore.getAgent(agentId)
+      if (!targetAgent) throw new Error(`Agent "${agentId}" 不存在`)
+
+      // 解析目标 Agent 的 AI 配置
+      const providerStore = useAIProviderStore.getState()
+      const config = targetAgent.modelConfig?.providerId
+        ? providerStore.resolveConfig(targetAgent.modelConfig.providerId)
+        : providerStore.resolveConfig()
+      if (!config) throw new Error('无法解析目标 Agent 的 AI 配置')
+
+      // 获取目标 Agent 可用的工具
+      const allTools: Tool[] = [
+        ...BUILT_IN_TOOLS,
+        ...AGENT_BUILTIN_TOOLS,
+        ...WORKSPACE_TOOLS,
+        ...useCustomToolStore.getState().customTools.filter((t) => t.enabled),
+      ]
+      const targetTools = allTools.filter(
+        (t) => targetAgent.enabledToolIds.includes(t.id) && t.enabled
+      )
+
+      // 从 store 读取最新的团队成员列表（而非使用快照）
+      const freshWs = useWorkspaceStore.getState().workspaces.find((w) => w.id === ws.id)
+      const freshAgents = useAgentStore.getState().agents
+      const freshTeamAgents = (freshWs?.teamAgentIds ?? [])
+        .map((id) => freshAgents.find((a) => a.id === id))
+        .filter((a): a is NonNullable<typeof a> => !!a)
+        .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
+
+      // 构建子 Agent 的工作区上下文（不含 dispatchSubTask/createAgent 以避免递归）
+      const subWorkspaceContext: WorkspaceContext | undefined = ws
+        ? { folderPath: ws.folderPath, workspaceId: ws.id, teamAgents: freshTeamAgents }
+        : undefined
+
+      // 运行子 Agent 并收集输出
+      let finalContent = ''
+      const subSignal = new AbortController().signal
+
+      await runAgent(
+        targetAgent,
+        taskDescription,
+        [],  // 子 Agent 无历史上下文
+        targetTools,
+        config,
+        subSignal,
+        {
+          onStep: () => {},
+          onToken: (token) => { finalContent += token },
+          onReasoningToken: () => {},
+          onStatusChange: () => {},
+          onError: (err) => { throw new Error(err) },
+          onDone: (content) => { if (content) finalContent = content },
+        },
+        subWorkspaceContext
+      )
+
+      return finalContent
+    }
+
+    // 构建创建 Agent 回调（创建新 Agent 并加入工作区团队）
+    const createAgent = async (input: {
+      name: string
+      description: string
+      systemPrompt: string
+      avatar?: string
+      enabledToolIds?: string[]
+    }): Promise<string> => {
+      const agentStore = useAgentStore.getState()
+
+      // 为新 Agent 设置合理的默认工具：工作区文件工具 + 核心工具
+      const defaultWorkspaceToolIds = [
+        'workspace:read_file', 'workspace:write_file',
+        'workspace:list_files', 'workspace:execute_command'
+      ]
+      const toolIds = input.enabledToolIds && input.enabledToolIds.length > 0
+        ? input.enabledToolIds
+        : defaultWorkspaceToolIds
+
+      // 创建 Agent
+      const newAgent = agentStore.createAgent({
+        name: input.name,
+        description: input.description,
+        systemPrompt: input.systemPrompt,
+        avatar: input.avatar ?? '🤖',
+        enabledToolIds: toolIds,
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 50, timeoutSeconds: 300, autoStopOnGoal: true },
+        modelConfig: {},
+        enabled: true,
+      })
+
+      // 从 store 读取最新的 teamAgentIds（而非使用快照），避免覆盖之前创建的 Agent
+      const freshWs = useWorkspaceStore.getState().workspaces.find((w) => w.id === ws.id)
+      const currentTeamAgentIds = freshWs?.teamAgentIds ?? []
+      useWorkspaceStore.getState().updateWorkspace({
+        id: ws.id,
+        teamAgentIds: [...currentTeamAgentIds, newAgent.id],
+      })
+
+      // 同步更新 teamAgents 数组引用，使后续的 dispatchSubTask 能看到新 Agent
+      teamAgents.push({
+        id: newAgent.id,
+        name: newAgent.name,
+        description: newAgent.description,
+        avatar: newAgent.avatar ?? '🤖',
+      })
+
+      return newAgent.id
+    }
+
+    return {
+      folderPath: ws.folderPath,
+      workspaceId: ws.id,
+      teamAgents,
+      dispatchSubTask,
+      createAgent,
+    }
+  }, [])
 
   const {
     addMessage,
@@ -231,6 +377,7 @@ export function useChat() {
       let reasoningContent = ''
 
       // 将包含附件内容的完整消息传递给 Agent 引擎
+      const wsContext = buildWorkspaceContext(convId)
       await runAgent(
         agent,
         agentMessage,
@@ -367,10 +514,11 @@ export function useChat() {
               }, 3000)
             }
           }
-        }
+        },
+        wsContext
       )
     },
-    [resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex]
+    [resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex, buildWorkspaceContext]
   )
 
   /**
@@ -501,7 +649,7 @@ export function useChat() {
               tokenUsage: usage
             })
           },
-          onDone: async () => {
+          onDone: async (finishReason) => {
             if (pendingToolCalls.length > 0) {
               updateMessage(assistantMsg.id, {
                 content: fullContent,
@@ -515,11 +663,13 @@ export function useChat() {
               const mcpTools3 = useMCPToolStore.getState().mcpTools
               await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools3], currentBranchIdx)
             } else {
+              const notice = getFinishNotice(finishReason)
+              const finalContent = notice ? fullContent + notice : fullContent
               updateMessage(assistantMsg.id, {
-                content: fullContent,
+                content: finalContent,
                 isStreaming: false
               })
-              notifyIfReady('AI 回复完成', (fullContent || '已完成').slice(0, 100))
+              notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
             }
             isStreamingRef.current = false
           },
@@ -622,9 +772,10 @@ export function useChat() {
             onUsage: (usage) => {
               updateMessage(limitReplyMsg.id, { tokenUsage: usage })
             },
-            onDone: () => {
+            onDone: (finishReason) => {
+              const notice = getFinishNotice(finishReason)
               updateMessage(limitReplyMsg.id, {
-                content: limitFullContent,
+                content: notice ? limitFullContent + notice : limitFullContent,
                 isStreaming: false,
                 reasoningContent: limitReasoningContent || undefined
               })
@@ -750,7 +901,7 @@ export function useChat() {
           onUsage: (usage) => {
             updateMessage(replyMsg.id, { tokenUsage: usage })
           },
-          onDone: async () => {
+          onDone: async (finishReason) => {
             if (pendingToolCalls.length > 0) {
               // AI 又发起了工具调用 → 更新消息显示工具调用状态
               updateMessage(replyMsg.id, {
@@ -774,8 +925,9 @@ export function useChat() {
               )
             } else {
               // AI 返回纯文本，工具调用循环结束
+              const notice = getFinishNotice(finishReason)
               updateMessage(replyMsg.id, {
-                content: fullContent,
+                content: notice ? fullContent + notice : fullContent,
                 isStreaming: false,
                 reasoningContent: reasoningContent || undefined
               })
@@ -858,6 +1010,7 @@ export function useChat() {
         let finalContent = ''
         let reasoningContent = ''
 
+        const wsContext = buildWorkspaceContext(currentConversationId)
         await runAgent(
           agent,
           '', // 空 prompt，Agent 从历史中恢复上下文
@@ -959,7 +1112,8 @@ export function useChat() {
                 }, 3000)
               }
             }
-          }
+          },
+          wsContext
         )
       } else {
         // 普通模式重新生成
@@ -1002,7 +1156,7 @@ export function useChat() {
             onUsage: (usage) => {
               updateMessage(assistantMsg.id, { content: fullContent, tokenUsage: usage })
             },
-            onDone: async () => {
+            onDone: async (finishReason) => {
               if (pendingToolCalls.length > 0) {
                 updateMessage(assistantMsg.id, {
                   content: fullContent,
@@ -1012,7 +1166,8 @@ export function useChat() {
                 const mcpTools5 = useMCPToolStore.getState().mcpTools
                 await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools5], currentBranchIdx)
               } else {
-                updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
+                const notice = getFinishNotice(finishReason)
+                updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false })
               }
               isStreamingRef.current = false
             },
@@ -1038,7 +1193,8 @@ export function useChat() {
       getVisibleMessages,
       getCurrentBranchIndex,
       getAvailableTools,
-      handleToolCalls
+      handleToolCalls,
+      buildWorkspaceContext
     ]
   )
 
@@ -1103,6 +1259,7 @@ export function useChat() {
       let finalContent = ''
       let reasoningContent = errorMsg.reasoningContent ?? ''
 
+      const wsContext = buildWorkspaceContext(currentConversationId)
       await resumeAgent(
         agent,
         history,
@@ -1225,10 +1382,11 @@ export function useChat() {
               }, 3000)
             }
           }
-        }
+        },
+        wsContext
       )
     },
-    [currentConversationId, resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent]
+    [currentConversationId, resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent, buildWorkspaceContext]
   )
 
   /**
@@ -1325,6 +1483,7 @@ export function useChat() {
         let finalContent = ''
         let reasoningContent = ''
 
+        const wsContext = buildWorkspaceContext(currentConversationId)
         await runAgent(
           agent,
           agentMessage,
@@ -1426,7 +1585,8 @@ export function useChat() {
                 }, 3000)
               }
             }
-          }
+          },
+          wsContext
         )
       } else {
         // 普通模式
@@ -1469,7 +1629,7 @@ export function useChat() {
             onUsage: (usage) => {
               updateMessage(assistantMsg.id, { content: fullContent, tokenUsage: usage })
             },
-            onDone: async () => {
+            onDone: async (finishReason) => {
               if (pendingToolCalls.length > 0) {
                 updateMessage(assistantMsg.id, {
                   content: fullContent,
@@ -1479,7 +1639,8 @@ export function useChat() {
                 const mcpTools7 = useMCPToolStore.getState().mcpTools
                 await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools7], newBranchIndex)
               } else {
-                updateMessage(assistantMsg.id, { content: fullContent, isStreaming: false })
+                const notice = getFinishNotice(finishReason)
+                updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false })
               }
               isStreamingRef.current = false
             },
@@ -1507,7 +1668,8 @@ export function useChat() {
       getAvailableTools,
       buildMessageContent,
       handleToolCalls,
-      sendMessageWithAgent
+      sendMessageWithAgent,
+      buildWorkspaceContext
     ]
   )
 

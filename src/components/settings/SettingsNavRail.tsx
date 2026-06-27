@@ -8,10 +8,11 @@ import {
   Database,
   Cpu,
   Palette,
-  HardDrive
+  HardDrive,
+  Briefcase
 } from 'lucide-react'
 
-export type ViewMode = 'chat' | 'knowledge-base' | 'settings'
+export type ViewMode = 'chat' | 'workspace' | 'knowledge-base' | 'settings'
 
 export type SettingsSection =
   | 'ai-providers'
@@ -19,6 +20,7 @@ export type SettingsSection =
   | 'prompts'
   | 'mcp'
   | 'tools'
+  | 'workspace'
   | 'knowledge-base'
   | 'model-params'
   | 'ui-prefs'
@@ -35,6 +37,7 @@ export const SETTINGS_SECTIONS: {
   { key: 'prompts', label: '提示词', icon: FileText, color: 'text-orange-500' },
   { key: 'mcp', label: 'MCP', icon: Plug, color: 'text-emerald-500' },
   { key: 'tools', label: '工具', icon: Wrench, color: 'text-indigo-500' },
+  { key: 'workspace', label: '工作区', icon: Briefcase, color: 'text-teal-500' },
   { key: 'knowledge-base', label: '知识库', icon: Database, color: 'text-violet-500' },
   { key: 'model-params', label: '模型', icon: Cpu, color: 'text-cyan-500' },
   { key: 'ui-prefs', label: '界面', icon: Palette, color: 'text-pink-500' },

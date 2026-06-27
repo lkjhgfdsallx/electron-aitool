@@ -8,6 +8,8 @@ export interface Conversation {
   promptId?: string // 关联的提示词 ID
   /** 关联的 Agent ID（Agent 模式） */
   agentId?: string
+  /** 关联的工作区 ID（工作区模式） */
+  workspaceId?: string
   /** 对话级别的 AI 源配置（覆盖全局默认） */
   aiConfig?: ConversationAIConfig
   isPinned: boolean

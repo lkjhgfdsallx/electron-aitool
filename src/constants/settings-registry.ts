@@ -528,6 +528,101 @@ const DATA_MGMT_ITEMS: SettingItemMeta[] = [
   },
 ]
 
+// ==================== 工作区 ====================
+
+const WORKSPACE_ITEMS: SettingItemMeta[] = [
+  {
+    id: 'workspace.name',
+    section: 'workspace',
+    key: 'name',
+    label: '工作区名称',
+    description: '工作区的显示名称',
+    keywords: ['workspace name', '工作区名', '项目名'],
+    controlType: 'input',
+    tags: ['基本'],
+  },
+  {
+    id: 'workspace.folderPath',
+    section: 'workspace',
+    key: 'folderPath',
+    label: '工作区文件夹',
+    description: '工作区绑定的本地文件夹路径',
+    keywords: ['folder', '文件夹', '目录', '路径', 'project directory'],
+    controlType: 'custom',
+    tags: ['文件'],
+  },
+  {
+    id: 'workspace.leaderAgentId',
+    section: 'workspace',
+    key: 'leaderAgentId',
+    label: 'AI 领导 Agent',
+    description: '负责协调工作区任务的 Agent',
+    keywords: ['leader', '领导', '协调', 'agent', '主 agent'],
+    controlType: 'select',
+    tags: ['Agent'],
+  },
+  {
+    id: 'workspace.checkpointPolicy',
+    section: 'workspace',
+    key: 'checkpointPolicy',
+    label: '存档策略',
+    description: '控制何时自动创建存档点：修改前、手动或定时',
+    keywords: ['checkpoint', '存档', '快照', 'snapshot', '版本控制'],
+    controlType: 'select',
+    tags: ['存档'],
+  },
+  {
+    id: 'workspace.maxCheckpoints',
+    section: 'workspace',
+    key: 'maxCheckpoints',
+    label: '最大存档数',
+    description: '最多保留的存档点数量，超出后自动清理旧存档',
+    keywords: ['max checkpoints', '存档上限', '保留数量'],
+    controlType: 'slider',
+    tags: ['存档'],
+  },
+  {
+    id: 'workspace.commandPolicy',
+    section: 'workspace',
+    key: 'commandPolicy',
+    label: '命令审批策略',
+    description: '控制 AI Agent 执行 shell 命令的审批方式',
+    keywords: ['command', '命令', '审批', 'shell', 'terminal', '执行'],
+    controlType: 'select',
+    tags: ['命令'],
+  },
+  {
+    id: 'workspace.commandExecutionEnabled',
+    section: 'workspace',
+    key: 'commandExecutionEnabled',
+    label: '启用命令执行',
+    description: '是否允许 AI Agent 在工作区中执行 shell 命令',
+    keywords: ['command execution', '命令执行', 'shell', 'terminal'],
+    controlType: 'toggle',
+    tags: ['命令'],
+  },
+  {
+    id: 'workspace.contextConfig.compressionEnabled',
+    section: 'workspace',
+    key: 'contextConfig.compressionEnabled',
+    label: '上下文压缩',
+    description: '启用对话上下文压缩以节省 Token 消耗',
+    keywords: ['compression', '压缩', 'context', '上下文', 'token'],
+    controlType: 'toggle',
+    tags: ['上下文'],
+  },
+  {
+    id: 'workspace.contextConfig.maxTokens',
+    section: 'workspace',
+    key: 'contextConfig.maxTokens',
+    label: '最大 Token 数',
+    description: '对话上下文的最大 Token 限制',
+    keywords: ['max tokens', 'token limit', 'token 上限'],
+    controlType: 'slider',
+    tags: ['上下文'],
+  },
+]
+
 // ==================== 汇总注册表 ====================
 
 /** 扁平注册表（用于搜索） */
@@ -540,6 +635,7 @@ export const SETTINGS_REGISTRY: SettingItemMeta[] = [
   ...PROMPTS_ITEMS,
   ...MCP_ITEMS,
   ...TOOLS_ITEMS,
+  ...WORKSPACE_ITEMS,
   ...DATA_MGMT_ITEMS,
 ]
 
@@ -550,6 +646,7 @@ export const GROUPED_SETTINGS_REGISTRY: GroupedSettingsRegistry = {
   'prompts': PROMPTS_ITEMS,
   'mcp': MCP_ITEMS,
   'tools': TOOLS_ITEMS,
+  'workspace': WORKSPACE_ITEMS,
   'knowledge-base': KNOWLEDGE_BASE_ITEMS,
   'model-params': MODEL_PARAMS_ITEMS,
   'ui-prefs': UI_PREFS_ITEMS,

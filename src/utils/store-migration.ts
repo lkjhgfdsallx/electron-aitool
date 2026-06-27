@@ -98,12 +98,14 @@ export const STORE_VERSIONS = {
   GLOBAL_CONFIG: 1,
   /** ai-provider-store (ai-providers) */
   AI_PROVIDERS: 1,
-  /** agent-store (agents) */
-  AGENTS: 1,
+  /** agent-store (agents) - v2: 强制同步 Leader Agent 系统提示词 */
+  AGENTS: 2,
   /** conversation-store (conversations) - 已有 v2 迁移 */
   CONVERSATIONS: 2,
   /** custom-tool-store (custom-tools) */
   CUSTOM_TOOLS: 1,
   /** tool-stats-store (tool-stats) */
   TOOL_STATS: 1,
+  /** workspace-store (workspaces) - v2: 新增 openTabs, defaultWorkspaceId */
+  WORKSPACE: 2,
 } as const

@@ -74,6 +74,8 @@ export interface Message {
   branchIndex?: number
   /** 分支总数（仅在分支点用户消息上设置，表示该处分叉的数量） */
   branchCount?: number
+  /** 扩展元数据（压缩标记、自定义数据等） */
+  metadata?: Record<string, unknown>
 }
 
 export type MessageCreateInput = Omit<Message, 'id' | 'timestamp'>

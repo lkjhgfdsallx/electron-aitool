@@ -105,23 +105,32 @@ export function AssistantGroupBubble({
     setTimeout(() => setCopied(false), 2000)
   }, [finalContent])
 
-  const alignmentClass = (() => {
+  const justifyClass = (() => {
     switch (messageAlignment) {
-      case 'left-right':
-        return 'self-start'
-      case 'all-left':
-        return 'self-start'
       case 'all-right':
-        return 'self-end'
+        return 'justify-end'
+      case 'left-right':
+      case 'all-left':
       case 'full-width':
-        return 'self-stretch'
       default:
-        return 'self-start'
+        return ''
+    }
+  })()
+  const bubbleClass = (() => {
+    switch (messageAlignment) {
+      case 'all-right':
+        return 'max-w-[80%]'
+      case 'left-right':
+      case 'all-left':
+      case 'full-width':
+      default:
+        return 'w-full'
     }
   })()
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass}`}>
+    <div className={`px-4 py-3 group animate-fade-in flex ${isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${justifyClass}`}>
+      <div className={`flex gap-3 ${bubbleClass}`}>
       {/* 头像 */}
       {showAvatar && (
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
@@ -130,7 +139,7 @@ export function AssistantGroupBubble({
       )}
 
       {/* 内容区域 */}
-      <div className="flex-1 min-w-0 selection-boundary-parent">
+      <div className="flex-1 min-w-0 overflow-hidden selection-boundary-parent">
         {/* 头部信息 */}
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
@@ -195,6 +204,7 @@ export function AssistantGroupBubble({
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

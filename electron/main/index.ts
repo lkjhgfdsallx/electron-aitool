@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, globalShortcut, Notification } from 'electron'
-import { join } from 'path'
-import { writeFile, readFile } from 'fs/promises'
+import { join, relative, extname } from 'path'
+import { writeFile, readFile, readdir, stat } from 'fs/promises'
 import https from 'https'
 import http from 'http'
 import { is } from '@electron-toolkit/utils'
@@ -11,6 +11,9 @@ import { extractFileText } from './file-extractor'
 import { setupSiteAnalyzerHandlers } from './site-analyzer-handler'
 import { setupCustomToolHandlers } from './custom-tool-handler'
 import { searchWeb, fetchWebpage } from './web-search'
+import { setupWorkspaceVCSHandlers } from './workspace-vcs-handler'
+import { setupWorkspaceWatcherHandlers } from './workspace-watcher-handler'
+import { setupWorkspaceCommandHandlers } from './workspace-command-handler'
 
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
@@ -63,6 +66,11 @@ app.whenReady().then(() => {
 
   // 设置自定义工具沙箱执行
   setupCustomToolHandlers()
+
+  // 设置工作区（VCS + 文件监控 + 命令执行）
+  setupWorkspaceVCSHandlers()
+  setupWorkspaceWatcherHandlers()
+  setupWorkspaceCommandHandlers()
 
   const mainWindow = createWindow()
 
@@ -287,6 +295,145 @@ function setupIPCHandlers(): void {
       return {
         success: false,
         error: error instanceof Error ? error.message : '读取文件失败'
+      }
+    }
+  })
+
+  // ---- 工作区文件系统操作 ----
+
+  /** 忽略的目录名集合（与 workspace-vcs-handler 保持一致） */
+  const IGNORED_FS_DIRS = new Set([
+    'node_modules', '.git', '.ai-workspace-vcs', '.next', 'dist', 'build',
+    '.cache', '__pycache__', '.DS_Store', '.idea', '.vscode', 'coverage',
+  ])
+
+  /**
+   * 读取目录内容，返回文件/子目录列表（按名称排序，目录在前）
+   * 用于 FileTree 组件实时浏览工作区目录结构
+   */
+  ipcMain.handle('workspace:fs:readDir', async (_event, dirPath: string) => {
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true })
+      const result: Array<{ name: string; path: string; isDirectory: boolean; size: number; ext: string }> = []
+
+      for (const entry of entries) {
+        // 跳过忽略的目录
+        if (IGNORED_FS_DIRS.has(entry.name)) continue
+
+        const fullPath = join(dirPath, entry.name)
+        const ext = entry.isDirectory() ? '' : extname(entry.name)
+
+        let size = 0
+        try {
+          const fileStat = await stat(fullPath)
+          size = entry.isDirectory() ? 0 : fileStat.size
+        } catch { /* 忽略 */ }
+
+        result.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory(),
+          size,
+          ext,
+        })
+      }
+
+      // 排序：目录在前，文件在后；各自按名称排序
+      result.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+
+      return { success: true, entries: result }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '读取目录失败'
+      }
+    }
+  })
+
+  /**
+   * 读取文件文本内容（限 512KB 以防止大文件卡顿）
+   * 用于 FilePreview 组件预览文件内容
+   */
+  ipcMain.handle('workspace:fs:readFile', async (_event, filePath: string, maxBytes?: number) => {
+    const limit = maxBytes ?? 512 * 1024 // 默认 512KB
+    try {
+      const fileStat = await stat(filePath)
+      if (fileStat.size > limit) {
+        // 大文件：只读取前 limit 字节
+        const fd = await import('fs/promises').then(m => m.open(filePath, 'r'))
+        const buffer = Buffer.alloc(limit)
+        await fd.read(buffer, 0, limit, 0)
+        await fd.close()
+        return {
+          success: true,
+          content: buffer.toString('utf-8'),
+          truncated: true,
+          totalSize: fileStat.size,
+        }
+      }
+      const content = await readFile(filePath, 'utf-8')
+      return { success: true, content, truncated: false, totalSize: fileStat.size }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '读取文件失败'
+      }
+    }
+  })
+
+  /**
+   * 写入文件内容（创建或覆盖）
+   * 用于 AI Agent 工具直接操作工作区文件
+   */
+  ipcMain.handle('workspace:fs:writeFile', async (_event, filePath: string, content: string) => {
+    try {
+      // 确保父目录存在
+      const { mkdir } = await import('fs/promises')
+      const { dirname } = await import('path')
+      await mkdir(dirname(filePath), { recursive: true })
+      await writeFile(filePath, content, 'utf-8')
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '写入文件失败'
+      }
+    }
+  })
+
+  /**
+   * 创建目录（递归）
+   * 用于 AI Agent 工具创建新目录
+   */
+  ipcMain.handle('workspace:fs:createDir', async (_event, dirPath: string) => {
+    try {
+      const { mkdir } = await import('fs/promises')
+      await mkdir(dirPath, { recursive: true })
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '创建目录失败'
+      }
+    }
+  })
+
+  /**
+   * 删除文件
+   * 用于 AI Agent 工具删除工作区文件
+   */
+  ipcMain.handle('workspace:fs:deleteFile', async (_event, filePath: string) => {
+    try {
+      const { unlink } = await import('fs/promises')
+      await unlink(filePath)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '删除文件失败'
       }
     }
   })

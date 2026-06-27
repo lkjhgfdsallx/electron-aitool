@@ -155,37 +155,73 @@ export function MessageItem({
   // 是否为分支点（用户消息且有多个分支）
   const isForkPoint = message.role === 'user' && (message.branchCount ?? 0) > 1
 
-  // 根据对齐方式计算容器样式（配合 flex-col 父容器使用 self-*）
+  // 根据对齐方式计算容器样式
+  // 外层 flex 容器用 justify-* 控制气泡对齐方向
+  // 内层气泡用 max-w 限制宽度，flex-1 内容区正常撑开
   const isUser = message.role === 'user'
-  const alignmentClass = (() => {
+  // left-right 模式下用户消息需要翻转：内容在左、头像+元数据在右
+  const reverseLayout = messageAlignment === 'left-right' && isUser
+  const justifyClass = (() => {
     switch (messageAlignment) {
       case 'left-right':
-        return isUser ? 'self-end' : 'self-start'
-      case 'all-left':
-        return 'self-start'
+        return isUser ? 'justify-end' : ''
       case 'all-right':
-        return 'self-end'
+        return 'justify-end'
+      case 'all-left':
       case 'full-width':
-        return 'self-stretch'
       default:
-        return isUser ? 'self-end' : 'self-start'
+        return ''
+    }
+  })()
+  const bubbleClass = (() => {
+    switch (messageAlignment) {
+      case 'left-right':
+        return isUser ? 'max-w-[80%]' : 'w-full'
+      case 'all-right':
+        return 'max-w-[80%]'
+      case 'all-left':
+      case 'full-width':
+      default:
+        return 'w-full'
     }
   })()
 
   return (
-    <div className={`flex gap-3 px-4 py-3 group animate-fade-in ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${alignmentClass}`}>
-      {/* 头像 */}
+    <div className={`px-4 py-3 group animate-fade-in flex ${message.isError ? 'bg-danger-50/50 dark:bg-danger-950/20' : ''} ${justifyClass}`}>
+      <div className={`flex gap-3 ${bubbleClass} ${reverseLayout ? 'flex-row-reverse' : ''}`}>
+      {/* 头像 + 元数据列 */}
       {showAvatar && (
-      <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full ${role.bgClass} flex items-center justify-center ${messageAlignment === 'all-right' && isUser ? 'order-2' : ''}`}
-      >
-        <RoleIcon size={16} className="text-white" />
+      <div className="flex flex-col items-center gap-1 flex-shrink-0">
+        <div
+          className={`w-8 h-8 rounded-full ${role.bgClass} flex items-center justify-center`}
+        >
+          <RoleIcon size={16} className="text-white" />
+        </div>
+        {/* 翻转布局时，用户名和时间显示在头像下方 */}
+        {reverseLayout && (
+          <>
+            <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
+              {role.label}
+            </span>
+            {showTimestamp && (
+              <span className="text-xs text-muted whitespace-nowrap">
+                {formatTime(message.timestamp)}
+              </span>
+            )}
+            {showTokenUsage && message.tokenUsage && (
+              <span className="text-xs text-muted whitespace-nowrap">
+                {message.tokenUsage.totalTokens}
+              </span>
+            )}
+          </>
+        )}
       </div>
       )}
 
       {/* 内容区域 */}
-      <div className="flex-1 min-w-0 selection-boundary-parent">
-        {/* 头部信息 */}
+      <div className="flex-1 min-w-0 overflow-hidden selection-boundary-parent">
+        {/* 头部信息（非翻转布局时显示在内容区顶部） */}
+        {!reverseLayout && (
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {role.label}
@@ -209,6 +245,13 @@ export function MessageItem({
             <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
           )}
         </div>
+        )}
+        {/* 翻转布局时流式指示器仍显示在内容区 */}
+        {reverseLayout && message.isStreaming && (
+          <div className="flex items-center gap-1 mb-1">
+            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
+          </div>
+        )}
 
         {/* 思考过程 */}
         {message.reasoningContent && (
@@ -391,6 +434,7 @@ export function MessageItem({
             )}
           </div>
         )}
+      </div>
       </div>
 
       {/* 网站分析报告弹窗 */}

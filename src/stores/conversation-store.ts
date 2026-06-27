@@ -16,7 +16,7 @@ interface ConversationStore {
   messages: Record<string, Message[]> // conversationId -> messages
 
   // Conversation Actions
-  createConversation: (title?: string, promptId?: string, agentId?: string) => Conversation
+  createConversation: (title?: string, promptId?: string, agentId?: string, workspaceId?: string) => Conversation
   deleteConversation: (id: string) => void
   renameConversation: (id: string, title: string) => void
   togglePin: (id: string) => void
@@ -25,6 +25,12 @@ interface ConversationStore {
   setConversationAgent: (id: string, agentId: string | undefined) => void
   setConversationAIConfig: (id: string, aiConfig: ConversationAIConfig | undefined) => void
   setConversationKnowledgeBases: (id: string, knowledgeBaseIds: string[] | undefined) => void
+
+  // Workspace Actions
+  setConversationWorkspaceId: (id: string, workspaceId: string) => void
+  removeConversationWorkspaceId: (id: string) => void
+  getConversationByWorkspaceId: (workspaceId: string) => Conversation | undefined
+  getConversationsByWorkspaceId: (workspaceId: string) => Conversation[]
 
   // Message Actions
   addMessage: (conversationId: string, input: MessageCreateInput) => Message
@@ -52,12 +58,13 @@ export const useConversationStore = create<ConversationStore>()(
 
       // ==================== Conversation Actions ====================
 
-      createConversation: (title = '新对话', promptId, agentId) => {
+      createConversation: (title = '新对话', promptId, agentId, workspaceId) => {
         const conversation: Conversation = {
           id: uuidv4(),
           title,
           promptId,
           agentId,
+          workspaceId,
           isPinned: false,
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -130,6 +137,34 @@ export const useConversationStore = create<ConversationStore>()(
             c.id === id ? { ...c, activeKnowledgeBaseIds: knowledgeBaseIds, updatedAt: Date.now() } : c
           )
         }))
+      },
+
+      // ==================== Workspace Actions ====================
+
+      setConversationWorkspaceId: (id, workspaceId) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, workspaceId, updatedAt: Date.now() } : c
+          )
+        }))
+      },
+
+      removeConversationWorkspaceId: (id) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, workspaceId: undefined, updatedAt: Date.now() } : c
+          )
+        }))
+      },
+
+      getConversationByWorkspaceId: (workspaceId) => {
+        return get().conversations.find((c) => c.workspaceId === workspaceId)
+      },
+
+      getConversationsByWorkspaceId: (workspaceId) => {
+        return get().conversations
+          .filter((c) => c.workspaceId === workspaceId)
+          .sort((a, b) => b.updatedAt - a.updatedAt)
       },
 
       // ==================== Message Actions ====================

@@ -26,6 +26,9 @@ import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
 import { siteAnalyzerService } from './site-analyzer-service'
 import { knowledgeBaseService } from './knowledge-base-service'
+import { WORKSPACE_TOOLS } from './built-in-tools'
+import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
+import { workspaceFsService } from './workspace-fs-service'
 
 /** Agent 引擎回调 */
 export interface AgentEngineCallbacks {
@@ -49,6 +52,26 @@ export interface AgentEngineCallbacks {
   onSiteAnalyzerProgress?: (progress: { taskId: string; type: string; message: string; pagesCrawled?: number; totalPages?: number; apisFound?: number; pagesAnalyzed?: number; currentUrl?: string; error?: string }) => void
 }
 
+/** 工作区上下文（在 Agent 运行时注入） */
+export interface WorkspaceContext {
+  /** 工作区根目录的绝对路径 */
+  folderPath: string
+  /** 工作区 ID */
+  workspaceId: string
+  /** 团队 Agent 列表（仅包含 ID、名称、描述等摘要信息） */
+  teamAgents: Array<{ id: string; name: string; description: string; avatar: string }>
+  /** 由上层注入的子任务分派函数（调用后会真正运行目标 Agent 并返回其最终输出） */
+  dispatchSubTask?: (agentId: string, taskDescription: string) => Promise<string>
+  /** 由上层注入的创建 Agent 函数（创建新 Agent 并加入工作区团队，返回 Agent ID） */
+  createAgent?: (input: {
+    name: string
+    description: string
+    systemPrompt: string
+    avatar?: string
+    enabledToolIds?: string[]
+  }) => Promise<string>
+}
+
 /** Agent 内部消息格式（支持工具调用） */
 interface AgentMessage {
   role: 'user' | 'assistant' | 'system' | 'tool'
@@ -67,9 +90,51 @@ interface AgentMessage {
 function buildAgentSystemPrompt(
   agent: AgentProfile,
   tools: Tool[],
-  memoryContext: string
+  memoryContext: string,
+  workspaceContext?: WorkspaceContext
 ): string {
   let prompt = agent.systemPrompt
+
+  // 判断是否为 Leader Agent（纯指挥者模式）
+  const isLeader = agent.id === WORKSPACE_LEADER_AGENT_ID
+
+  // 注入工作区上下文（文件夹路径 + 团队成员信息 + 工作流程指引）
+  if (workspaceContext) {
+    prompt += `\n\n## 工作区信息\n`
+    prompt += `- 工作区根目录：\`${workspaceContext.folderPath}\`\n`
+    prompt += `- 工作区 ID：\`${workspaceContext.workspaceId}\`\n`
+
+    if (workspaceContext.teamAgents.length > 0) {
+      prompt += `\n### 团队成员\n你有以下团队成员可以分派任务：\n`
+      for (const agent of workspaceContext.teamAgents) {
+        prompt += `\n- **${agent.name}**（ID: \`${agent.id}\`）${agent.avatar}：${agent.description}\n`
+      }
+      prompt += `\n使用 \`workspace_dispatch_task\` 工具将子任务分派给团队成员。分派时请提供详细的任务描述和足够的上下文信息。\n`
+    }
+    if (workspaceContext.createAgent) {
+      prompt += `\n如果现有团队成员无法胜任某项任务，你可以使用 \`workspace_create_agent\` 工具创建新的专业 Agent，然后通过 \`workspace_dispatch_task\` 将任务分派给它。\n`
+    }
+
+    if (isLeader) {
+      // Leader Agent 的指挥者规则（强化指挥者身份）
+      prompt += `\n### 🔴 指挥者准则\n`
+      prompt += `1. **你绝不亲自编写代码、创建文件或执行命令。** 所有实际工作必须通过 \`workspace_dispatch_task\` 分派给团队成员完成。\n`
+      prompt += `2. **绝对禁止在回复中输出代码块（\`\`\`）。** 你的回复只包含分析、计划、说明和指挥指令。\n`
+      prompt += `3. **绝对禁止使用 \`workspace_write_file\`、\`workspace_read_file\`、\`workspace_execute_command\` 等执行工具。** 这些工具只留给被分派任务的 Agent 使用。\n`
+      prompt += `4. 需要了解文件内容或目录结构时，使用 \`workspace_list_files\` 浏览，或派一个 Agent 去读取并汇报。\n`
+      prompt += `5. 收到执行结果后，检查质量，不达标的重新分派并补充更详细的指导。\n`
+      prompt += `\n违反以上准则会导致任务失败。你的价值在于优秀的规划和协调能力，而非直接动手。\n`
+    } else {
+      // 子 Agent 的工具使用强制规则（对实际执行工作的 Agent 适用）
+      prompt += `\n### ⚠️ 工具使用强制规则\n`
+      prompt += `1. **绝对禁止**在你的回复中输出代码块（\`\`\`）。你的回复只包含分析、计划和说明文字。\n`
+      prompt += `2. **必须使用** \`workspace_write_file\` 工具来创建或修改文件。代码只能通过此工具写入工作区文件系统。\n`
+      prompt += `3. **必须使用** \`workspace_read_file\` 来读取现有文件内容，不要凭记忆猜测。\n`
+      prompt += `4. **必须使用** \`workspace_list_files\` 来了解项目结构，不要假设目录结构。\n`
+      prompt += `5. **必须使用** \`workspace_execute_command\` 来运行构建、测试等命令。\n`
+      prompt += `\n违反以上规则会导致任务失败。用户期望在工作区文件系统中看到实际的代码文件，而不是对话中的 Markdown 文本。\n`
+    }
+  }
 
   // 添加工具描述
   if (tools.length > 0) {
@@ -78,14 +143,24 @@ function buildAgentSystemPrompt(
       prompt += `\n### ${tool.name}\n描述：${tool.description}\n参数：${JSON.stringify(tool.parameters, null, 2)}\n`
     }
     prompt += `\n要调用工具，请使用提供的 function calling 功能。\n`
-    prompt += `\n### 重要：工具使用规则\n`
-    prompt += `- 当任务涉及计算、数学推导、数据分析、或需要精确结果时，你必须调用相关工具来完成，不要尝试自行计算或推导。\n`
-    prompt += `- 工具提供的结果是精确的，你的推理和最终回答应基于工具返回的结果。\n`
-    prompt += `- 你可以且应该连续调用多个工具来完成复杂任务，不要在第一步之后就停止。\n`
-    prompt += `- 每次收到工具执行结果后，分析结果并判断任务是否完成。\n`
-    prompt += `- 如果任务尚未完成，请继续调用下一个需要的工具。\n`
-    prompt += `- 只有当你确信任务的所有步骤都已完成时，才给出最终回答。\n`
-    prompt += `- 不要把中间结果当作最终回答，中间结果应作为继续执行的依据。\n`
+    if (isLeader) {
+      // Leader 的指挥者工具使用规则
+      prompt += `\n### 重要：指挥者工具使用规则\n`
+      prompt += `- 你只使用指挥类工具（\`workspace_dispatch_task\`、\`workspace_create_agent\`）和侦察类工具（\`workspace_list_files\`、搜索、记忆）。\n`
+      prompt += `- **绝不使用**执行类工具（\`workspace_write_file\`、\`workspace_read_file\`、\`workspace_execute_command\`）。\n`
+      prompt += `- 收到分派结果后，检查质量。不达标的重新分派并补充更详细的指导。\n`
+      prompt += `- 所有子任务都完成后，向用户总结执行结果。\n`
+    } else {
+      // 子 Agent 的通用工具使用规则
+      prompt += `\n### 重要：工具使用规则\n`
+      prompt += `- 当任务涉及计算、数学推导、数据分析、或需要精确结果时，你必须调用相关工具来完成，不要尝试自行计算或推导。\n`
+      prompt += `- 工具提供的结果是精确的，你的推理和最终回答应基于工具返回的结果。\n`
+      prompt += `- 你可以且应该连续调用多个工具来完成复杂任务，不要在第一步之后就停止。\n`
+      prompt += `- 每次收到工具执行结果后，分析结果并判断任务是否完成。\n`
+      prompt += `- 如果任务尚未完成，请继续调用下一个需要的工具。\n`
+      prompt += `- 只有当你确信任务的所有步骤都已完成时，才给出最终回答。\n`
+      prompt += `- 不要把中间结果当作最终回答，中间结果应作为继续执行的依据。\n`
+    }
   }
 
   // 添加记忆上下文
@@ -94,29 +169,40 @@ function buildAgentSystemPrompt(
   }
 
   // 添加规划策略提示
-  switch (agent.planningStrategy) {
-    case 'react':
-      prompt += '\n\n## 执行策略（ReAct）\n请按照"思考-行动-观察"的模式逐步解决问题：\n'
-      prompt += '1. **思考**：分析当前情况，决定下一步行动\n'
-      prompt += '2. **行动**：调用合适的工具执行操作\n'
-      prompt += '3. **观察**：分析工具返回的结果\n'
-      prompt += '4. **循环**：如果任务未完成，回到步骤1继续\n'
-      prompt += '只有当所有必要步骤都执行完毕后，才给出最终回答。\n'
-      break
-    case 'plan-and-execute':
-      prompt += '\n\n## 执行策略（Plan-and-Execute）\n请按以下方式工作：\n'
-      prompt += '1. 先将任务拆解为子任务列表\n'
-      prompt += '2. 逐步执行每个子任务，每步调用相应工具\n'
-      prompt += '3. 根据每步结果调整后续计划\n'
-      prompt += '4. 所有子任务完成后才给出最终回答\n'
-      break
-    case 'trial-and-error':
-      prompt += '\n\n## 执行策略（Trial-and-Error）\n请大胆尝试：\n'
-      prompt += '1. 尝试使用工具解决问题\n'
-      prompt += '2. 如果某条路径行不通，分析错误原因\n'
-      prompt += '3. 回退并尝试其他方法\n'
-      prompt += '4. 持续尝试直到任务完成\n'
-      break
+  if (isLeader) {
+    // Leader 专用的指挥策略（覆盖 agent.planningStrategy）
+    prompt += '\n\n## 指挥策略\n请按以下方式工作：\n'
+    prompt += '1. **侦察**：使用 \`workspace_list_files\` 了解工作区结构，分析用户需求\n'
+    prompt += '2. **规划**：将大任务拆解为多个可独立执行的子任务\n'
+    prompt += '3. **组建团队**：检查现有团队成员能力，必要时使用 \`workspace_create_agent\` 创建新 Agent\n'
+    prompt += '4. **分派任务**：使用 \`workspace_dispatch_task\` 将子任务分派给对应 Agent\n'
+    prompt += '5. **监控与整合**：收到结果后检查质量，不达标的重新分派；全部完成后向用户总结\n'
+    prompt += '在整个过程中，你绝不亲自编写代码或执行技术操作。\n'
+  } else {
+    switch (agent.planningStrategy) {
+      case 'react':
+        prompt += '\n\n## 执行策略（ReAct）\n请按照"思考-行动-观察"的模式逐步解决问题：\n'
+        prompt += '1. **思考**：分析当前情况，决定下一步行动\n'
+        prompt += '2. **行动**：调用合适的工具执行操作\n'
+        prompt += '3. **观察**：分析工具返回的结果\n'
+        prompt += '4. **循环**：如果任务未完成，回到步骤1继续\n'
+        prompt += '只有当所有必要步骤都执行完毕后，才给出最终回答。\n'
+        break
+      case 'plan-and-execute':
+        prompt += '\n\n## 执行策略（Plan-and-Execute）\n请按以下方式工作：\n'
+        prompt += '1. 先将任务拆解为子任务列表\n'
+        prompt += '2. 逐步执行每个子任务，每步调用相应工具\n'
+        prompt += '3. 根据每步结果调整后续计划\n'
+        prompt += '4. 所有子任务完成后才给出最终回答\n'
+        break
+      case 'trial-and-error':
+        prompt += '\n\n## 执行策略（Trial-and-Error）\n请大胆尝试：\n'
+        prompt += '1. 尝试使用工具解决问题\n'
+        prompt += '2. 如果某条路径行不通，分析错误原因\n'
+        prompt += '3. 回退并尝试其他方法\n'
+        prompt += '4. 持续尝试直到任务完成\n'
+        break
+    }
   }
 
   return prompt
@@ -207,7 +293,8 @@ export async function runAgent(
   allTools: Tool[],
   resolvedConfig: ResolvedAIConfig,
   signal: AbortSignal,
-  callbacks: AgentEngineCallbacks
+  callbacks: AgentEngineCallbacks,
+  workspaceContext?: WorkspaceContext
 ): Promise<void> {
   callbacks.onStatusChange('running')
 
@@ -215,9 +302,30 @@ export async function runAgent(
   let stepIndex = 0
 
   // 过滤出 Agent 启用的工具（完全由 enabledToolIds 控制）
-  const agentTools = allTools.filter(
+  // 如果有工作区上下文，额外注入工作区工具
+  let agentTools = allTools.filter(
     (t) => agent.enabledToolIds.includes(t.id) && t.enabled
   )
+  if (workspaceContext) {
+    if (agent.id === WORKSPACE_LEADER_AGENT_ID) {
+      // Leader Agent 只注入指挥类和侦察类工具，不注入执行类工具
+      const leaderAllowedToolIds = [
+        'workspace:list_files',
+        'workspace:dispatch_task',
+        'workspace:create_agent'
+      ]
+      const leaderTools = WORKSPACE_TOOLS.filter(
+        (wt) => leaderAllowedToolIds.includes(wt.id) && !agentTools.some((at) => at.id === wt.id)
+      )
+      agentTools = [...agentTools, ...leaderTools]
+    } else {
+      // 子 Agent 注入所有工作区工具
+      const workspaceToolsToAdd = WORKSPACE_TOOLS.filter(
+        (wt) => !agentTools.some((at) => at.id === wt.id)
+      )
+      agentTools = [...agentTools, ...workspaceToolsToAdd]
+    }
+  }
 
   // 获取记忆上下文
   let memoryContext = ''
@@ -241,8 +349,8 @@ export async function runAgent(
   // 合并记忆和知识库上下文
   const combinedContext = memoryContext + knowledgeContext
 
-  // 构建系统提示词
-  const systemPrompt = buildAgentSystemPrompt(agent, agentTools, combinedContext)
+  // 构建系统提示词（含工作区上下文）
+  const systemPrompt = buildAgentSystemPrompt(agent, agentTools, combinedContext, workspaceContext)
 
   // 构建对话历史（限制轮数）
   const maxHistory = agent.memoryConfig.historyTurns * 2 // 每轮 = user + assistant
@@ -604,6 +712,203 @@ export async function runAgent(
     }
   }
 
+  // ==================== 工作区工具处理 ====================
+
+  /** 解析工作区相对路径为绝对路径 */
+  const resolveWorkspacePath = (relativePath: string): string => {
+    if (!workspaceContext) return relativePath
+    // 去掉开头的 ./ 或 /
+    const cleaned = relativePath.replace(/^\.[/\\]/, '').replace(/^[/\\]+/, '')
+    const base = workspaceContext.folderPath.replace(/[/\\]+$/, '')
+    return cleaned ? `${base}/${cleaned}` : base
+  }
+
+  const handleWorkspaceReadFile = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const relativePath = String(args.file_path ?? '')
+    if (!relativePath) return { success: false, data: '', error: '需要 file_path 参数' }
+    try {
+      const absolutePath = resolveWorkspacePath(relativePath)
+      const result = await workspaceFsService.readFile(absolutePath)
+      if (result.success && result.content !== undefined) {
+        return {
+          success: true,
+          data: JSON.stringify({
+            file_path: relativePath,
+            absolute_path: absolutePath,
+            content: result.content,
+            truncated: result.truncated,
+            total_size: result.totalSize
+          })
+        }
+      }
+      return { success: false, data: '', error: result.error || '读取文件失败' }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '读取文件失败' }
+    }
+  }
+
+  const handleWorkspaceWriteFile = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const relativePath = String(args.file_path ?? '')
+    const content = String(args.content ?? '')
+    if (!relativePath) return { success: false, data: '', error: '需要 file_path 参数' }
+    if (content === '') return { success: false, data: '', error: '需要 content 参数' }
+    try {
+      const absolutePath = resolveWorkspacePath(relativePath)
+      await workspaceFsService.writeFile(absolutePath, content)
+      return {
+        success: true,
+        data: JSON.stringify({
+          file_path: relativePath,
+          absolute_path: absolutePath,
+          bytes_written: new TextEncoder().encode(content).byteLength,
+          message: `文件 ${relativePath} 已成功写入`
+        })
+      }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '写入文件失败' }
+    }
+  }
+
+  const handleWorkspaceListFiles = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const dirPath = String(args.dir_path ?? '.')
+    try {
+      const absolutePath = resolveWorkspacePath(dirPath)
+      const entries = await workspaceFsService.readDir(absolutePath)
+      return {
+        success: true,
+        data: JSON.stringify({
+          dir_path: dirPath,
+          entries: entries.map((e) => ({
+            name: e.name,
+            path: e.path,
+            is_directory: e.isDirectory,
+            size: e.size,
+            ext: e.ext
+          })),
+          count: entries.length
+        })
+      }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '读取目录失败' }
+    }
+  }
+
+  const handleWorkspaceExecuteCommand = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const command = String(args.command ?? '')
+    if (!command) return { success: false, data: '', error: '需要 command 参数' }
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI?.workspace?.command?.execute) {
+        const commandId = `agent-cmd-${Date.now()}`
+        const result = await window.electronAPI.workspace.command.execute({
+          commandId,
+          command,
+          workingDir: workspaceContext.folderPath,
+          timeoutMs: 60000 // 60 秒超时
+        })
+        if (result.success) {
+          return {
+            success: true,
+            data: JSON.stringify({
+              command,
+              exit_code: result.exitCode,
+              stdout: result.stdout?.slice(0, 8000) || '',
+              stderr: result.stderr?.slice(0, 4000) || '',
+              duration_ms: result.durationMs
+            })
+          }
+        }
+        return {
+          success: false,
+          data: JSON.stringify({
+            command,
+            exit_code: result.exitCode,
+            stdout: result.stdout?.slice(0, 4000) || '',
+            stderr: result.stderr?.slice(0, 4000) || ''
+          }),
+          error: result.error || '命令执行失败'
+        }
+      }
+      return { success: false, data: '', error: '命令执行功能仅在 Electron 环境中可用' }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '命令执行失败' }
+    }
+  }
+
+  const handleWorkspaceDispatchTask = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const agentId = String(args.agent_id ?? '')
+    const taskDescription = String(args.task_description ?? '')
+    if (!agentId) return { success: false, data: '', error: '需要 agent_id 参数' }
+    if (!taskDescription) return { success: false, data: '', error: '需要 task_description 参数' }
+
+    // 验证目标 Agent 是否在团队中
+    const targetAgent = workspaceContext.teamAgents.find((a) => a.id === agentId)
+    if (!targetAgent) {
+      const availableList = workspaceContext.teamAgents.map((a) => `${a.name}(${a.id})`).join('、')
+      return {
+        success: false,
+        data: '',
+        error: `Agent "${agentId}" 不在当前工作区团队中。可用的团队成员：${availableList || '无'}`
+      }
+    }
+
+    // 调用上层注入的 dispatchSubTask 回调，真正运行子 Agent
+    if (!workspaceContext.dispatchSubTask) {
+      return {
+        success: false,
+        data: '',
+        error: '子任务分派功能不可用（dispatchSubTask 未注入）。请检查工作区配置。'
+      }
+    }
+
+    try {
+      const result = await workspaceContext.dispatchSubTask(agentId, taskDescription)
+      return {
+        success: true,
+        data: JSON.stringify({
+          dispatched_to: targetAgent.name,
+          agent_id: agentId,
+          task: taskDescription,
+          result: result
+        })
+      }
+    } catch (err) {
+      return {
+        success: false,
+        data: '',
+        error: `子任务执行失败: ${err instanceof Error ? err.message : String(err)}`
+      }
+    }
+  }
+
+  const handleWorkspaceCreateAgent = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    if (!workspaceContext.createAgent) {
+      return { success: false, data: '', error: '创建 Agent 功能不可用（createAgent 未注入）。' }
+    }
+    const name = String(args.name ?? '')
+    const description = String(args.description ?? '')
+    const systemPrompt = String(args.system_prompt ?? '')
+    if (!name) return { success: false, data: '', error: '需要 name 参数' }
+    if (!description) return { success: false, data: '', error: '需要 description 参数' }
+    if (!systemPrompt) return { success: false, data: '', error: '需要 system_prompt 参数' }
+    const avatar = args.avatar ? String(args.avatar) : undefined
+    const enabledToolIds = Array.isArray(args.enabled_tool_ids) ? args.enabled_tool_ids.map(String) : undefined
+    try {
+      const agentId = await workspaceContext.createAgent({ name, description, systemPrompt, avatar, enabledToolIds })
+      return {
+        success: true,
+        data: JSON.stringify({ agent_id: agentId, name, description, message: `Agent "${name}" 已创建并加入工作区团队，可通过 workspace_dispatch_task 分派任务给它。` })
+      }
+    } catch (err) {
+      return { success: false, data: '', error: `创建 Agent 失败: ${err instanceof Error ? err.message : String(err)}` }
+    }
+  }
+
   // Agent 循环（maxSteps 为 0 表示无限制）
   try {
   for (let i = 0; agent.termination.maxSteps === 0 || i < agent.termination.maxSteps; i++) {
@@ -657,6 +962,7 @@ export async function runAgent(
     let fullContent = ''
     let reasoningContent = ''
     let nativeToolCalls: Array<{ id: string; name: string; arguments: string }> = []
+    let streamFinishReason: string | undefined
 
     try {
       await aiService.streamChat(
@@ -686,8 +992,8 @@ export async function runAgent(
             // 捕获原生 function calling 返回的工具调用
             nativeToolCalls = toolCalls
           },
-          onDone: () => {
-            // 处理在下方
+          onDone: (finishReason) => {
+            streamFinishReason = finishReason
           },
           onError: (error) => {
             throw new Error(error)
@@ -812,6 +1118,18 @@ export async function runAgent(
           result = await handleSiteAnalyzerStartTool(args)
         } else if (tc.name === 'site_analyzer_cancel') {
           result = await handleSiteAnalyzerCancelTool(args)
+        } else if (tc.name === 'workspace_read_file') {
+          result = await handleWorkspaceReadFile(args)
+        } else if (tc.name === 'workspace_write_file') {
+          result = await handleWorkspaceWriteFile(args)
+        } else if (tc.name === 'workspace_list_files') {
+          result = await handleWorkspaceListFiles(args)
+        } else if (tc.name === 'workspace_execute_command') {
+          result = await handleWorkspaceExecuteCommand(args)
+        } else if (tc.name === 'workspace_dispatch_task') {
+          result = await handleWorkspaceDispatchTask(args)
+        } else if (tc.name === 'workspace_create_agent') {
+          result = await handleWorkspaceCreateAgent(args)
         } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
           result = executeMathTool(tc.name, args)
         } else {
@@ -857,7 +1175,7 @@ export async function runAgent(
     if (toolCalls.length === 0) {
       // 没有工具调用 → 这是最终回复
       // 如果 fullContent 为空但有推理内容，使用推理内容作为最终回答
-      const finalText = fullContent || reasoningContent || ''
+      let finalText = fullContent || reasoningContent || ''
 
       const finalStep: AgentStep = {
         id: crypto.randomUUID(),
@@ -870,6 +1188,12 @@ export async function runAgent(
       callbacks.onStep(finalStep)
       // 注意：token 已在 LLM 调用过程中实时转发，此处无需再次调用 callbacks.onToken
       callbacks.onStatusChange('completed')
+      // 如果流因中断结束（非正常 stop），附加提示（'length' 已由自动续写机制处理）
+      if (streamFinishReason && streamFinishReason !== 'stop' && streamFinishReason !== 'length') {
+        if (streamFinishReason === 'abort') {
+          finalText += '\n\n> ⚠️ **回复中断**：流连接异常断开，输出可能不完整。'
+        }
+      }
       callbacks.onDone(finalText)
       return
     }
@@ -921,6 +1245,18 @@ export async function runAgent(
         result = await handleSiteAnalyzerStartTool(tc.arguments)
       } else if (tc.name === 'site_analyzer_cancel') {
         result = await handleSiteAnalyzerCancelTool(tc.arguments)
+      } else if (tc.name === 'workspace_read_file') {
+        result = await handleWorkspaceReadFile(tc.arguments)
+      } else if (tc.name === 'workspace_write_file') {
+        result = await handleWorkspaceWriteFile(tc.arguments)
+      } else if (tc.name === 'workspace_list_files') {
+        result = await handleWorkspaceListFiles(tc.arguments)
+      } else if (tc.name === 'workspace_execute_command') {
+        result = await handleWorkspaceExecuteCommand(tc.arguments)
+      } else if (tc.name === 'workspace_dispatch_task') {
+        result = await handleWorkspaceDispatchTask(tc.arguments)
+      } else if (tc.name === 'workspace_create_agent') {
+        result = await handleWorkspaceCreateAgent(tc.arguments)
       } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
         result = executeMathTool(tc.name, tc.arguments)
       } else {
@@ -1026,16 +1362,38 @@ export async function resumeAgent(
   allTools: Tool[],
   resolvedConfig: ResolvedAIConfig,
   signal: AbortSignal,
-  callbacks: AgentEngineCallbacks
+  callbacks: AgentEngineCallbacks,
+  workspaceContext?: WorkspaceContext
 ): Promise<void> {
   callbacks.onStatusChange('running')
 
   const startTime = Date.now()
 
   // 过滤出 Agent 启用的工具
-  const agentTools = allTools.filter(
+  let agentTools = allTools.filter(
     (t) => (t.id.startsWith('agent-builtin:') || agent.enabledToolIds.includes(t.id)) && t.enabled
   )
+  // 如果有工作区上下文，额外注入工作区工具
+  if (workspaceContext) {
+    if (agent.id === WORKSPACE_LEADER_AGENT_ID) {
+      // Leader Agent 只注入指挥类和侦察类工具，不注入执行类工具
+      const leaderAllowedToolIds = [
+        'workspace:list_files',
+        'workspace:dispatch_task',
+        'workspace:create_agent'
+      ]
+      const leaderTools = WORKSPACE_TOOLS.filter(
+        (wt) => leaderAllowedToolIds.includes(wt.id) && !agentTools.some((at) => at.id === wt.id)
+      )
+      agentTools = [...agentTools, ...leaderTools]
+    } else {
+      // 子 Agent 注入所有工作区工具
+      const workspaceToolsToAdd = WORKSPACE_TOOLS.filter(
+        (wt) => !agentTools.some((at) => at.id === wt.id)
+      )
+      agentTools = [...agentTools, ...workspaceToolsToAdd]
+    }
+  }
 
   // 获取记忆上下文
   let memoryContext = ''
@@ -1044,7 +1402,7 @@ export async function resumeAgent(
   }
 
   // 构建系统提示词
-  const systemPrompt = buildAgentSystemPrompt(agent, agentTools, memoryContext)
+  const systemPrompt = buildAgentSystemPrompt(agent, agentTools, memoryContext, workspaceContext)
 
   // 从对话历史中重建消息列表（包括工具调用和工具结果）
   const messages: AgentMessage[] = []
@@ -1343,6 +1701,200 @@ export async function resumeAgent(
     }
   }
 
+  // 工作区路径解析辅助
+  const resolveWorkspacePath = (relativePath: string): string => {
+    if (!workspaceContext) return relativePath
+    const cleaned = relativePath.replace(/^\.[/\\]/, '').replace(/^[/\\]+/, '')
+    const base = workspaceContext.folderPath.replace(/[/\\]+$/, '')
+    return cleaned ? `${base}/${cleaned}` : base
+  }
+
+  const handleWorkspaceReadFile = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const relativePath = String(args.file_path ?? '')
+    if (!relativePath) return { success: false, data: '', error: '需要 file_path 参数' }
+    try {
+      const absolutePath = resolveWorkspacePath(relativePath)
+      const result = await workspaceFsService.readFile(absolutePath)
+      if (result.success && result.content !== undefined) {
+        return {
+          success: true,
+          data: JSON.stringify({
+            file_path: relativePath,
+            absolute_path: absolutePath,
+            content: result.content,
+            truncated: result.truncated,
+            total_size: result.totalSize
+          })
+        }
+      }
+      return { success: false, data: '', error: result.error || '读取文件失败' }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '读取文件失败' }
+    }
+  }
+
+  const handleWorkspaceWriteFile = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const relativePath = String(args.file_path ?? '')
+    const content = String(args.content ?? '')
+    if (!relativePath) return { success: false, data: '', error: '需要 file_path 参数' }
+    if (content === '') return { success: false, data: '', error: '需要 content 参数' }
+    try {
+      const absolutePath = resolveWorkspacePath(relativePath)
+      await workspaceFsService.writeFile(absolutePath, content)
+      return {
+        success: true,
+        data: JSON.stringify({
+          file_path: relativePath,
+          absolute_path: absolutePath,
+          bytes_written: new TextEncoder().encode(content).byteLength,
+          message: `文件 ${relativePath} 已成功写入`
+        })
+      }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '写入文件失败' }
+    }
+  }
+
+  const handleWorkspaceListFiles = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const dirPath = String(args.dir_path ?? '.')
+    try {
+      const absolutePath = resolveWorkspacePath(dirPath)
+      const entries = await workspaceFsService.readDir(absolutePath)
+      return {
+        success: true,
+        data: JSON.stringify({
+          dir_path: dirPath,
+          entries: entries.map((e) => ({
+            name: e.name,
+            path: e.path,
+            is_directory: e.isDirectory,
+            size: e.size,
+            ext: e.ext
+          })),
+          count: entries.length
+        })
+      }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '读取目录失败' }
+    }
+  }
+
+  const handleWorkspaceExecuteCommand = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const command = String(args.command ?? '')
+    if (!command) return { success: false, data: '', error: '需要 command 参数' }
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI?.workspace?.command?.execute) {
+        const commandId = `agent-cmd-${Date.now()}`
+        const result = await window.electronAPI.workspace.command.execute({
+          commandId,
+          command,
+          workingDir: workspaceContext.folderPath,
+          timeoutMs: 60000
+        })
+        if (result.success) {
+          return {
+            success: true,
+            data: JSON.stringify({
+              command,
+              exit_code: result.exitCode,
+              stdout: result.stdout?.slice(0, 8000) || '',
+              stderr: result.stderr?.slice(0, 4000) || '',
+              duration_ms: result.durationMs
+            })
+          }
+        }
+        return {
+          success: false,
+          data: JSON.stringify({
+            command,
+            exit_code: result.exitCode,
+            stdout: result.stdout?.slice(0, 4000) || '',
+            stderr: result.stderr?.slice(0, 4000) || ''
+          }),
+          error: result.error || '命令执行失败'
+        }
+      }
+      return { success: false, data: '', error: '命令执行功能仅在 Electron 环境中可用' }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '命令执行失败' }
+    }
+  }
+
+  const handleWorkspaceDispatchTask = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const agentId = String(args.agent_id ?? '')
+    const taskDescription = String(args.task_description ?? '')
+    if (!agentId) return { success: false, data: '', error: '需要 agent_id 参数' }
+    if (!taskDescription) return { success: false, data: '', error: '需要 task_description 参数' }
+
+    // 验证目标 Agent 是否在团队中
+    const targetAgent = workspaceContext.teamAgents.find((a) => a.id === agentId)
+    if (!targetAgent) {
+      const availableList = workspaceContext.teamAgents.map((a) => `${a.name}(${a.id})`).join('、')
+      return {
+        success: false,
+        data: '',
+        error: `Agent "${agentId}" 不在当前工作区团队中。可用的团队成员：${availableList || '无'}`
+      }
+    }
+
+    // 调用上层注入的 dispatchSubTask 回调，真正运行子 Agent
+    if (!workspaceContext.dispatchSubTask) {
+      return {
+        success: false,
+        data: '',
+        error: '子任务分派功能不可用（dispatchSubTask 未注入）。请检查工作区配置。'
+      }
+    }
+
+    try {
+      const result = await workspaceContext.dispatchSubTask(agentId, taskDescription)
+      return {
+        success: true,
+        data: JSON.stringify({
+          dispatched_to: targetAgent.name,
+          agent_id: agentId,
+          task: taskDescription,
+          result: result
+        })
+      }
+    } catch (err) {
+      return {
+        success: false,
+        data: '',
+        error: `子任务执行失败: ${err instanceof Error ? err.message : String(err)}`
+      }
+    }
+  }
+
+  const handleWorkspaceCreateAgent = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
+    if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
+    if (!workspaceContext.createAgent) {
+      return { success: false, data: '', error: '创建 Agent 功能不可用（createAgent 未注入）。' }
+    }
+    const name = String(args.name ?? '')
+    const description = String(args.description ?? '')
+    const systemPrompt = String(args.system_prompt ?? '')
+    if (!name) return { success: false, data: '', error: '需要 name 参数' }
+    if (!description) return { success: false, data: '', error: '需要 description 参数' }
+    if (!systemPrompt) return { success: false, data: '', error: '需要 system_prompt 参数' }
+    const avatar = args.avatar ? String(args.avatar) : undefined
+    const enabledToolIds = Array.isArray(args.enabled_tool_ids) ? args.enabled_tool_ids.map(String) : undefined
+    try {
+      const agentId = await workspaceContext.createAgent({ name, description, systemPrompt, avatar, enabledToolIds })
+      return {
+        success: true,
+        data: JSON.stringify({ agent_id: agentId, name, description, message: `Agent "${name}" 已创建并加入工作区团队，可通过 workspace_dispatch_task 分派任务给它。` })
+      }
+    } catch (err) {
+      return { success: false, data: '', error: `创建 Agent 失败: ${err instanceof Error ? err.message : String(err)}` }
+    }
+  }
+
   // Agent 循环 - 计算已执行的步数，从剩余步数开始（maxSteps 为 0 表示无限制）
   const completedSteps = stepIndex
   const isUnlimited = agent.termination.maxSteps === 0
@@ -1399,6 +1951,7 @@ export async function resumeAgent(
     let fullContent = ''
     let reasoningContent = ''
     let nativeToolCalls: Array<{ id: string; name: string; arguments: string }> = []
+    let streamFinishReason: string | undefined
 
     try {
       await aiService.streamChat(
@@ -1426,8 +1979,8 @@ export async function resumeAgent(
           onToolCalls: (toolCalls) => {
             nativeToolCalls = toolCalls
           },
-          onDone: () => {
-            // 处理在下方
+          onDone: (finishReason) => {
+            streamFinishReason = finishReason
           },
           onError: (error) => {
             throw new Error(error)
@@ -1543,6 +2096,18 @@ export async function resumeAgent(
           result = handleReviewRequirementsTool(args)
         } else if (tc.name === 'ask_human') {
           result = await handleAskHumanTool(args)
+        } else if (tc.name === 'workspace_read_file') {
+          result = await handleWorkspaceReadFile(args)
+        } else if (tc.name === 'workspace_write_file') {
+          result = await handleWorkspaceWriteFile(args)
+        } else if (tc.name === 'workspace_list_files') {
+          result = await handleWorkspaceListFiles(args)
+        } else if (tc.name === 'workspace_execute_command') {
+          result = await handleWorkspaceExecuteCommand(args)
+        } else if (tc.name === 'workspace_dispatch_task') {
+          result = await handleWorkspaceDispatchTask(args)
+        } else if (tc.name === 'workspace_create_agent') {
+          result = await handleWorkspaceCreateAgent(args)
         } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
           result = executeMathTool(tc.name, args)
         } else {
@@ -1583,7 +2148,7 @@ export async function resumeAgent(
     const toolCalls = parseToolCalls(fullContent)
 
     if (toolCalls.length === 0) {
-      const finalText = fullContent || reasoningContent || ''
+      let finalText = fullContent || reasoningContent || ''
 
       const finalStep: AgentStep = {
         id: crypto.randomUUID(),
@@ -1596,6 +2161,12 @@ export async function resumeAgent(
       callbacks.onStep(finalStep)
       // 注意：token 已在 LLM 调用过程中实时转发，此处无需再次调用 callbacks.onToken
       callbacks.onStatusChange('completed')
+      // 如果流因中断结束（非正常 stop），附加提示（'length' 已由自动续写机制处理）
+      if (streamFinishReason && streamFinishReason !== 'stop' && streamFinishReason !== 'length') {
+        if (streamFinishReason === 'abort') {
+          finalText += '\n\n> ⚠️ **回复中断**：流连接异常断开，输出可能不完整。'
+        }
+      }
       callbacks.onDone(finalText)
       return
     }
@@ -1639,6 +2210,18 @@ export async function resumeAgent(
         result = handleReviewRequirementsTool(tc.arguments)
       } else if (tc.name === 'ask_human') {
         result = await handleAskHumanTool(tc.arguments)
+      } else if (tc.name === 'workspace_read_file') {
+        result = await handleWorkspaceReadFile(tc.arguments)
+      } else if (tc.name === 'workspace_write_file') {
+        result = await handleWorkspaceWriteFile(tc.arguments)
+      } else if (tc.name === 'workspace_list_files') {
+        result = await handleWorkspaceListFiles(tc.arguments)
+      } else if (tc.name === 'workspace_execute_command') {
+        result = await handleWorkspaceExecuteCommand(tc.arguments)
+      } else if (tc.name === 'workspace_dispatch_task') {
+        result = await handleWorkspaceDispatchTask(tc.arguments)
+      } else if (tc.name === 'workspace_create_agent') {
+        result = await handleWorkspaceCreateAgent(tc.arguments)
       } else if (['math_analyze', 'math_algebra', 'math_geometry', 'math_number', 'math_symbolic', 'math_verify'].includes(tc.name)) {
         result = executeMathTool(tc.name, tc.arguments)
       } else {

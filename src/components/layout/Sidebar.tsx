@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Plus, PanelLeftClose, PanelLeft, Settings, Database } from 'lucide-react'
+import { Plus, PanelLeftClose, PanelLeft, Settings, Database, Briefcase } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
@@ -9,10 +9,11 @@ interface SidebarProps {
   viewMode: ViewMode
   onOpenSettings?: (section?: SettingsSection) => void
   onOpenKnowledgeBase?: () => void
+  onOpenWorkspace?: () => void
   onBackToChat?: () => void
 }
 
-export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackToChat }: SidebarProps) {
+export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onOpenWorkspace, onBackToChat }: SidebarProps) {
   const { createConversation } = useConversationStore()
   const { sidebarCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth } = useSettingsStore()
 
@@ -72,6 +73,19 @@ export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackT
           title="新建对话"
         >
           <Plus size={18} />
+        </button>
+
+        {/* 工作区入口（折叠模式） */}
+        <button
+          onClick={viewMode === 'workspace' ? onBackToChat : onOpenWorkspace}
+          className={`p-2.5 rounded-xl transition-all ${
+            viewMode === 'workspace'
+              ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+              : 'hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+          }`}
+          title={viewMode === 'workspace' ? '返回对话' : '工作区'}
+        >
+          <Briefcase size={18} />
         </button>
 
         <div className="flex-1" />
@@ -165,6 +179,19 @@ export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onBackT
 
       {/* 底部导航入口 */}
       <div className="px-3 py-2 border-t border-surface-200/80 dark:border-surface-700/60 space-y-1">
+        {/* 工作区入口 */}
+        <button
+          onClick={viewMode === 'workspace' ? onBackToChat : onOpenWorkspace}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all ${
+            viewMode === 'workspace'
+              ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 font-medium'
+              : 'text-gray-500 dark:text-gray-400 hover:bg-surface-200/60 dark:hover:bg-surface-800/60 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          <Briefcase size={16} />
+          <span>{viewMode === 'workspace' ? '返回对话' : '工作区'}</span>
+        </button>
+
         {/* 知识库入口 */}
         <button
           onClick={onOpenKnowledgeBase}

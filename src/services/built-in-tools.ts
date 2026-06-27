@@ -598,3 +598,143 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
     enabled: true
   }
 ]
+
+/**
+ * 工作区专用工具（需要工作区上下文才能执行）
+ * 当对话关联了工作区时，这些工具会自动注入到 Agent 的可用工具列表中
+ */
+export const WORKSPACE_TOOLS: Tool[] = [
+  {
+    id: 'workspace:read_file',
+    name: 'workspace_read_file',
+    description: '读取工作区中的文件内容。返回文件的文本内容（大文件自动截断到512KB）。用于查看代码、配置文件、文档等。',
+    parameters: {
+      type: 'object',
+      properties: {
+        file_path: {
+          type: 'string',
+          description: '相对于工作区根目录的文件路径，例如 "src/index.ts" 或 "package.json"'
+        }
+      },
+      required: ['file_path']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:write_file',
+    name: 'workspace_write_file',
+    description: '向工作区写入文件。如果文件不存在会自动创建（包括父目录）。如果文件已存在则覆盖。用于创建新文件、修改代码、写入配置等。',
+    parameters: {
+      type: 'object',
+      properties: {
+        file_path: {
+          type: 'string',
+          description: '相对于工作区根目录的文件路径，例如 "src/components/NewComponent.tsx"'
+        },
+        content: {
+          type: 'string',
+          description: '要写入的文件内容'
+        }
+      },
+      required: ['file_path', 'content']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:list_files',
+    name: 'workspace_list_files',
+    description: '列出工作区中指定目录下的文件和子目录。返回每个条目的名称、路径、是否为目录、大小和扩展名。用于了解项目结构、浏览代码目录。',
+    parameters: {
+      type: 'object',
+      properties: {
+        dir_path: {
+          type: 'string',
+          description: '相对于工作区根目录的目录路径。留空或 "." 表示根目录，例如 "src" 或 "src/components"'
+        }
+      },
+      required: []
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:execute_command',
+    name: 'workspace_execute_command',
+    description: '在工作区目录下执行 shell 命令。用于运行构建、测试、lint、git 操作、安装依赖等。命令会在工作区根目录下执行。注意：危险命令（如 rm -rf /）会被安全策略拦截。',
+    parameters: {
+      type: 'object',
+      properties: {
+        command: {
+          type: 'string',
+          description: '要执行的 shell 命令，例如 "npm install lodash" 或 "git status"'
+        }
+      },
+      required: ['command']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:dispatch_task',
+    name: 'workspace_dispatch_task',
+    description: '将任务分派给团队中的某个 Agent 执行。你可以为不同的子任务指定不同的 Agent，实现并行协作。被分派的 Agent 会收到任务描述并在其上下文中独立执行，完成后返回结果给你。',
+    parameters: {
+      type: 'object',
+      properties: {
+        agent_id: {
+          type: 'string',
+          description: '要分派任务的 Agent ID。必须是当前工作区团队中的 Agent。'
+        },
+        task_description: {
+          type: 'string',
+          description: '对任务的详细描述，包含足够的上下文信息让 Agent 能独立完成任务。例如："请检查 src/utils 目录下的所有工具函数，找出没有单元测试覆盖的函数，并为每个函数编写测试用例。"'
+        }
+      },
+      required: ['agent_id', 'task_description']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:create_agent',
+    name: 'workspace_create_agent',
+    description: '创建一个全新的专业 Agent 并将其加入当前工作区团队。当现有团队成员无法胜任某项任务时使用此工具。新创建的 Agent 会拥有自己的系统提示词、工具集和专业领域，创建后可通过 workspace_dispatch_task 将任务分派给它。',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Agent 的名称，简短且能体现专业领域，例如 "前端开发工程师"、"数据库专家"、"测试工程师"'
+        },
+        description: {
+          type: 'string',
+          description: 'Agent 的职责描述，说明该 Agent 擅长什么、适合处理哪些任务'
+        },
+        system_prompt: {
+          type: 'string',
+          description: 'Agent 的系统提示词，定义其身份、专业技能、行为准则和工作方式。应足够详细以便 Agent 能独立高效地完成任务。'
+        },
+        avatar: {
+          type: 'string',
+          description: 'Agent 的 emoji 头像，例如 "💻"、"🎨"、"🧪"'
+        },
+        enabled_tool_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '该 Agent 可使用的工具 ID 列表。工作区 Agent 自动拥有 workspace_read_file、workspace_write_file、workspace_list_files、workspace_execute_command 等工作区工具。如需额外工具请列出其 ID。'
+        }
+      },
+      required: ['name', 'description', 'system_prompt']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  }
+]

@@ -74,7 +74,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
 
       {/* 下拉面板 */}
       {isOpen && (
-        <div className="absolute left-0 top-full z-30 mt-2 w-80 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden">
+        <div className="dropdown-panel absolute left-0 top-full z-30 mt-2 w-80 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden">
           {/* 搜索框 */}
           <div className="p-2 border-b border-surface-200/60 dark:border-surface-700/40">
             <div className="relative">

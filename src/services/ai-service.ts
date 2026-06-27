@@ -5,7 +5,10 @@ export interface StreamCallbacks {
   onReasoningToken?: (token: string) => void
   onToolCalls?: (toolCalls: Array<{ id: string; name: string; arguments: string }>) => void
   onUsage?: (usage: { promptTokens: number; completionTokens: number; totalTokens: number }) => void
-  onDone: () => void
+  /**
+   * @param finishReason - 完成原因: 'stop'(正常结束), 'length'(达到max_tokens截断), 'abort'(超时/中断), 'error'(异常结束)
+   */
+  onDone: (finishReason?: string) => void
   onError: (error: string) => void
 }
 
@@ -174,58 +177,116 @@ export const aiService = {
       Object.assign(headers, requestConfig.customHeaders)
     }
 
-    // 重试逻辑
-    const maxRetries = requestConfig?.maxRetries || 0
+    // 自动续写：当模型达到 max_tokens 截断时，自动追加请求让模型继续生成
+    const MAX_AUTO_CONTINUE = 10  // 最大自动续写次数，防止无限循环
+    let continueCount = 0
     let lastError: string = ''
+    const maxRetries = requestConfig?.maxRetries || 0
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        await this._doStreamRequest(
-          `${baseUrl}/chat/completions`,
-          headers,
-          body,
-          signal,
-          requestConfig?.timeout,
-          callbacks
-        )
-        return // 成功则直接返回
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          // 用户主动取消，不重试
-          callbacks.onDone()
-          return
-        }
-        lastError = error instanceof Error ? error.message : '未知错误'
-        if (attempt < maxRetries) {
-          // 指数退避等待
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
-        }
-      }
+    // 包装回调：拦截 onDone 以检测是否需要续写
+    let streamFinishReason: string | undefined
+    const wrappedCallbacks: StreamCallbacks = {
+      onToken: callbacks.onToken,
+      onReasoningToken: callbacks.onReasoningToken,
+      onToolCalls: callbacks.onToolCalls,
+      onUsage: callbacks.onUsage,
+      onDone: (finishReason) => {
+        streamFinishReason = finishReason
+      },
+      onError: callbacks.onError
     }
 
-    callbacks.onError(lastError)
+    while (true) {
+      streamFinishReason = undefined
+      lastError = ''
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          await this._doStreamRequest(
+            `${baseUrl}/chat/completions`,
+            headers,
+            body,
+            signal,
+            requestConfig?.timeout,
+            wrappedCallbacks
+          )
+          break // 请求成功
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            callbacks.onDone('abort')
+            return
+          }
+          lastError = error instanceof Error ? error.message : '未知错误'
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
+          }
+        }
+      }
+
+      // 如果重试全部失败
+      if (lastError) {
+        callbacks.onError(lastError)
+        return
+      }
+
+      // 检查是否需要自动续写
+      if (streamFinishReason === 'length' && continueCount < MAX_AUTO_CONTINUE) {
+        continueCount++
+        console.log(`[ai-service] 模型达到 max_tokens 截断，自动续写 (${continueCount}/${MAX_AUTO_CONTINUE})`)
+
+        // 将已生成的 assistant 内容追加到请求消息中
+        // 使用空的 assistant content 标记续写点（模型会从上下文继续）
+        requestMessages.push({
+          role: 'assistant',
+          content: ''
+        })
+        requestMessages.push({
+          role: 'user',
+          content: '继续'
+        })
+        body.messages = requestMessages
+
+        // 继续循环，发送续写请求
+        continue
+      }
+
+      // 正常结束或达到续写上限
+      if (streamFinishReason === 'length' && continueCount >= MAX_AUTO_CONTINUE) {
+        console.warn(`[ai-service] 已达到最大自动续写次数 (${MAX_AUTO_CONTINUE})，停止续写`)
+        callbacks.onDone('stop')
+      } else {
+        callbacks.onDone(streamFinishReason || 'stop')
+      }
+      return
+    }
   },
 
   /**
    * 执行单次流式请求
+   *
+   * 特性：
+   * - 无超时限制：只要数据还在流动就不会中断，完全依赖服务端和用户手动取消
+   * - 检测 finish_reason：识别模型是否因达到 max_tokens 而被截断
+   * - 检测流中断：连接关闭但未收到 [DONE] 标记时，标记为异常中断
    */
   async _doStreamRequest(
     url: string,
     headers: Record<string, string>,
     body: Record<string, unknown>,
     signal: AbortSignal,
-    timeout?: number,
+    _timeout?: number,
     callbacks?: StreamCallbacks
   ): Promise<void> {
-    // 超时处理
+    // 直接使用外部 signal，不做任何超时限制
     const controller = new AbortController()
-    const timeoutMs = timeout || 30000
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-    // 合并外部 signal
     if (signal) {
       signal.addEventListener('abort', () => controller.abort())
     }
+
+    // 用于追踪是否正常收到 [DONE] 标记
+    let receivedDone = false
+    // 追踪模型返回的 finish_reason
+    let lastFinishReason: string | undefined
 
     try {
       const response = await fetch(url, {
@@ -275,6 +336,7 @@ export const aiService = {
 
           const data = trimmed.slice(6)
           if (data === '[DONE]') {
+            receivedDone = true
             // 处理累积的工具调用
             if (currentToolCalls.length > 0) {
               callbacks?.onToolCalls?.(
@@ -285,13 +347,20 @@ export const aiService = {
                 }))
               )
             }
-            callbacks?.onDone()
+            callbacks?.onDone(lastFinishReason || 'stop')
             return
           }
 
           try {
             const parsed = JSON.parse(data)
             const delta = parsed.choices?.[0]?.delta
+            const choice = parsed.choices?.[0]
+
+            // 检测 finish_reason（某些 API 在 delta 中也会携带）
+            if (choice?.finish_reason) {
+              lastFinishReason = choice.finish_reason
+            }
+
             if (!delta) continue
 
             // 处理推理内容（DeepSeek R1 等模型）
@@ -331,15 +400,22 @@ export const aiService = {
                 totalTokens: parsed.usage.total_tokens
               })
             }
-          } catch {
-            // 忽略解析错误
+          } catch (parseError) {
+            console.warn('[ai-service] 解析 SSE 数据块失败:', data.substring(0, 200), parseError)
           }
         }
       }
 
-      callbacks?.onDone()
+      // 流结束但未收到 [DONE] 标记 → 连接异常中断
+      if (!receivedDone) {
+        console.warn('[ai-service] 流连接异常中断：未收到 [DONE] 标记')
+        // 如果有 finish_reason，说明模型侧正常结束但连接提前断开
+        callbacks?.onDone(lastFinishReason || 'abort')
+      } else {
+        callbacks?.onDone(lastFinishReason || 'stop')
+      }
     } finally {
-      clearTimeout(timeoutId)
+      // 清理资源（无超时计时器需要清理）
     }
   }
 }

@@ -294,7 +294,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Agent 选择栏 */}
-      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
+      <div className="relative z-10 flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
         <AgentSelector
           selectedAgentId={currentConversation?.agentId}
           onSelect={handleAgentSelect}
@@ -342,7 +342,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
               </button>
 
               {kbDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+                <div className="dropdown-panel absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
                   <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
                     <p className="text-xs font-medium text-surface-600 dark:text-surface-400">选择对话使用的知识库</p>
                     <p className="text-[10px] text-muted mt-0.5">不选择则搜索全部知识库</p>
@@ -387,7 +387,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
       </div>
 
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {messages.length === 0 ? (
           showAnalyzerForm ? (
             <div className="flex-1 overflow-y-auto p-4">
@@ -457,7 +457,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
             </div>
           )
         ) : (
-          <div className="max-w-3xl mx-auto py-4 flex flex-col">
+          <div className="max-w-3xl mx-auto py-4 flex flex-col overflow-hidden">
             {renderGroups.map((group, idx) => {
               if (group.type === 'assistant-group') {
                 return (
