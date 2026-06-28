@@ -421,11 +421,18 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
                 </>
               )}
 
-              {/* 子 Agent 分组结束标记 */}
-              {isSubAgent && isAgentGroupEnd(step, index) && !agentGroupCollapsed && (
+              {/* 子 Agent 分组结束标记：如果后面还有其他 Agent 的步骤则已真正完成；只有最后一个组且整体运行中才显示"执行中" */}
+              {isSubAgent && isAgentGroupEnd(step, index) && !agentGroupCollapsed && (index < processSteps.length - 1 || !isRunning) && (
                 <div className="flex items-center gap-2 px-3 py-1 mx-6 text-xs text-indigo-400 dark:text-indigo-500">
                   <CheckCircle2 size={10} />
                   <span>{step.sourceAgentName || '子 Agent'} 任务完成</span>
+                </div>
+              )}
+              {/* 仅当该子 Agent 是最后一个组且整体仍在运行时显示加载状态 */}
+              {isSubAgent && isAgentGroupEnd(step, index) && !agentGroupCollapsed && index === processSteps.length - 1 && isRunning && (
+                <div className="flex items-center gap-2 px-3 py-1 mx-6 text-xs text-amber-500 dark:text-amber-400">
+                  <Loader2 size={10} className="animate-spin" />
+                  <span>{step.sourceAgentName || '子 Agent'} 执行中...</span>
                 </div>
               )}
             </div>

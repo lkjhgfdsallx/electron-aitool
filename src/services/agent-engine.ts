@@ -29,6 +29,7 @@ import { knowledgeBaseService } from './knowledge-base-service'
 import { WORKSPACE_TOOLS } from './built-in-tools'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
 import { workspaceFsService } from './workspace-fs-service'
+import { useWorkspaceMessageStore } from '../stores/workspace-message-store'
 
 /** Agent 引擎回调 */
 export interface AgentEngineCallbacks {
@@ -145,6 +146,31 @@ function buildAgentSystemPrompt(
       prompt += `4. 需要了解文件内容或目录结构时，使用 \`workspace_list_files\` 浏览，或派一个 Agent 去读取并汇报。\n`
       prompt += `5. 收到执行结果后，检查质量，不达标的重新分派并补充更详细的指导。\n`
       prompt += `\n违反以上准则会导致任务失败。你的价值在于优秀的规划和协调能力，而非直接动手。\n`
+
+      // 检测团队中是否有需求分析类 Agent，强制执行"先分析后开发"工作流
+      const hasRequirementAnalyst = workspaceContext.teamAgents.some((a) => {
+        const name = a.name.toLowerCase()
+        const desc = a.description.toLowerCase()
+        return name.includes('需求') || name.includes('requirement') || name.includes('analyst')
+            || desc.includes('需求分析') || desc.includes('需求规格') || desc.includes('requirement')
+      })
+      if (hasRequirementAnalyst) {
+        prompt += `\n### 🔵 强制工作流程：先分析后开发\n`
+        prompt += `团队中存在**需求分析 Agent**，你必须严格遵守以下工作流程：\n\n`
+        prompt += `**第一步：需求分析（必须首先执行）**\n`
+        prompt += `- 将用户的原始需求完整、准确地分派给需求分析 Agent\n`
+        prompt += `- 在任务描述中明确告知"请对以下需求进行详细分析，输出结构化的需求规格文档"\n`
+        prompt += `- **等待需求分析 Agent 返回完整的需求规格文档后，才能进入下一步**\n\n`
+        prompt += `**第二步：审查需求**\n`
+        prompt += `- 审阅需求分析 Agent 输出的需求规格文档\n`
+        prompt += `- 确认需求是否完整、清晰、无歧义\n`
+        prompt += `- 如有遗漏或不清楚的地方，重新分派给需求分析 Agent 补充\n\n`
+        prompt += `**第三步：分派开发任务**\n`
+        prompt += `- 将经过审查的需求规格文档作为上下文，分派给开发类 Agent\n`
+        prompt += `- 在任务描述中附上完整的需求规格，确保开发 Agent 有充分的信息\n`
+        prompt += `- 为每个功能点分派独立的子任务\n\n`
+        prompt += `**⚠️ 绝对禁止：跳过需求分析直接分派开发任务。违反此流程会导致开发结果不符合用户预期。**\n`
+      }
     } else {
       // 子 Agent 的工具使用强制规则（对实际执行工作的 Agent 适用）
       prompt += `\n### ⚠️ 工具使用强制规则\n`
@@ -191,13 +217,29 @@ function buildAgentSystemPrompt(
 
   // 添加规划策略提示
   if (isLeader) {
+    // 检测团队中是否有需求分析类 Agent（用于指挥策略）
+    const hasAnalystInTeam = workspaceContext?.teamAgents.some((a) => {
+      const name = a.name.toLowerCase()
+      const desc = a.description.toLowerCase()
+      return name.includes('需求') || name.includes('requirement') || name.includes('analyst')
+          || desc.includes('需求分析') || desc.includes('需求规格') || desc.includes('requirement')
+    })
+
     // Leader 专用的指挥策略（覆盖 agent.planningStrategy）
     prompt += '\n\n## 指挥策略\n请按以下方式工作：\n'
     prompt += '1. **侦察**：使用 \`workspace_list_files\` 了解工作区结构，分析用户需求\n'
     prompt += '2. **规划**：将大任务拆解为多个可独立执行的子任务\n'
-    prompt += '3. **组建团队**：检查现有团队成员能力，必要时使用 \`workspace_create_agent\` 创建新 Agent\n'
-    prompt += '4. **分派任务**：使用 \`workspace_dispatch_task\` 将子任务分派给对应 Agent\n'
-    prompt += '5. **监控与整合**：收到结果后检查质量，不达标的重新分派；全部完成后向用户总结\n'
+    if (hasAnalystInTeam) {
+      prompt += '3. **需求分析（必须首先执行）**：将用户原始需求分派给团队中的需求分析 Agent，等待其输出结构化需求规格文档\n'
+      prompt += '4. **审查需求**：审阅需求规格文档，确认完整、清晰、无歧义，如有遗漏则要求补充\n'
+      prompt += '5. **组建团队**：检查现有团队成员能力，必要时使用 \`workspace_create_agent\` 创建新 Agent\n'
+      prompt += '6. **分派开发任务**：将需求规格文档作为上下文分派给开发类 Agent，每个功能点独立分派\n'
+      prompt += '7. **监控与整合**：收到结果后检查质量，不达标的重新分派；全部完成后向用户总结\n'
+    } else {
+      prompt += '3. **组建团队**：检查现有团队成员能力，必要时使用 \`workspace_create_agent\` 创建新 Agent\n'
+      prompt += '4. **分派任务**：使用 \`workspace_dispatch_task\` 将子任务分派给对应 Agent\n'
+      prompt += '5. **监控与整合**：收到结果后检查质量，不达标的重新分派；全部完成后向用户总结\n'
+    }
     prompt += '在整个过程中，你绝不亲自编写代码或执行技术操作。\n'
   } else {
     switch (agent.planningStrategy) {
@@ -822,6 +864,13 @@ export async function runAgent(
     const command = String(args.command ?? '')
     if (!command) return { success: false, data: '', error: '需要 command 参数' }
     try {
+      // 将命令记录到终端面板
+      const { addTerminalLog } = useWorkspaceMessageStore.getState()
+      addTerminalLog(workspaceContext.workspaceId, {
+        type: 'command',
+        content: `[${agent.name}] $ ${command}`,
+      })
+
       if (typeof window !== 'undefined' && window.electronAPI?.workspace?.command?.execute) {
         const commandId = `agent-cmd-${Date.now()}`
         const result = await window.electronAPI.workspace.command.execute({
@@ -831,6 +880,10 @@ export async function runAgent(
           timeoutMs: 60000 // 60 秒超时
         })
         if (result.success) {
+          addTerminalLog(workspaceContext.workspaceId, {
+            type: 'system',
+            content: `✓ 命令完成 (exit: ${result.exitCode}, ${result.durationMs}ms)`,
+          })
           return {
             success: true,
             data: JSON.stringify({
@@ -842,6 +895,10 @@ export async function runAgent(
             })
           }
         }
+        addTerminalLog(workspaceContext.workspaceId, {
+          type: 'stderr',
+          content: `✗ 命令失败 (exit: ${result.exitCode}): ${result.error || '未知错误'}`,
+        })
         return {
           success: false,
           data: JSON.stringify({
@@ -855,6 +912,13 @@ export async function runAgent(
       }
       return { success: false, data: '', error: '命令执行功能仅在 Electron 环境中可用' }
     } catch (e) {
+      const { addTerminalLog } = useWorkspaceMessageStore.getState()
+      if (workspaceContext) {
+        addTerminalLog(workspaceContext.workspaceId, {
+          type: 'stderr',
+          content: `✗ 命令异常: ${e instanceof Error ? e.message : '命令执行失败'}`,
+        })
+      }
       return { success: false, data: '', error: e instanceof Error ? e.message : '命令执行失败' }
     }
   }
@@ -1792,6 +1856,13 @@ export async function resumeAgent(
     const command = String(args.command ?? '')
     if (!command) return { success: false, data: '', error: '需要 command 参数' }
     try {
+      // 将命令记录到终端面板
+      const { addTerminalLog } = useWorkspaceMessageStore.getState()
+      addTerminalLog(workspaceContext.workspaceId, {
+        type: 'command',
+        content: `[${agent.name}] $ ${command}`,
+      })
+
       if (typeof window !== 'undefined' && window.electronAPI?.workspace?.command?.execute) {
         const commandId = `agent-cmd-${Date.now()}`
         const result = await window.electronAPI.workspace.command.execute({
@@ -1801,6 +1872,10 @@ export async function resumeAgent(
           timeoutMs: 60000
         })
         if (result.success) {
+          addTerminalLog(workspaceContext.workspaceId, {
+            type: 'system',
+            content: `✓ 命令完成 (exit: ${result.exitCode}, ${result.durationMs}ms)`,
+          })
           return {
             success: true,
             data: JSON.stringify({
@@ -1812,6 +1887,10 @@ export async function resumeAgent(
             })
           }
         }
+        addTerminalLog(workspaceContext.workspaceId, {
+          type: 'stderr',
+          content: `✗ 命令失败 (exit: ${result.exitCode}): ${result.error || '未知错误'}`,
+        })
         return {
           success: false,
           data: JSON.stringify({
@@ -1825,6 +1904,13 @@ export async function resumeAgent(
       }
       return { success: false, data: '', error: '命令执行功能仅在 Electron 环境中可用' }
     } catch (e) {
+      const { addTerminalLog } = useWorkspaceMessageStore.getState()
+      if (workspaceContext) {
+        addTerminalLog(workspaceContext.workspaceId, {
+          type: 'stderr',
+          content: `✗ 命令异常: ${e instanceof Error ? e.message : '命令执行失败'}`,
+        })
+      }
       return { success: false, data: '', error: e instanceof Error ? e.message : '命令执行失败' }
     }
   }

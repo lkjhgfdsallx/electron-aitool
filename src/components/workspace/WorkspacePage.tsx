@@ -826,7 +826,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         {/* 底栏：终端 & 审批 */}
         {!bottomPanelCollapsed && (
           <div
-            className="flex-shrink-0 border-t border-surface-200 dark:border-surface-700/60"
+            className="flex-shrink-0 border-t-2 border-surface-300 dark:border-surface-600"
             style={{ height: bottomPanelHeight }}
           >
             <TerminalPanel workspace={activeWorkspace} />

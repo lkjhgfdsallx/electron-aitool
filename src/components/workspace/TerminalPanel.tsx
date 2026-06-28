@@ -154,9 +154,9 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-surface-950 dark:bg-black/40">
+    <div className="flex flex-col h-full bg-surface-950 dark:bg-surface-900">
       {/* 终端头部 */}
-      <div className="flex items-center justify-between px-3 h-8 border-b border-surface-800 dark:border-surface-700/40 flex-shrink-0">
+      <div className="flex items-center justify-between px-3 h-8 border-b border-surface-800 dark:border-surface-700/40 flex-shrink-0 dark:bg-surface-800/50">
         <div className="flex items-center gap-2">
           <Terminal size={12} className="text-gray-400" />
           <span className="text-[11px] font-medium text-gray-400">终端</span>
@@ -200,14 +200,14 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
       )}
 
       {/* B4: 终端输出区域 */}
-      <div ref={terminalRef} className="flex-1 overflow-y-auto p-3 font-mono text-xs">
+      <div ref={terminalRef} className="flex-1 overflow-y-auto p-3 font-mono text-xs select-text">
         {terminalHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <Terminal size={28} className="text-gray-600 dark:text-gray-700 mb-2" />
-            <p className="text-[11px] text-gray-500 dark:text-gray-600">
+            <Terminal size={28} className="text-gray-600 dark:text-gray-500 mb-2" />
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
               命令执行输出将在此显示
             </p>
-            <p className="text-[10px] text-gray-600 dark:text-gray-700 mt-1">
+            <p className="text-[10px] text-gray-600 dark:text-gray-500 mt-1">
               在下方输入命令或等待 AI 执行
             </p>
           </div>

@@ -7,13 +7,14 @@
  * - 团队标签页：AgentTeamPanel，显示真实 Agent 信息
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   FileText, Clock, Users, Plus, RotateCcw, ChevronRight, X,
   Loader2, CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import { FileTree } from './FileTree'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
@@ -285,11 +286,21 @@ interface AgentTeamPanelProps {
 
 function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   const { getAgent, agents } = useAgentStore()
+  const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
+
+  /** 合并查找：优先全局 Agent，再查工作区 Agent */
+  const findAgent = useCallback((id: string) => {
+    return getAgent(id) ?? workspaceAgents.find((a) => a.id === id)
+  }, [getAgent, workspaceAgents])
+
   // 当 leaderAgentId 未设置时，回退到默认的 AI 领导 Agent
   const effectiveLeaderId = workspace.leaderAgentId ?? WORKSPACE_LEADER_AGENT_ID
-  const leaderAgent = getAgent(effectiveLeaderId)
-  const teamAgents = workspace.teamAgentIds.map((id) => getAgent(id)).filter(Boolean)
+  const leaderAgent = findAgent(effectiveLeaderId)
+  const teamAgents = useMemo(
+    () => workspace.teamAgentIds.map((id) => findAgent(id)).filter(Boolean),
+    [workspace.teamAgentIds, findAgent]
+  )
 
   // 自动修复：如果工作区缺少 leaderAgentId，自动补上
   useEffect(() => {
@@ -330,8 +341,11 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   }, [showPicker])
 
   // 可添加的 Agent（排除领导和已在团队中的）
-  const availableAgents = agents.filter(
-    (a) => a.id !== workspace.leaderAgentId && !workspace.teamAgentIds.includes(a.id) && a.enabled
+  const availableAgents = useMemo(
+    () => [...agents, ...workspaceAgents].filter(
+      (a) => a.id !== workspace.leaderAgentId && !workspace.teamAgentIds.includes(a.id) && a.enabled
+    ),
+    [agents, workspaceAgents, workspace.leaderAgentId, workspace.teamAgentIds]
   )
 
   const handleAddAgent = useCallback((agentId: string) => {
