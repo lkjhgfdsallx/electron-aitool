@@ -19,7 +19,9 @@ import {
   Download,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  PlayCircle,
+  AlertTriangle
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { SelectionBoundary } from '../ui/SelectionBoundary'
@@ -50,6 +52,8 @@ interface MessageItemProps {
   onHumanInput?: (stepId: string, value: string | string[]) => void
   /** 继续执行出错的 Agent 任务 */
   onResumeAgentTask?: (messageId: string) => void
+  /** 继续被中断的任务（应用重启后检测到残留的 isStreaming 标记） */
+  onContinueInterruptedTask?: (messageId: string) => void
   /** 当前激活的分支索引（仅分支点消息有效） */
   activeBranchIndex?: number
   /** 切换分支回调 */
@@ -74,6 +78,7 @@ export function MessageItem({
   onEditAndResend,
   onHumanInput,
   onResumeAgentTask,
+  onContinueInterruptedTask,
   activeBranchIndex = 0,
   onSwitchBranch
 }: MessageItemProps) {
@@ -330,6 +335,36 @@ export function MessageItem({
             </>
           )}
         </SelectionBoundary>
+
+        {/* 中断任务提示 + 继续按钮 */}
+        {message.wasInterrupted && (
+          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40">
+            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
+            <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
+              此任务在应用关闭时被中断
+            </span>
+            {onContinueInterruptedTask && (
+              <button
+                onClick={() => onContinueInterruptedTask(message.id)}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors shadow-sm"
+                title="继续执行此任务"
+              >
+                <PlayCircle size={12} />
+                继续任务
+              </button>
+            )}
+            {onResumeAgentTask && message.agentId && (
+              <button
+                onClick={() => onResumeAgentTask(message.id)}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-accent-500 hover:bg-accent-600 rounded-md transition-colors shadow-sm"
+                title="恢复 Agent 任务"
+              >
+                <RotateCcw size={12} />
+                恢复Agent
+              </button>
+            )}
+          </div>
+        )}
 
         {/* 附件显示 */}
         {message.attachments && message.attachments.length > 0 && (

@@ -51,6 +51,13 @@ export type {
   ToolCallStats,
   MCPServerConfig
 } from './tool'
+export type {
+  Skill,
+  SkillCreateInput,
+  SkillUpdateInput,
+  SkillSummary,
+  SkillLocation,
+} from './skill'
 export type { GlobalConfig, ResolvedAIConfig } from './config'
 export { DEFAULT_GLOBAL_CONFIG } from './config'
 export type {

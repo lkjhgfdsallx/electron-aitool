@@ -408,7 +408,7 @@ const electronAPI: ElectronAPI = {
     },
     selectFolder: () =>
       ipcRenderer.invoke('workspace:select-folder'),
-  }
+  },
 }
 
 // 通过 contextBridge 安全地暴露 API

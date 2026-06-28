@@ -47,6 +47,10 @@ interface ConversationStore {
 
   // Search
   searchConversations: (query: string) => Conversation[]
+
+  // Stale Streaming Cleanup
+  /** 清理残留的 isStreaming 标记（应用重启后调用），返回被中断的消息 ID 列表 */
+  cleanupStaleStreaming: () => string[]
 }
 
 export const useConversationStore = create<ConversationStore>()(
@@ -315,6 +319,61 @@ export const useConversationStore = create<ConversationStore>()(
           }
         }
         return currentBranch
+      },
+
+      // ==================== Stale Streaming Cleanup ====================
+
+      cleanupStaleStreaming: () => {
+        const interruptedIds: string[] = []
+        const newMessages: Record<string, Message[]> = {}
+
+        for (const [convId, msgs] of Object.entries(get().messages)) {
+          let changed = false
+          const updated = msgs.map((m) => {
+            if (m.isStreaming) {
+              changed = true
+              interruptedIds.push(m.id)
+              return {
+                ...m,
+                isStreaming: false,
+                wasInterrupted: true,
+                content: m.content || '',
+                // 为没有内容的中断消息添加提示
+                ...(m.content ? {} : { content: '' }),
+              }
+            }
+            return m
+          })
+          newMessages[convId] = updated
+
+          // 如果有中断的消息，在对话末尾添加一条系统提示
+          if (changed) {
+            const lastMsg = updated[updated.length - 1]
+            if (lastMsg?.role === 'assistant' && lastMsg.wasInterrupted) {
+              // 检查是否已有中断提示
+              const hasInterruptNotice = updated.some(
+                (m) => m.role === 'system' && m.content?.includes('任务中断') && m.timestamp > (lastMsg.timestamp ?? 0) - 5000
+              )
+              if (!hasInterruptNotice) {
+                newMessages[convId] = [...updated, {
+                  id: uuidv4(),
+                  conversationId: convId,
+                  role: 'system' as const,
+                  content: '⚠️ 检测到任务中断：上次 AI 回复在应用关闭时尚未完成，已被自动标记为中断。您可以通过消息上的「继续任务」按钮恢复执行。',
+                  timestamp: Date.now(),
+                  branchIndex: lastMsg.branchIndex,
+                }]
+              }
+            }
+          }
+        }
+
+        if (interruptedIds.length > 0) {
+          set({ messages: newMessages })
+          console.log(`[ConversationStore] 已清理 ${interruptedIds.length} 条残留的 isStreaming 消息`)
+        }
+
+        return interruptedIds
       },
 
       // ==================== Search ====================

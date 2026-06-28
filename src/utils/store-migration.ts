@@ -108,4 +108,6 @@ export const STORE_VERSIONS = {
   TOOL_STATS: 1,
   /** workspace-store (workspaces) - v2: 新增 openTabs, defaultWorkspaceId */
   WORKSPACE: 2,
+  /** skill-store (skills) */
+  SKILLS: 1,
 } as const

@@ -71,6 +71,19 @@ export function KnowledgeBaseSettings() {
     return unsubscribe
   }, [])
 
+  // 组件挂载时，如果已配置非 tfidf 提供者且模型尚未就绪，自动初始化（从 IndexedDB 缓存恢复）
+  useEffect(() => {
+    if (
+      embeddingConfig.type !== 'tfidf' &&
+      !engineStatus.modelReady &&
+      !engineStatus.modelLoading
+    ) {
+      embeddingService.init(embeddingConfig)
+    }
+    // 仅在挂载时执行一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 监听模型就绪，自动启动渐进迁移
   useEffect(() => {
     if (engineStatus.modelReady) {

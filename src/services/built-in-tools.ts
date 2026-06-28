@@ -352,6 +352,40 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
     enabled: true
   },
 
+  // ==================== Skills 技能工具 ====================
+
+  {
+    id: 'agent-builtin:list_skills',
+    name: 'list_skills',
+    description: '列出当前可用的专业技能（Skills）。返回每个技能的名称和描述，帮助你判断是否需要加载某个技能来处理当前任务。当遇到特定领域任务时，先调用此工具查看可用技能。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'agent-builtin:use_skill',
+    name: 'use_skill',
+    description: '加载指定的专业技能。技能包含特定领域的专家知识和指令，加载后你将获得处理该领域任务的专业能力。使用前请先调用 list_skills 查看可用技能。',
+    parameters: {
+      type: 'object',
+      properties: {
+        skill_name: {
+          type: 'string',
+          description: '要加载的技能名称，例如 "pdf-processing" 或 "api-docs-generator"'
+        }
+      },
+      required: ['skill_name']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+
   // ==================== 需求分析专用工具 ====================
   // 这些工具让 Agent 能通过 function calling 驱动内部多轮推理
   // Agent 自己提问、自己回答、自己审查，直到需求完整

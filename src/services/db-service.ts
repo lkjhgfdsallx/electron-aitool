@@ -1,14 +1,15 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { KnowledgeBaseFile, KnowledgeBaseChunk, KnowledgeCollection } from '../types'
+import type { KnowledgeBaseFile, KnowledgeBaseChunk, KnowledgeCollection, Skill } from '../types'
 
 const DB_NAME = 'KnowledgeBase'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 const STORES = {
   FILE_METADATA: 'fileMetadata',
   FILE_DATA: 'fileData',
   CHUNKS: 'chunks',
-  KB_COLLECTIONS: 'kbCollections'
+  KB_COLLECTIONS: 'kbCollections',
+  SKILLS: 'skills'
 } as const
 
 /** 默认集合 ID（固定值，保证迁移稳定性） */
@@ -55,6 +56,14 @@ class DBService {
           // 但这会丢失数据，所以这里只处理新安装的情况
           // 对于从 v2 升级的用户，索引会在第一次打开 store 时由代码层面处理
           // 新安装时 fileMetadata 在 oldVersion < 1 已创建，此处无需操作
+        }
+
+        // v3 -> v4: 新增 Skills 存储（从文件系统迁移到 IndexedDB）
+        if (oldVersion < 4) {
+          const skillStore = db.createObjectStore(STORES.SKILLS, { keyPath: 'id' })
+          skillStore.createIndex('location', 'location')
+          skillStore.createIndex('enabled', 'enabled')
+          skillStore.createIndex('updatedAt', 'updatedAt')
         }
       }
     })
@@ -280,6 +289,51 @@ class DBService {
     await tx.done
   }
 
+  // ==================== Skills 操作 ====================
+
+  async saveSkill(skill: Skill): Promise<void> {
+    const db = await this.getDB()
+    await db.put(STORES.SKILLS, skill)
+  }
+
+  async getSkill(id: string): Promise<Skill | undefined> {
+    const db = await this.getDB()
+    return db.get(STORES.SKILLS, id)
+  }
+
+  async getAllSkills(): Promise<Skill[]> {
+    const db = await this.getDB()
+    return db.getAll(STORES.SKILLS)
+  }
+
+  async deleteSkill(id: string): Promise<void> {
+    const db = await this.getDB()
+    await db.delete(STORES.SKILLS, id)
+  }
+
+  async getSkillsByLocation(location: 'global' | 'project'): Promise<Skill[]> {
+    const db = await this.getDB()
+    const index = db.transaction(STORES.SKILLS).objectStore(STORES.SKILLS).index('location')
+    return index.getAll(location)
+  }
+
+  async saveSkills(skills: Skill[]): Promise<void> {
+    const db = await this.getDB()
+    const tx = db.transaction(STORES.SKILLS, 'readwrite')
+    const store = tx.objectStore(STORES.SKILLS)
+    for (const skill of skills) {
+      await store.put(skill)
+    }
+    await tx.done
+  }
+
+  async clearSkills(): Promise<void> {
+    const db = await this.getDB()
+    const tx = db.transaction(STORES.SKILLS, 'readwrite')
+    await tx.objectStore(STORES.SKILLS).clear()
+    await tx.done
+  }
+
   // ==================== 清理操作 ====================
 
   /**
@@ -295,7 +349,7 @@ class DBService {
   async clearAll(): Promise<void> {
     const db = await this.getDB()
     const tx = db.transaction(
-      [STORES.FILE_METADATA, STORES.FILE_DATA, STORES.CHUNKS, STORES.KB_COLLECTIONS],
+      [STORES.FILE_METADATA, STORES.FILE_DATA, STORES.CHUNKS, STORES.KB_COLLECTIONS, STORES.SKILLS],
       'readwrite'
     )
     await Promise.all([
@@ -303,6 +357,7 @@ class DBService {
       tx.objectStore(STORES.FILE_DATA).clear(),
       tx.objectStore(STORES.CHUNKS).clear(),
       tx.objectStore(STORES.KB_COLLECTIONS).clear(),
+      tx.objectStore(STORES.SKILLS).clear(),
       tx.done
     ])
   }

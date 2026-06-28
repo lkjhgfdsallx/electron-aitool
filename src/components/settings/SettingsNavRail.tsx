@@ -3,6 +3,7 @@ import {
   Globe,
   Bot,
   FileText,
+  Zap,
   Plug,
   Wrench,
   Database,
@@ -18,6 +19,7 @@ export type SettingsSection =
   | 'ai-providers'
   | 'agents'
   | 'prompts'
+  | 'skills'
   | 'mcp'
   | 'tools'
   | 'workspace'
@@ -35,6 +37,7 @@ export const SETTINGS_SECTIONS: {
   { key: 'ai-providers', label: 'AI 源', icon: Globe, color: 'text-blue-500' },
   { key: 'agents', label: 'Agent', icon: Bot, color: 'text-accent-500' },
   { key: 'prompts', label: '提示词', icon: FileText, color: 'text-orange-500' },
+  { key: 'skills', label: 'Skills', icon: Zap, color: 'text-amber-500' },
   { key: 'mcp', label: 'MCP', icon: Plug, color: 'text-emerald-500' },
   { key: 'tools', label: '工具', icon: Wrench, color: 'text-indigo-500' },
   { key: 'workspace', label: '工作区', icon: Briefcase, color: 'text-teal-500' },

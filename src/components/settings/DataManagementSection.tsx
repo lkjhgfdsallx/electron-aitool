@@ -16,7 +16,8 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
-  RotateCcw
+  RotateCcw,
+  Zap
 } from 'lucide-react'
 import { useConversationStore } from '../../stores/conversation-store'
 import {
@@ -805,6 +806,25 @@ export function DataManagementSection({ onNavigateToSection }: DataManagementSec
             className="flex items-center gap-2 px-4 py-2 text-sm text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800/60 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
           >
             <Database size={14} /> 管理知识库
+          </button>
+        </div>
+      </SectionCard>
+
+      {/* Skills 快捷入口 */}
+      <SectionCard>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
+              <Zap size={14} className="text-amber-500" />
+              Skills 技能管理
+            </h3>
+            <p className="text-xs text-muted mt-0.5">管理已导入的 Skills 技能包，数据存储在 IndexedDB 中</p>
+          </div>
+          <button
+            onClick={() => onNavigateToSection?.('skills')}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+          >
+            <Zap size={14} /> 管理 Skills
           </button>
         </div>
       </SectionCard>

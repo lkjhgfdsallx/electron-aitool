@@ -108,7 +108,13 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     editAndResend,
     handleHumanInput,
     resumeAgentTask,
+    continueInterruptedTask,
   } = useChat()
+
+  // 应用启动时清理残留的 isStreaming 标记（防止意外关闭后 UI 状态异常）
+  useEffect(() => {
+    useConversationStore.getState().cleanupStaleStreaming()
+  }, [])
 
   // 压缩检查
   const { prepareCompression, getContextConfig } = useWorkspaceCompression()
@@ -517,6 +523,7 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
                   onEditAndResend={editAndResend}
                   onHumanInput={handleHumanInput}
                   onResumeAgentTask={resumeAgentTask}
+                  onContinueInterruptedTask={continueInterruptedTask}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={handleSwitchBranch}
                 />

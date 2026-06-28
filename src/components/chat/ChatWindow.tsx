@@ -70,7 +70,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask } = useChat()
+  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask, continueInterruptedTask } = useChat()
 
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
   const kbDropdownRef = useRef<HTMLDivElement>(null)
@@ -78,6 +78,11 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   useEffect(() => {
     loadCollections()
   }, [loadCollections])
+
+  // 应用启动时清理残留的 isStreaming 标记（防止意外关闭后 UI 状态异常）
+  useEffect(() => {
+    useConversationStore.getState().cleanupStaleStreaming()
+  }, [])
 
   // 点击外部关闭知识库下拉菜单
   useEffect(() => {
@@ -485,6 +490,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                   onEditAndResend={editAndResend}
                   onHumanInput={handleHumanInput}
                   onResumeAgentTask={resumeAgentTask}
+                  onContinueInterruptedTask={continueInterruptedTask}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={handleSwitchBranch}
                 />

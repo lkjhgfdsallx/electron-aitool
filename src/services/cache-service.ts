@@ -202,6 +202,24 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
     })
   } catch { /* 数据库不存在 */ }
 
+  // Skills 数据
+  try {
+    const kbDb2 = await openDB('KnowledgeBase')
+    try {
+      const skills = await kbDb2.getAll('skills')
+      const skillsSize = new Blob([JSON.stringify(skills)]).size
+      regions.push({
+        key: 'skills-data',
+        name: 'Skills 技能数据',
+        description: '已导入的 Skills 技能包及其资源文件',
+        storage: 'indexedDB',
+        sizeBytes: skillsSize,
+        recordCount: skills.length,
+        clearable: true
+      })
+    } catch { /* store 可能不存在 */ }
+  } catch { /* 数据库不存在 */ }
+
   // 网站分析报告
   try {
     const reportDb = await openDB('SiteAnalyzerReports')
@@ -396,6 +414,24 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
     }
   } catch { /* 数据库不存在 */ }
 
+  // Skills 数据
+  try {
+    const kbDb2 = await openDB('KnowledgeBase')
+    try {
+      const skills = await kbDb2.getAll('skills')
+      const skillsSize = new Blob([JSON.stringify(skills)]).size
+      yield {
+        key: 'skills-data',
+        name: 'Skills 技能数据',
+        description: '已导入的 Skills 技能包及其资源文件',
+        storage: 'indexedDB',
+        sizeBytes: skillsSize,
+        recordCount: skills.length,
+        clearable: true
+      }
+    } catch { /* store 可能不存在 */ }
+  } catch { /* 数据库不存在 */ }
+
   // 网站分析报告
   try {
     const reportDb = await openDB('SiteAnalyzerReports')
@@ -457,6 +493,10 @@ export async function clearCache(regionKey: string): Promise<void> {
 
     case 'site-reports':
       await clearSiteReports()
+      break
+
+    case 'skills-data':
+      await clearSkillsData()
       break
 
     case 'model-files':
@@ -549,6 +589,14 @@ async function clearEmbeddings(): Promise<void> {
 async function clearSiteReports(): Promise<void> {
   const db = await openDB('SiteAnalyzerReports')
   await db.clear('reports')
+}
+
+/** 清除所有 Skills 数据 */
+async function clearSkillsData(): Promise<void> {
+  const db = await openDB('KnowledgeBase')
+  try {
+    await db.clear('skills')
+  } catch { /* store 可能不存在 */ }
 }
 
 // ==================== 工具函数 ====================

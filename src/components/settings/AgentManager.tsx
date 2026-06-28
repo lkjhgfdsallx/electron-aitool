@@ -20,11 +20,13 @@ import {
   ChevronDown,
   BookOpen,
   FolderOpen,
-  ArrowUpToLine
+  ArrowUpToLine,
+  Zap
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
+import { useSkillStore } from '../../stores/skill-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import { SYSTEM_AGENT_TAGS } from '../../types'
@@ -64,6 +66,7 @@ const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
   termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
   modelConfig: {},
   knowledgeBaseIds: [],
+  enabledSkillIds: [],
   enabled: true
 }
 
@@ -109,6 +112,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
 
   const { providers } = useAIProviderStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
+  const { skills } = useSkillStore()
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
 
   useEffect(() => {
@@ -396,6 +400,52 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
                         {col.description && (
                           <p className="text-xs text-muted">{col.description}</p>
                         )}
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
+          {/* 绑定 Skills */}
+          <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
+            <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
+              <Zap size={14} /> 绑定技能（Skills）
+            </h3>
+            <p className="text-xs text-muted">
+              选择此 Agent 可使用的专业技能。绑定后，Agent 会了解这些技能的存在并在适当时主动加载。
+            </p>
+            <div className="space-y-2">
+              {skills.length === 0 ? (
+                <p className="text-xs text-muted py-2">暂无可用技能，请先在 Skills 管理中创建。</p>
+              ) : (
+                skills.filter((s) => s.enabled).map((skill) => {
+                  const isSelected = (agentForm.enabledSkillIds ?? []).includes(skill.dirPath)
+                  return (
+                    <label
+                      key={skill.dirPath}
+                      className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/20'
+                          : 'border-surface-200/80 dark:border-surface-700/60 hover:bg-surface-50 dark:hover:bg-surface-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setAgentForm({ ...agentForm, enabledSkillIds: [...(agentForm.enabledSkillIds ?? []), skill.dirPath] })
+                          } else {
+                            setAgentForm({ ...agentForm, enabledSkillIds: (agentForm.enabledSkillIds ?? []).filter((id) => id !== skill.dirPath) })
+                          }
+                        }}
+                        className="rounded accent-amber-500"
+                      />
+                      <div>
+                        <span className="text-sm font-mono font-medium">{skill.name}</span>
+                        <p className="text-xs text-muted line-clamp-1">{skill.description}</p>
                       </div>
                     </label>
                   )

@@ -639,11 +639,16 @@ export const SETTINGS_REGISTRY: SettingItemMeta[] = [
   ...DATA_MGMT_ITEMS,
 ]
 
+// ==================== Skills ====================
+
+const SKILLS_ITEMS: SettingItemMeta[] = []
+
 /** 按 section 分组的注册表 */
 export const GROUPED_SETTINGS_REGISTRY: GroupedSettingsRegistry = {
   'ai-providers': AI_PROVIDERS_ITEMS,
   'agents': AGENTS_ITEMS,
   'prompts': PROMPTS_ITEMS,
+  'skills': SKILLS_ITEMS,
   'mcp': MCP_ITEMS,
   'tools': TOOLS_ITEMS,
   'workspace': WORKSPACE_ITEMS,

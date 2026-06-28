@@ -10,11 +10,12 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   FileText, Clock, Users, Plus, RotateCcw, ChevronRight, X,
-  Loader2, CheckCircle2, AlertCircle,
+  Loader2, CheckCircle2, AlertCircle, Zap, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
+import { useSkillStore } from '../../stores/skill-store'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import { FileTree } from './FileTree'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
@@ -30,7 +31,7 @@ interface ProjectExplorerProps {
   changedFiles?: Set<string>
 }
 
-type ExplorerTab = 'files' | 'checkpoints' | 'agents'
+type ExplorerTab = 'files' | 'checkpoints' | 'agents' | 'skills'
 
 export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changedFiles }: ProjectExplorerProps) {
   const [activeTab, setActiveTab] = useState<ExplorerTab>('files')
@@ -41,10 +42,17 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
     (cp) => cp.workspaceId === workspace.id
   )
 
+  const allSkills = useSkillStore((s) => s.skills)
+  const projectSkills = useMemo(
+    () => allSkills.filter((s) => s.location === 'project' && s.projectWorkspaceId === workspace.id),
+    [allSkills, workspace.id]
+  )
+
   const tabs: { key: ExplorerTab; label: string; icon: typeof FileText; count?: number }[] = [
     { key: 'files', label: '文件', icon: FileText },
     { key: 'checkpoints', label: '存档', icon: Clock, count: workspaceCheckpoints.length },
     { key: 'agents', label: '团队', icon: Users, count: workspace.teamAgentIds.length + (workspace.leaderAgentId ? 1 : 0) },
+    { key: 'skills', label: '技能', icon: Zap, count: projectSkills.length },
   ]
 
   return (
@@ -123,6 +131,11 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
         {/* B6: Agent 团队 */}
         {activeTab === 'agents' && (
           <AgentTeamPanel workspace={workspace} />
+        )}
+
+        {/* B7: 工作区 Skills */}
+        {activeTab === 'skills' && (
+          <WorkspaceSkillsPanel workspace={workspace} skills={projectSkills} />
         )}
       </div>
     </div>
@@ -498,6 +511,99 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ---- B7: 工作区 Skills 子组件 ----
+
+interface WorkspaceSkillsPanelProps {
+  workspace: Workspace
+  skills: Array<{
+    dirPath: string; name: string; description: string; content: string
+    location: string; resourceFiles: string[]
+    enabled: boolean; updatedAt: number
+  }>
+}
+
+function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) {
+  const { createSkill, toggleSkill, deleteSkill } = useSkillStore()
+  const [expandedDir, setExpandedDir] = useState<string | null>(null)
+
+  const handleCreateSkill = useCallback(() => {
+    createSkill({
+      name: `project-skill-${Date.now().toString(36)}`,
+      description: '新技能',
+      content: '',
+      location: 'project',
+      projectWorkspaceId: workspace.id,
+    })
+  }, [createSkill, workspace.id])
+
+  return (
+    <div className="p-2 space-y-2">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          工作区技能（{skills.length}）
+        </span>
+        <button
+          onClick={handleCreateSkill}
+          className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-colors"
+          title="创建新技能"
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+
+      {skills.length === 0 ? (
+        <div className="text-center py-6 text-xs text-gray-400 dark:text-gray-500">
+          <Zap size={20} className="mx-auto mb-1 opacity-50" />
+          <p>暂无工作区技能</p>
+          <p className="mt-0.5">点击 + 创建，或在设置中导入</p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {skills.map((skill) => (
+            <div
+              key={skill.dirPath}
+              className="rounded-lg border border-surface-200/80 dark:border-surface-700/60 overflow-hidden"
+            >
+              <div
+                className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+                onClick={() => setExpandedDir(expandedDir === skill.dirPath ? null : skill.dirPath)}
+              >
+                <Zap size={12} className={skill.enabled ? 'text-amber-500' : 'text-gray-400'} />
+                <span className="text-xs font-mono font-medium flex-1 truncate">{skill.name}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleSkill(skill.dirPath) }}
+                  className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-600 transition-colors"
+                  title={skill.enabled ? '禁用' : '启用'}
+                >
+                  {skill.enabled
+                    ? <ToggleRight size={16} className="text-teal-500" />
+                    : <ToggleLeft size={16} className="text-gray-400" />
+                  }
+                </button>
+              </div>
+              {expandedDir === skill.dirPath && (
+                <div className="px-2 pb-2 border-t border-surface-100 dark:border-surface-700/40">
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-3">
+                    {skill.description || '无描述'}
+                  </p>
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <button
+                      onClick={() => deleteSkill(skill.dirPath)}
+                      className="text-[10px] text-red-400 hover:text-red-500 transition-colors"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

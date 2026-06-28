@@ -80,6 +80,8 @@ export interface AgentProfile {
   modelConfig: AgentModelConfig
   /** 绑定的知识库集合 ID 列表（为空则搜索全部） */
   knowledgeBaseIds?: string[]
+  /** 绑定的 Skills ID 列表（为空则不注入任何 Skills） */
+  enabledSkillIds?: string[]
   /** 标签列表（`workspace` 为系统保留标签，标识工作区独立 Agent） */
   tags?: string[]
   /** 是否启用 */

@@ -14,7 +14,6 @@ import { searchWeb, fetchWebpage } from './web-search'
 import { setupWorkspaceVCSHandlers } from './workspace-vcs-handler'
 import { setupWorkspaceWatcherHandlers } from './workspace-watcher-handler'
 import { setupWorkspaceCommandHandlers } from './workspace-command-handler'
-
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1280,

@@ -28,6 +28,7 @@ import { siteAnalyzerService } from './site-analyzer-service'
 import { knowledgeBaseService } from './knowledge-base-service'
 import { WORKSPACE_TOOLS } from './built-in-tools'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
+import { useSkillStore } from '../stores/skill-store'
 import { workspaceFsService } from './workspace-fs-service'
 import { useWorkspaceMessageStore } from '../stores/workspace-message-store'
 
@@ -207,6 +208,23 @@ function buildAgentSystemPrompt(
       prompt += `- 如果任务尚未完成，请继续调用下一个需要的工具。\n`
       prompt += `- 只有当你确信任务的所有步骤都已完成时，才给出最终回答。\n`
       prompt += `- 不要把中间结果当作最终回答，中间结果应作为继续执行的依据。\n`
+    }
+  }
+
+  // 添加可用 Skills 信息（按 Agent 绑定的 enabledSkillIds 过滤）
+  if (agent.enabledSkillIds && agent.enabledSkillIds.length > 0) {
+    const allSkills = useSkillStore.getState().getAllEnabledSkills()
+    const boundSkills = allSkills.filter((s) => agent.enabledSkillIds!.includes(s.dirPath))
+    if (boundSkills.length > 0) {
+      prompt += `\n\n## 可用专业技能（Skills）\n`
+      prompt += `你有以下专业技能可供使用，这些技能为你提供了特定领域的专家知识：\n`
+      for (const skill of boundSkills) {
+        prompt += `\n- **${skill.name}**：${skill.description}\n`
+      }
+      prompt += `\n### 如何使用 Skills\n`
+      prompt += `- 使用 \`list_skills\` 工具查看所有可用技能的详细列表\n`
+      prompt += `- 使用 \`use_skill\` 工具加载特定技能的完整内容。加载后，技能的知识将注入到你的上下文中，指导你按照专家方式完成任务\n`
+      prompt += `- 当用户的请求涉及某个技能的领域时，你应该主动加载该技能以获取专业指导\n`
     }
   }
 

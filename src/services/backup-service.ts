@@ -24,6 +24,9 @@ const LOCAL_STORAGE_KEYS = [
   'tool-stats'
 ] as const
 
+/** localStorage 中需要排除的键（已迁移到 IndexedDB） */
+const EXCLUDED_LOCAL_STORAGE_KEYS = ['skills-preferences'] as const
+
 /** IndexedDB 数据库名称 */
 const KB_DB_NAME = 'KnowledgeBase'
 const REPORTS_DB_NAME = 'SiteAnalyzerReports'
@@ -52,6 +55,8 @@ export interface RestoreOptions {
   restoreKnowledgeBase?: boolean
   /** 是否恢复网站分析报告 */
   restoreReports?: boolean
+  /** 是否恢复 Skills 数据 */
+  restoreSkills?: boolean
 }
 
 // ==================== 备份 ====================
@@ -70,7 +75,7 @@ export async function createBackup(
     exportedAt: new Date().toISOString(),
     appVersion: '1.0.0',
     localStorageKeys: [...LOCAL_STORAGE_KEYS],
-    indexedDBDatabases: [KB_DB_NAME, REPORTS_DB_NAME]
+    indexedDBDatabases: [KB_DB_NAME, REPORTS_DB_NAME, 'Skills']
   }
   zip.file('metadata.json', JSON.stringify(metadata, null, 2))
 
@@ -91,18 +96,22 @@ export async function createBackup(
   await backupKnowledgeBase(zip)
 
   // 4. 备份网站分析报告
-  onProgress?.('备份分析报告...', totalLS + 1, totalLS + 3)
+  onProgress?.('备份分析报告...', totalLS + 1, totalLS + 4)
   await backupReports(zip)
 
-  // 5. 生成 zip
-  onProgress?.('生成备份文件...', totalLS + 2, totalLS + 3)
+  // 5. 备份 Skills
+  onProgress?.('备份 Skills 数据...', totalLS + 2, totalLS + 4)
+  await backupSkills(zip)
+
+  // 6. 生成 zip
+  onProgress?.('生成备份文件...', totalLS + 3, totalLS + 4)
   const blob = await zip.generateAsync({
     type: 'blob',
     compression: 'DEFLATE',
     compressionOptions: { level: 6 }
   })
 
-  onProgress?.('备份完成', totalLS + 3, totalLS + 3)
+  onProgress?.('备份完成', totalLS + 4, totalLS + 4)
   return blob
 }
 
@@ -170,6 +179,24 @@ async function backupReports(zip: JSZip): Promise<void> {
   } catch { /* store 可能不存在 */ }
 }
 
+/** 备份 Skills IndexedDB 数据 */
+async function backupSkills(zip: JSZip): Promise<void> {
+  let db
+  try {
+    db = await openDB(KB_DB_NAME)
+  } catch {
+    return
+  }
+
+  try {
+    const skills = await db.getAll('skills')
+    if (skills.length > 0) {
+      const skillsFolder = zip.folder('indexeddb/skills')!
+      skillsFolder.file('skills.json', JSON.stringify(skills, null, 2))
+    }
+  } catch { /* store 可能不存在 */ }
+}
+
 // ==================== 恢复 ====================
 
 /**
@@ -185,7 +212,8 @@ export async function restoreFromBackup(
   const {
     restoreLocalStorage = true,
     restoreKnowledgeBase = true,
-    restoreReports = true
+    restoreReports = true,
+    restoreSkills = true
   } = options
 
   const errors: string[] = []
@@ -249,7 +277,7 @@ export async function restoreFromBackup(
 
   // 5. 恢复报告
   if (restoreReports) {
-    onProgress?.('恢复分析报告...', 3, 5)
+    onProgress?.('恢复分析报告...', 3, 6)
     try {
       await restoreReportsData(zip)
     } catch (e) {
@@ -257,7 +285,22 @@ export async function restoreFromBackup(
     }
   }
 
-  onProgress?.('恢复完成', 5, 5)
+  // 6. 恢复 Skills
+  if (restoreSkills) {
+    onProgress?.('恢复 Skills 数据...', 4, 6)
+    try {
+      await restoreSkillsData(zip)
+    } catch (e) {
+      errors.push(`恢复 Skills 失败: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  // 清理已迁移到 IndexedDB 的 localStorage 旧数据
+  for (const key of EXCLUDED_LOCAL_STORAGE_KEYS) {
+    localStorage.removeItem(key)
+  }
+
+  onProgress?.('恢复完成', 6, 6)
   return { success: errors.length === 0, errors }
 }
 
@@ -283,6 +326,12 @@ async function restoreKnowledgeBaseData(zip: JSZip): Promise<void> {
       if (!db.objectStoreNames.contains('chunks')) {
         const store = db.createObjectStore('chunks', { keyPath: 'id' })
         store.createIndex('fileId', 'fileId')
+      }
+      if (!db.objectStoreNames.contains('skills')) {
+        const store = db.createObjectStore('skills', { keyPath: 'id' })
+        store.createIndex('location', 'location')
+        store.createIndex('enabled', 'enabled')
+        store.createIndex('updatedAt', 'updatedAt')
       }
     }
   })
@@ -372,6 +421,33 @@ async function restoreReportsData(zip: JSZip): Promise<void> {
     }
     await tx.done
   }
+}
+
+/** 恢复 Skills IndexedDB 数据 */
+async function restoreSkillsData(zip: JSZip): Promise<void> {
+  const skillsFolder = zip.folder('indexeddb/skills')
+  if (!skillsFolder) return
+
+  const skillsFile = skillsFolder.file('skills.json')
+  if (!skillsFile) return
+
+  const db = await openDB(KB_DB_NAME, undefined, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains('skills')) {
+        const store = db.createObjectStore('skills', { keyPath: 'id' })
+        store.createIndex('location', 'location')
+        store.createIndex('enabled', 'enabled')
+        store.createIndex('updatedAt', 'updatedAt')
+      }
+    }
+  })
+
+  const data = JSON.parse(await skillsFile.async('string'))
+  const tx = db.transaction('skills', 'readwrite')
+  for (const item of data) {
+    await tx.store.put(item)
+  }
+  await tx.done
 }
 
 // ==================== 辅助 ====================

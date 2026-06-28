@@ -4,6 +4,7 @@ import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
 import { knowledgeBaseService } from './knowledge-base-service'
 import { useToolStatsStore } from '../stores/tool-stats-store'
+import { useSkillStore } from '../stores/skill-store'
 
 // ==================== 安全数学表达式求值器 ====================
 // 递归下降解析器，支持：四则运算、幂运算、括号、常见数学函数和常量
@@ -440,6 +441,60 @@ export const toolService = {
       case 'math_symbolic':
       case 'math_verify': {
         return executeMathTool(toolName, args)
+      }
+
+      case 'list_skills': {
+        try {
+          const enabledSkills = useSkillStore.getState().getAllEnabledSkills()
+          const skillsList = enabledSkills.map((s) => ({
+            name: s.name,
+            description: s.description,
+            location: s.location,
+          }))
+          return {
+            success: true,
+            data: JSON.stringify({
+              skills_count: skillsList.length,
+              skills: skillsList,
+            }),
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '获取技能列表失败'
+          return { success: false, data: '', error: msg }
+        }
+      }
+
+      case 'use_skill': {
+        try {
+          const skillName = String(args.skill_name ?? '')
+          if (!skillName) {
+            return { success: false, data: '', error: 'use_skill 需要 skill_name 参数' }
+          }
+          const skills = useSkillStore.getState().skills
+          const skill = skills.find(
+            (s) => s.name === skillName && s.enabled
+          )
+          if (!skill) {
+            const available = skills.filter((s) => s.enabled).map((s) => s.name)
+            return {
+              success: false,
+              data: '',
+              error: `未找到名为 "${skillName}" 的已启用技能。可用技能：${available.join(', ') || '无'}`,
+            }
+          }
+          return {
+            success: true,
+            data: JSON.stringify({
+              name: skill.name,
+              description: skill.description,
+              content: skill.content,
+              resource_files: skill.resourceFiles,
+            }),
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '加载技能失败'
+          return { success: false, data: '', error: msg }
+        }
       }
 
       case 'ask_self':

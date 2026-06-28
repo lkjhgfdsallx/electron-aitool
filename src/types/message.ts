@@ -59,6 +59,8 @@ export interface Message {
   toolName?: string     // 工具返回结果时的工具名称
   isStreaming?: boolean
   isError?: boolean
+  /** 任务是否被中断（应用重启后检测到残留的 isStreaming 标记） */
+  wasInterrupted?: boolean
   isEdited?: boolean
   parentId?: string     // 重新生成时关联的原始消息 ID
   attachments?: MessageAttachment[] // 附件列表

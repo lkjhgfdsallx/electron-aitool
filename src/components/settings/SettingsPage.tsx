@@ -3,6 +3,7 @@ import { SettingsNavRail, type SettingsSection } from './SettingsNavRail'
 import { AIProviderManager } from './AIProviderManager'
 import { AgentManager } from './AgentManager'
 import { PromptManager } from './PromptManager'
+import { SkillManager } from './SkillManager'
 import { MCPConfig } from './MCPConfig'
 import { KnowledgeBaseSettings } from './KnowledgeBaseSettings'
 import { ToolEditor } from './ToolEditor'
@@ -37,6 +38,8 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
         return <AgentManager />
       case 'prompts':
         return <PromptManager />
+      case 'skills':
+        return <SkillManager />
       case 'mcp':
         return <MCPConfig />
       case 'tools':

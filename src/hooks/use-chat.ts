@@ -515,6 +515,31 @@ export function useChat() {
               isStreamingRef.current = false
               if (status === 'completed') {
                 notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
+                // 输出任务完成详情
+                const actionSteps = agentSteps.filter((s) => s.type === 'action')
+                const thinkingSteps = agentSteps.filter((s) => s.type === 'thinking')
+                const detailParts: string[] = []
+                detailParts.push(`✅ **任务完成**`)
+                detailParts.push(`- 总步骤数: ${agentSteps.length}（思考 ${thinkingSteps.length} 步，工具调用 ${actionSteps.length} 次）`)
+                if (actionSteps.length > 0) {
+                  const toolNames = [...new Set(actionSteps.map((s) => s.toolCall?.name).filter(Boolean))]
+                  detailParts.push(`- 使用工具: ${toolNames.join('、')}`)
+                }
+                if (agentSteps.length > 0) {
+                  const startTime = agentSteps[0].timestamp
+                  const endTime = agentSteps[agentSteps.length - 1].timestamp
+                  const duration = endTime - startTime
+                  if (duration > 0) {
+                    const seconds = Math.round(duration / 1000)
+                    detailParts.push(`- 执行耗时: ${seconds < 60 ? `${seconds}秒` : `${Math.floor(seconds / 60)}分${seconds % 60}秒`}`)
+                  }
+                }
+                addMessage(convId, {
+                  conversationId: convId,
+                  role: 'system',
+                  content: detailParts.join('\n'),
+                  branchIndex: currentBranchIdx
+                })
               }
             }
           },
@@ -1043,7 +1068,17 @@ export function useChat() {
     isStreamingRef.current = false
     // 清理所有等待中的 humanInput resolver，让 Agent 循环能立即退出
     humanInputResolversRef.current.clear()
-  }, [])
+
+    // 立即将所有正在流式输出的消息标记为非流式，防止 UI 状态残留
+    if (currentConversationId) {
+      const msgs = getMessages(currentConversationId)
+      for (const m of msgs) {
+        if (m.isStreaming) {
+          updateMessage(m.id, { isStreaming: false })
+        }
+      }
+    }
+  }, [currentConversationId, getMessages, updateMessage])
 
   /**
    * 重新生成消息（不重新添加用户消息）
@@ -1758,6 +1793,47 @@ export function useChat() {
     ]
   )
 
+  /**
+   * 继续被中断的任务
+   * 找到中断消息之前的用户消息，重新发送以继续任务
+   */
+  const continueInterruptedTask = useCallback(
+    async (messageId: string) => {
+      if (!currentConversationId || isStreamingRef.current) return
+
+      const messages = getMessages(currentConversationId)
+      const msgIndex = messages.findIndex((m) => m.id === messageId)
+      if (msgIndex < 0) return
+
+      const interruptedMsg = messages[msgIndex]
+      if (!interruptedMsg.wasInterrupted) return
+
+      // 找到中断消息之前的用户消息
+      let userMsgIndex = -1
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          userMsgIndex = i
+          break
+        }
+      }
+
+      // 清除中断标记
+      updateMessage(messageId, { wasInterrupted: undefined })
+
+      // 删除中断的 assistant 消息及之后的所有消息（保留用户消息）
+      for (let i = messages.length - 1; i >= msgIndex; i--) {
+        useConversationStore.getState().deleteMessage(currentConversationId, messages[i].id)
+      }
+
+      // 重新发送用户消息以继续任务
+      if (userMsgIndex >= 0) {
+        const userMsg = messages[userMsgIndex]
+        await sendMessage(userMsg.content, currentConversationId, userMsg.attachments)
+      }
+    },
+    [currentConversationId, getMessages, updateMessage, sendMessage]
+  )
+
   return {
     sendMessage,
     stopGeneration,
@@ -1765,6 +1841,7 @@ export function useChat() {
     editAndResend,
     isStreaming: isStreamingRef.current,
     handleHumanInput,
-    resumeAgentTask
+    resumeAgentTask,
+    continueInterruptedTask
   }
 }
