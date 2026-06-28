@@ -22,6 +22,18 @@ import { STORE_VERSIONS } from '../utils/store-migration'
 // 默认选中所有工具的 ID
 const DEFAULT_ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS].map((t) => t.id)
 
+/** 需求分析 Agent 可使用的工具（严格限制为需求分析相关工具） */
+const REQUIREMENT_ANALYST_TOOL_IDS = [
+  'builtin:get_current_time',
+  'builtin:knowledge_search',
+  'agent-builtin:remember',
+  'agent-builtin:recall',
+  'agent-builtin:ask_self',
+  'agent-builtin:define_requirement',
+  'agent-builtin:review_requirements',
+  'agent-builtin:ask_human',
+]
+
 const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 'systemPrompt' | 'createdAt' | 'updatedAt'> = {
   avatar: '🤖',
   enabledToolIds: [...DEFAULT_ALL_TOOL_IDS],
@@ -49,6 +61,7 @@ function createDefaultRequirementAnalyst(): AgentProfile {
     description: '用户提出需求，你分析需求并反问，直到完全理清楚需求',
     avatar: '🔍',
     systemPrompt: REQUIREMENT_ANALYST_PROMPT,
+    enabledToolIds: [...REQUIREMENT_ANALYST_TOOL_IDS],
     createdAt: Date.now(),
     updatedAt: Date.now()
   }

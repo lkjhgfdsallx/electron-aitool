@@ -99,8 +99,11 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
         return
       }
 
-      // C2: 应用模板默认值
-      const templateDefaults = selectedTemplate?.defaults ?? {}
+      // C2: 应用模板默认值（过滤 undefined，避免覆盖 DEFAULT_WORKSPACE_INPUT 的默认值）
+      const rawTemplateDefaults = selectedTemplate?.defaults ?? {}
+      const templateDefaults = Object.fromEntries(
+        Object.entries(rawTemplateDefaults).filter(([_, v]) => v !== undefined)
+      )
 
       // 创建工作区
       const input: WorkspaceCreateInput = {

@@ -9,8 +9,9 @@
  * - 关闭按钮
  */
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { X, FileText, Copy, Check, AlertTriangle } from 'lucide-react'
+import hljs from 'highlight.js'
 import { workspaceFsService } from '../../services/workspace-fs-service'
 
 // ---- Props ----
@@ -90,6 +91,19 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
   const lines = content.split('\n')
   const lineCount = lines.length
 
+  // 代码高亮
+  const highlightedHtml = useMemo(() => {
+    if (!content) return ''
+    const lang = language !== 'text' && hljs.getLanguage(language) ? language : undefined
+    try {
+      return lang
+        ? hljs.highlight(content, { language: lang }).value
+        : hljs.highlightAuto(content).value
+    } catch {
+      return content
+    }
+  }, [content, language])
+
   return (
     <div className="flex flex-col h-full bg-white dark:bg-surface-900">
       {/* 头部 */}
@@ -162,9 +176,12 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
                 </div>
               ))}
             </div>
-            {/* 内容列 */}
-            <pre className="flex-1 py-2 px-3 overflow-x-auto whitespace-pre text-gray-700 dark:text-gray-300">
-              {content}
+            {/* 内容列（带语法高亮） */}
+            <pre className="flex-1 py-2 px-3 overflow-x-auto whitespace-pre">
+              <code
+                className="hljs"
+                dangerouslySetInnerHTML={{ __html: highlightedHtml || content }}
+              />
             </pre>
           </div>
         )}

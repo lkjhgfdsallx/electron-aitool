@@ -16,6 +16,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import { FileTree } from './FileTree'
+import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
 import type { Workspace, CheckpointIndex } from '../../types'
 
 interface ProjectExplorerProps {
@@ -285,8 +286,17 @@ interface AgentTeamPanelProps {
 function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   const { getAgent, agents } = useAgentStore()
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
-  const leaderAgent = workspace.leaderAgentId ? getAgent(workspace.leaderAgentId) : undefined
+  // 当 leaderAgentId 未设置时，回退到默认的 AI 领导 Agent
+  const effectiveLeaderId = workspace.leaderAgentId ?? WORKSPACE_LEADER_AGENT_ID
+  const leaderAgent = getAgent(effectiveLeaderId)
   const teamAgents = workspace.teamAgentIds.map((id) => getAgent(id)).filter(Boolean)
+
+  // 自动修复：如果工作区缺少 leaderAgentId，自动补上
+  useEffect(() => {
+    if (!workspace.leaderAgentId && leaderAgent) {
+      updateWorkspace({ id: workspace.id, leaderAgentId: WORKSPACE_LEADER_AGENT_ID })
+    }
+  }, [workspace.id, workspace.leaderAgentId, leaderAgent, updateWorkspace])
 
   const [showPicker, setShowPicker] = useState(false)
   const [pickerPos, setPickerPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })

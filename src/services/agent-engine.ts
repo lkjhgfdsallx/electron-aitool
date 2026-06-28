@@ -52,6 +52,24 @@ export interface AgentEngineCallbacks {
   onSiteAnalyzerProgress?: (progress: { taskId: string; type: string; message: string; pagesCrawled?: number; totalPages?: number; apisFound?: number; pagesAnalyzed?: number; currentUrl?: string; error?: string }) => void
 }
 
+/** 子 Agent 活动事件 */
+export interface SubAgentActivityEvent {
+  /** 子 Agent ID */
+  agentId: string
+  /** 子 Agent 名称 */
+  agentName: string
+  /** 子 Agent 头像 */
+  agentAvatar?: string
+  /** 事件类型 */
+  type: 'step' | 'status_change' | 'error'
+  /** Agent 步骤（type='step' 时） */
+  step?: AgentStep
+  /** 状态变更（type='status_change' 时） */
+  status?: string
+  /** 错误信息（type='error' 时） */
+  error?: string
+}
+
 /** 工作区上下文（在 Agent 运行时注入） */
 export interface WorkspaceContext {
   /** 工作区根目录的绝对路径 */
@@ -70,6 +88,8 @@ export interface WorkspaceContext {
     avatar?: string
     enabledToolIds?: string[]
   }) => Promise<string>
+  /** 子 Agent 活动回调（将子 Agent 的执行步骤实时上报给 UI） */
+  onSubAgentActivity?: (event: SubAgentActivityEvent) => void
 }
 
 /** Agent 内部消息格式（支持工具调用） */
@@ -112,12 +132,13 @@ function buildAgentSystemPrompt(
       prompt += `\n使用 \`workspace_dispatch_task\` 工具将子任务分派给团队成员。分派时请提供详细的任务描述和足够的上下文信息。\n`
     }
     if (workspaceContext.createAgent) {
-      prompt += `\n如果现有团队成员无法胜任某项任务，你可以使用 \`workspace_create_agent\` 工具创建新的专业 Agent，然后通过 \`workspace_dispatch_task\` 将任务分派给它。\n`
+      prompt += `\n如果现有团队成员无法胜任某项任务，你可以使用 \`workspace_create_agent\` 工具创建新的工作区专属 Agent（仅存储在当前工作区，不会污染全局 Agent 列表），然后通过 \`workspace_dispatch_task\` 将任务分派给它。\n`
     }
 
     if (isLeader) {
       // Leader Agent 的指挥者规则（强化指挥者身份）
       prompt += `\n### 🔴 指挥者准则\n`
+      prompt += `0. **获取到用户指令后，不要立即工作，先查看自己的手下，看看有没有可以安排任务的。** \n`
       prompt += `1. **你绝不亲自编写代码、创建文件或执行命令。** 所有实际工作必须通过 \`workspace_dispatch_task\` 分派给团队成员完成。\n`
       prompt += `2. **绝对禁止在回复中输出代码块（\`\`\`）。** 你的回复只包含分析、计划、说明和指挥指令。\n`
       prompt += `3. **绝对禁止使用 \`workspace_write_file\`、\`workspace_read_file\`、\`workspace_execute_command\` 等执行工具。** 这些工具只留给被分派任务的 Agent 使用。\n`
@@ -921,22 +942,6 @@ export async function runAgent(
         const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')) }
         signal.addEventListener('abort', onAbort, { once: true })
       })
-    }
-
-    // 检查超时（timeoutSeconds 为 0 表示不限制）
-    if (agent.termination.timeoutSeconds > 0 && (Date.now() - startTime) / 1000 > agent.termination.timeoutSeconds) {
-      const errorStep: AgentStep = {
-        id: crypto.randomUUID(),
-        type: 'error',
-        content: `执行超时（${agent.termination.timeoutSeconds}秒）`,
-        stepIndex: stepIndex++,
-        timestamp: Date.now()
-      }
-      steps.push(errorStep)
-      callbacks.onStep(errorStep)
-      callbacks.onStatusChange('error')
-      callbacks.onError('Agent 执行超时')
-      return
     }
 
     // 检查中止信号
@@ -1910,22 +1915,6 @@ export async function resumeAgent(
         const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')) }
         signal.addEventListener('abort', onAbort, { once: true })
       })
-    }
-
-    // 检查超时（timeoutSeconds 为 0 表示不限制）
-    if (agent.termination.timeoutSeconds > 0 && (Date.now() - startTime) / 1000 > agent.termination.timeoutSeconds) {
-      const errorStep: AgentStep = {
-        id: crypto.randomUUID(),
-        type: 'error',
-        content: `执行超时（${agent.termination.timeoutSeconds}秒）`,
-        stepIndex: stepIndex++,
-        timestamp: Date.now()
-      }
-      steps.push(errorStep)
-      callbacks.onStep(errorStep)
-      callbacks.onStatusChange('error')
-      callbacks.onError('Agent 执行超时')
-      return
     }
 
     // 检查中止信号

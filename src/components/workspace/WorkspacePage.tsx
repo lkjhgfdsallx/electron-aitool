@@ -24,9 +24,9 @@
  * - C7: 默认工作区标记
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useConversationStore } from '../../stores/conversation-store'
-import { Settings, ChevronLeft, ChevronDown, ChevronUp, X, Plus, Download, Clock, Star, StarOff } from 'lucide-react'
+import { Settings, ChevronLeft, ChevronDown, ChevronUp, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { workspaceFileWatcher } from '../../services/workspace-file-watcher'
 import { ProjectExplorer } from './ProjectExplorer'
@@ -36,6 +36,26 @@ import { FilePreview } from './FilePreview'
 import { WorkspaceCreateDialog } from './WorkspaceCreateDialog'
 import { WorkspaceSettingsPopover } from './WorkspaceSettingsPopover'
 import { ContextTimelinePanel } from './ContextTimelinePanel'
+
+/** 相对时间格式化 */
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+
+  if (seconds < 60) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  if (hours < 24) return `${hours} 小时前`
+  if (days < 7) return `${days} 天前`
+
+  const date = new Date(timestamp)
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const day = date.getDate().toString().padStart(2, '0')
+  return `${month}/${day}`
+}
 
 interface WorkspacePageProps {
   onBackToChat: () => void
@@ -58,6 +78,9 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
   const [leftPanelWidth, setLeftPanelWidth] = useState(260)
   const [bottomPanelHeight, setBottomPanelHeight] = useState(200)
   const [showCreateWorkspace, setShowCreateWorkspace] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'recent' | 'all'>('recent')
 
   // B2: 文件预览状态
   const [previewFile, setPreviewFile] = useState<string | null>(null)
@@ -74,6 +97,17 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
   // C1: Tab 右键菜单
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
+
+  // 自动激活已有工作区：进入页面时若有打开的 Tab 但无活跃工作区，自动激活默认/第一个
+  useEffect(() => {
+    if (!activeWorkspaceId && openTabs.length > 0) {
+      const store = useWorkspaceStore.getState()
+      const targetId = store.defaultWorkspaceId && openTabs.includes(store.defaultWorkspaceId)
+        ? store.defaultWorkspaceId
+        : openTabs[0]
+      store.activateWorkspace(targetId)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // B10: 进入工作区时启动文件监控
   useEffect(() => {
@@ -138,11 +172,17 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     const conversationStore = useConversationStore.getState()
 
     // 保存当前对话 ID（退出工作区时恢复）
-    previousConversationIdRef.current = conversationStore.currentConversationId
+    // 注意：必须保存非工作区对话的 ID，因为子组件 WorkspaceChatPanel 的 effect
+    // 可能已先于本 effect 执行并将 currentConversationId 设为工作区对话
+    const currentConv = conversationStore.currentConversationId
+      ? conversationStore.conversations.find((c) => c.id === conversationStore.currentConversationId)
+      : null
+    previousConversationIdRef.current = currentConv?.workspaceId ? null : conversationStore.currentConversationId
 
     // 对话创建/选择已交由 WorkspaceChatPanel 管理（支持多对话切换）
 
-    // 退出工作区时恢复之前的对话
+    // 退出工作区时：保存工作区会话
+    // 注意：不在此处恢复对话，由 deactivateWorkspace() 内部的 switchToNonWorkspaceConversation() 统一处理
     return () => {
       const store = useConversationStore.getState()
       // 保存所有工作区对话消息到文件系统（异步，非阻塞）
@@ -162,8 +202,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           ).catch((err: unknown) => console.warn('[WorkspacePage] 保存会话失败:', err))
         }
       }
-      // 恢复之前的对话
-      store.selectConversation(previousConversationIdRef.current)
+      // 对话恢复由 deactivateWorkspace() 中的 switchToNonWorkspaceConversation() 处理
     }
   }, [activeWorkspace?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -271,40 +310,205 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         </div>
 
         {/* 引导内容 */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center max-w-md px-6">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-teal-50 dark:bg-teal-900/20 flex items-center justify-center">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-teal-500">
-                <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-              </svg>
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-6 py-10">
+            {/* 头部标识 */}
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-800/20 flex items-center justify-center shadow-sm">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-teal-500">
+                  <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                  <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                </svg>
+              </div>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
+                欢迎使用工作区
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
+                工作区是一个完整的 AI 项目操作台，文件、对话、命令三要素同屏协作。
+              </p>
             </div>
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              欢迎使用工作区
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              工作区是一个完整的 AI 项目操作台，文件、对话、命令三要素同屏协作。
-              创建或选择一个工作区开始使用。
-            </p>
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={() => setShowCreateWorkspace(true)}
-                className="px-5 py-2.5 rounded-xl bg-gradient-brand text-white text-sm font-medium shadow-sm hover:shadow-md transition-all hover:brightness-110 active:scale-[0.98]"
-              >
-                创建新工作区
-              </button>
-              {workspaces.length > 0 && (
-                <button
-                  onClick={() => {
-                    const { activateWorkspace } = useWorkspaceStore.getState()
-                    activateWorkspace(workspaces[0].id)
-                  }}
-                  className="px-5 py-2.5 rounded-xl border border-surface-300 dark:border-surface-600 text-gray-600 dark:text-gray-300 text-sm font-medium hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                >
-                  选择已有工作区
-                </button>
-              )}
-            </div>
+
+            {/* 工作区卡片区域 */}
+            {(() => {
+              const sorted = [...workspaces].sort((a, b) => b.updatedAt - a.updatedAt)
+              const recentWorkspaces = sorted.slice(0, 5)
+              const displayWorkspaces = viewMode === 'recent' ? recentWorkspaces : sorted
+              const filtered = searchQuery
+                ? displayWorkspaces.filter((ws) =>
+                    ws.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    ws.folderPath.toLowerCase().includes(searchQuery.toLowerCase())
+                  )
+                : displayWorkspaces
+              return (
+                <div>
+                  {/* 区域标题 + 切换标签 + 搜索 */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        工作区
+                      </h3>
+                      <div className="flex items-center bg-surface-100 dark:bg-surface-800 rounded-lg p-0.5">
+                        <button
+                          onClick={() => setViewMode('recent')}
+                          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                            viewMode === 'recent'
+                              ? 'bg-white dark:bg-surface-700 text-gray-800 dark:text-gray-200 shadow-sm'
+                              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                          }`}
+                        >
+                          最近
+                        </button>
+                        <button
+                          onClick={() => setViewMode('all')}
+                          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
+                            viewMode === 'all'
+                              ? 'bg-white dark:bg-surface-700 text-gray-800 dark:text-gray-200 shadow-sm'
+                              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                          }`}
+                        >
+                          全部
+                        </button>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="搜索工作区..."
+                        className="pl-8 pr-3 py-1.5 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 dark:focus:border-teal-500 w-40 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 卡片网格 */}
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    {/* 新建工作区卡片 */}
+                    <div
+                      onClick={() => setShowCreateWorkspace(true)}
+                      className="group flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-surface-300 dark:border-surface-600 bg-surface-50/50 dark:bg-surface-800/30 cursor-pointer transition-all duration-200 hover:border-teal-400 dark:hover:border-teal-500 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 hover:-translate-y-0.5 min-h-[140px]"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center mb-2 group-hover:bg-teal-100 dark:group-hover:bg-teal-900/30 transition-colors">
+                        <Plus size={20} className="text-gray-400 dark:text-gray-500 group-hover:text-teal-500 transition-colors" />
+                      </div>
+                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+                        新建工作区
+                      </span>
+                    </div>
+
+                    {/* 工作区卡片列表 */}
+                    {filtered.map((ws) => (
+                      <div
+                        key={ws.id}
+                        onClick={() => {
+                          const { activateWorkspace } = useWorkspaceStore.getState()
+                          activateWorkspace(ws.id)
+                        }}
+                        className="group relative flex flex-col p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/80 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-teal-300 dark:hover:border-teal-600 hover:-translate-y-0.5"
+                      >
+                        {/* 默认标记 */}
+                        {ws.id === defaultWorkspaceId && (
+                          <div className="absolute top-2.5 right-2.5">
+                            <Star size={14} className="text-amber-400 fill-amber-400" />
+                          </div>
+                        )}
+
+                        {/* 删除按钮（悬浮显示） */}
+                        {deleteConfirmId === ws.id ? (
+                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1 z-10">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                const { deleteWorkspace } = useWorkspaceStore.getState()
+                                deleteWorkspace(ws.id)
+                                setDeleteConfirmId(null)
+                              }}
+                              className="px-2 py-0.5 text-[10px] font-medium rounded bg-danger-500 text-white hover:bg-danger-600 transition-colors"
+                            >
+                              确认
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteConfirmId(null)
+                              }}
+                              className="px-2 py-0.5 text-[10px] font-medium rounded bg-surface-200 dark:bg-surface-600 text-gray-600 dark:text-gray-300 hover:bg-surface-300 dark:hover:bg-surface-500 transition-colors"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        ) : (
+                          ws.id !== defaultWorkspaceId && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteConfirmId(ws.id)
+                              }}
+                              className="absolute top-2.5 right-2.5 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-gray-400 hover:text-danger-500 transition-all z-10"
+                              title="删除工作区"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )
+                        )}
+
+                        {/* 图标 + 名称 */}
+                        <div className="flex items-center gap-2.5 mb-2">
+                          <div className="w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-900/20 flex items-center justify-center flex-shrink-0">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-teal-500">
+                              <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0 pr-5">
+                            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
+                              {ws.name}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 描述 */}
+                        {ws.description && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mb-2 leading-relaxed">
+                            {ws.description}
+                          </p>
+                        )}
+
+                        {/* 路径 */}
+                        <div className="flex items-center gap-1.5 mb-3">
+                          <Folder size={12} className="text-gray-400 flex-shrink-0" />
+                          <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                            {ws.folderPath}
+                          </span>
+                        </div>
+
+                        {/* 底部信息栏 */}
+                        <div className="mt-auto flex items-center justify-between text-[11px] text-gray-400 dark:text-gray-500">
+                          <div className="flex items-center gap-1">
+                            <Clock size={11} />
+                            <span>{formatRelativeTime(ws.updatedAt)}</span>
+                          </div>
+                          {ws.teamAgentIds.length > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Users size={11} />
+                              <span>{ws.teamAgentIds.length}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 搜索无结果 */}
+                  {searchQuery && filtered.length === 0 && (
+                    <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
+                      未找到匹配的工作区
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
 
@@ -327,58 +531,66 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* C1: 多 Tab 标签栏 */}
-      {tabWorkspaces.length > 1 && (
-        <div className="flex items-center h-9 px-1 border-b border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-900/80 select-none overflow-x-auto scrollbar-thin"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      {/* C1: Tab 标签栏（始终显示） */}
+      <div className="flex items-center h-9 px-1 border-b border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-900/80 select-none overflow-x-auto scrollbar-thin"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
+        {/* 返回对话按钮 */}
+        <button
+          onClick={onBackToChat}
+          className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
+          title="返回对话"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          {tabWorkspaces.map((ws) => {
-            const isActive = ws.id === activeWorkspaceId
-            const isDefault = ws.id === defaultWorkspaceId
-            return (
+          <ChevronLeft size={14} />
+        </button>
+        <div className="w-px h-4 bg-surface-200 dark:bg-surface-700/60 flex-shrink-0" />
+        {tabWorkspaces.map((ws) => {
+          const isActive = ws.id === activeWorkspaceId
+          const isDefault = ws.id === defaultWorkspaceId
+          return (
+            <button
+              key={ws.id}
+              onClick={() => switchTab(ws.id)}
+              onContextMenu={(e) => handleTabContextMenu(e, ws.id)}
+              className={`group/tab flex items-center gap-1.5 px-3 h-full text-xs font-medium transition-all border-r border-surface-200 dark:border-surface-700/40 flex-shrink-0 max-w-[180px] ${
+                isActive
+                  ? 'bg-white dark:bg-surface-800 text-teal-600 dark:text-teal-400 border-b-2 border-b-teal-500'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                isActive ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
+              }`} />
+              <span className="truncate">{ws.name}</span>
+              {isDefault && (
+                <Star size={10} className="text-amber-400 flex-shrink-0 fill-amber-400" />
+              )}
+              {/* 关闭按钮 */}
               <button
-                key={ws.id}
-                onClick={() => switchTab(ws.id)}
-                onContextMenu={(e) => handleTabContextMenu(e, ws.id)}
-                className={`group/tab flex items-center gap-1.5 px-3 h-full text-xs font-medium transition-all border-r border-surface-200 dark:border-surface-700/40 flex-shrink-0 max-w-[180px] ${
-                  isActive
-                    ? 'bg-white dark:bg-surface-800 text-teal-600 dark:text-teal-400 border-b-2 border-b-teal-500'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  closeTab(ws.id)
+                }}
+                className="p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-600 transition-opacity flex-shrink-0"
+                title="关闭标签"
               >
-                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                  isActive ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
-                }`} />
-                <span className="truncate">{ws.name}</span>
-                {isDefault && (
-                  <Star size={10} className="text-amber-400 flex-shrink-0 fill-amber-400" />
-                )}
-                {/* 关闭按钮 */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeTab(ws.id)
-                  }}
-                  className="p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-600 transition-opacity flex-shrink-0"
-                  title="关闭标签"
-                >
-                  <X size={11} />
-                </button>
+                <X size={11} />
               </button>
-            )
-          })}
-          {/* 新建 Tab 按钮 */}
-          <button
-            onClick={() => setShowCreateWorkspace(true)}
-            className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
-            title="新建工作区"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          >
-            <Plus size={13} />
-          </button>
-        </div>
-      )}
+            </button>
+          )
+        })}
+        {/* 新建 Tab 按钮 */}
+        <button
+          onClick={() => setShowCreateWorkspace(true)}
+          className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
+          title="新建工作区"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <Plus size={13} />
+        </button>
+      </div>
 
       {/* C1: Tab 右键菜单 */}
       {tabContextMenu && (
@@ -428,35 +640,23 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* C1: 仅在单 Tab 模式显示返回按钮 */}
-          {tabWorkspaces.length <= 1 && (
-            <button
-              onClick={onBackToChat}
-              className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
-              title="返回对话"
-            >
-              <ChevronLeft size={18} />
-            </button>
+          <div className="w-2 h-2 rounded-full bg-teal-500" />
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[200px]">
+            {activeWorkspace.name}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 truncate hidden sm:inline">
+            {activeWorkspace.folderPath}
+          </span>
+          {/* C7: 默认工作区标记 */}
+          {activeWorkspaceId === defaultWorkspaceId && (
+            <span title="默认工作区"><Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" /></span>
           )}
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-teal-500" />
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[200px]">
-              {activeWorkspace.name}
+          {/* B8: 文件变化计数 */}
+          {changedFiles.size > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
+              {changedFiles.size} 变更
             </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500 truncate hidden sm:inline">
-              {activeWorkspace.folderPath}
-            </span>
-            {/* C7: 默认工作区标记 */}
-            {activeWorkspaceId === defaultWorkspaceId && (
-              <span title="默认工作区"><Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" /></span>
-            )}
-            {/* B8: 文件变化计数 */}
-            {changedFiles.size > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
-                {changedFiles.size} 变更
-              </span>
-            )}
-          </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

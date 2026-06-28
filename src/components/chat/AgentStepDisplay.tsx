@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -11,7 +11,8 @@ import {
   User,
   Timer,
   RotateCcw,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Users
 } from 'lucide-react'
 import type { AgentStep } from '../../types'
 
@@ -167,16 +168,75 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
 
   const toggleAll = () => {
     if (isAllExpanded) {
+      // 全部折叠：清空展开的步骤，折叠所有子 Agent 分组
       setExpandedSteps(new Set())
+      const allAgentIds = new Set<string>()
+      for (const s of steps) {
+        if (s.sourceAgentId) allAgentIds.add(s.sourceAgentId)
+      }
+      setCollapsedAgentGroups(allAgentIds)
     } else {
+      // 全部展开：展开所有步骤，展开所有子 Agent 分组
       setExpandedSteps(new Set(steps.map((s) => s.id)))
+      setCollapsedAgentGroups(new Set())
     }
     setIsAllExpanded(!isAllExpanded)
   }
 
   // 非 final_answer 的步骤
   const processSteps = steps.filter((s) => s.type !== 'final_answer')
+
+  // 统计子 Agent 信息（用 ref 追踪已见过的 ID，避免每次渲染创建新 Set 导致 effect 反复触发）
+  const seenAgentIdsRef = useRef<Set<string>>(new Set())
+  const subAgentIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const s of processSteps) {
+      if (s.sourceAgentId) ids.add(s.sourceAgentId)
+    }
+    return ids
+  }, [processSteps])
+
+  // 子 Agent 步骤分组折叠状态
+  const [collapsedAgentGroups, setCollapsedAgentGroups] = useState<Set<string>>(new Set())
+
+  // 子 Agent 步骤默认折叠（仅对首次出现的 Agent ID 折叠，不影响用户手动操作）
+  useEffect(() => {
+    const newIds: string[] = []
+    for (const id of subAgentIds) {
+      if (!seenAgentIdsRef.current.has(id)) {
+        seenAgentIdsRef.current.add(id)
+        newIds.push(id)
+      }
+    }
+    if (newIds.length > 0) {
+      setCollapsedAgentGroups((prev) => {
+        const next = new Set(prev)
+        for (const id of newIds) {
+          next.add(id)
+        }
+        return next
+      })
+    }
+  }, [subAgentIds])
+
   if (processSteps.length === 0) return null
+
+  // 判断是否需要在当前步骤前插入子 Agent 分组头
+  const shouldShowAgentHeader = (step: AgentStep, index: number): boolean => {
+    if (!step.sourceAgentId) return false
+    // 第一个步骤或者是前一个步骤不是同一子 Agent
+    if (index === 0) return true
+    const prevStep = processSteps[index - 1]
+    return prevStep.sourceAgentId !== step.sourceAgentId
+  }
+
+  // 判断子 Agent 分组是否在当前步骤结束
+  const isAgentGroupEnd = (step: AgentStep, index: number): boolean => {
+    if (!step.sourceAgentId) return false
+    if (index === processSteps.length - 1) return true
+    const nextStep = processSteps[index + 1]
+    return nextStep.sourceAgentId !== step.sourceAgentId
+  }
 
   return (
     <div className="mb-2 rounded-xl border border-surface-200/60 dark:border-surface-700/40 overflow-hidden">
@@ -193,7 +253,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
             </div>
           )}
           <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-            Agent 执行过程（{processSteps.length} 步）
+            Agent 执行过程（{processSteps.length} 步{subAgentIds.size > 0 ? `，含 ${subAgentIds.size} 个子 Agent` : ''}）
           </span>
         </div>
         <button
@@ -212,111 +272,162 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
           const isExpanded = expandedSteps.has(step.id)
           const isLast = index === processSteps.length - 1
           const isCurrentStep = isRunning && isLast
+          const isSubAgent = !!step.sourceAgentId
+          const agentGroupCollapsed = isSubAgent && collapsedAgentGroups.has(step.sourceAgentId!)
 
           return (
             <div key={step.id} className="relative">
-              {/* 连接线 */}
-              {!isLast && (
-                <div className="absolute left-[15px] top-8 bottom-0 w-0.5 bg-surface-200 dark:bg-surface-700" />
-              )}
-
-              <div className={`rounded-lg border border-surface-200/60 dark:border-surface-700/40 overflow-hidden mx-2 my-1.5 ${isCurrentStep ? 'animate-pulse ring-1 ring-accent-300 dark:ring-accent-600' : ''}`}>
+              {/* 子 Agent 分组头（仅在该 Agent 第一个步骤前显示） */}
+              {isSubAgent && shouldShowAgentHeader(step, index) && (
                 <button
-                  onClick={() => toggleStep(step.id)}
-                  className="flex items-center gap-3 w-full px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
+                  onClick={() => {
+                    setCollapsedAgentGroups((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(step.sourceAgentId!)) {
+                        next.delete(step.sourceAgentId!)
+                      } else {
+                        next.add(step.sourceAgentId!)
+                      }
+                      return next
+                    })
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 mx-2 mt-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40 cursor-pointer hover:bg-indigo-100/80 dark:hover:bg-indigo-950/50 transition-colors"
                 >
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${config.bgColor}`}>
-                    <StepIcon size={12} className={config.color} />
+                  <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0 text-xs">
+                    {step.sourceAgentAvatar || '🤖'}
                   </div>
-                  <span className={`text-xs font-medium ${config.color}`}>
-                    {config.label}
+                  <Users size={12} className="text-indigo-500" />
+                  <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                    {step.sourceAgentName || '子 Agent'}
                   </span>
-                  <span className="text-xs text-muted truncate flex-1 text-left">
-                    {truncateContent(step.content, 80)}
+                  <span className="text-xs text-indigo-400 dark:text-indigo-500">
+                    正在执行任务...
                   </span>
                   <div className="ml-auto flex-shrink-0">
-                    {isExpanded ? (
-                      <ChevronDown size={14} className="text-muted" />
+                    {agentGroupCollapsed ? (
+                      <ChevronRight size={14} className="text-indigo-400" />
                     ) : (
-                      <ChevronRight size={14} className="text-muted" />
+                      <ChevronDown size={14} className="text-indigo-400" />
                     )}
                   </div>
                 </button>
+              )}
 
-                <div
-                  className="overflow-hidden transition-all duration-300 ease-in-out"
-                  style={{ maxHeight: isExpanded ? '1200px' : '0px', opacity: isExpanded ? 1 : 0 }}
-                >
-                  <div className="px-3 pb-3 text-xs text-muted leading-relaxed">
-                    {/* 思考内容 */}
-                    {step.type === 'thinking' && (
-                      <div className="mt-2 text-xs text-muted leading-relaxed whitespace-pre-wrap">
-                        {step.content}
+              {/* 子 Agent 步骤折叠时跳过渲染 */}
+              {isSubAgent && agentGroupCollapsed ? null : (
+                <>
+                  {/* 连接线 */}
+                  {!isLast && (
+                    <div className={`absolute top-8 bottom-0 w-0.5 ${isSubAgent ? 'left-[23px] bg-indigo-200 dark:bg-indigo-800' : 'left-[15px] bg-surface-200 dark:bg-surface-700'}`} />
+                  )}
+
+                  <div className={`rounded-lg border overflow-hidden my-1.5 ${isSubAgent ? 'ml-6 mr-2 border-indigo-200/60 dark:border-indigo-800/40 bg-indigo-50/30 dark:bg-indigo-950/10' : 'mx-2 border-surface-200/60 dark:border-surface-700/40'} ${isCurrentStep ? 'animate-pulse ring-1 ring-accent-300 dark:ring-accent-600' : ''}`}>
+                    <button
+                      onClick={() => toggleStep(step.id)}
+                      className="flex items-center gap-3 w-full px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
+                    >
+                      <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${isSubAgent ? 'bg-indigo-100 dark:bg-indigo-900/40' : config.bgColor}`}>
+                        <StepIcon size={12} className={isSubAgent ? 'text-indigo-500' : config.color} />
                       </div>
-                    )}
-
-                    {/* 工具调用 */}
-                    {step.type === 'action' && step.toolCall && (
-                      <div className="mt-2 space-y-1">
-                        <div className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                          工具：{step.toolCall.name}
-                        </div>
-                        <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto">
-                          {JSON.stringify(step.toolCall.arguments, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-
-                    {/* 工具结果 */}
-                    {step.type === 'observation' && step.toolResult && (
-                      <div className="mt-2 space-y-1">
-                        <div className={`text-xs font-medium ${step.toolResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-danger-600 dark:text-danger-400'}`}>
-                          {step.toolResult.success ? '✓ 执行成功' : '✗ 执行失败'}
-                        </div>
-                        <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto max-h-40 overflow-y-auto">
-                          {step.toolResult.success ? step.toolResult.data : step.toolResult.error}
-                        </pre>
-                      </div>
-                    )}
-
-                    {/* 错误 */}
-                    {step.type === 'error' && (
-                      <div className="mt-2 space-y-2">
-                        <div className="text-xs text-danger-600 dark:text-danger-400">
-                          {step.content}
-                        </div>
-                        {isError && !isRunning && onResumeAgentTask && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onResumeAgentTask()
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
-                          >
-                            <RotateCcw size={12} />
-                            继续任务
-                          </button>
+                      <span className={`text-xs font-medium ${isSubAgent ? 'text-indigo-600 dark:text-indigo-400' : config.color}`}>
+                        {config.label}
+                      </span>
+                      <span className="text-xs text-muted truncate flex-1 text-left">
+                        {truncateContent(step.content, 80)}
+                      </span>
+                      <div className="ml-auto flex-shrink-0">
+                        {isExpanded ? (
+                          <ChevronDown size={14} className="text-muted" />
+                        ) : (
+                          <ChevronRight size={14} className="text-muted" />
                         )}
                       </div>
-                    )}
+                    </button>
 
-                    {/* 用户选择 */}
-                    {step.type === 'human_input' && step.humanChoice && (
-                      <HumanChoicePanel
-                        step={step}
-                        onHumanInput={onHumanInput}
-                        countdown={countdown}
-                        multiSelections={multiSelections}
-                        setMultiSelections={setMultiSelections}
-                        customInputMap={customInputMap}
-                        setCustomInputMap={setCustomInputMap}
-                        customExpandedMap={customExpandedMap}
-                        setCustomExpandedMap={setCustomExpandedMap}
-                      />
-                    )}
+                    <div
+                      className="overflow-hidden transition-all duration-300 ease-in-out"
+                      style={{ maxHeight: isExpanded ? '1200px' : '0px', opacity: isExpanded ? 1 : 0 }}
+                    >
+                      <div className="px-3 pb-3 text-xs text-muted leading-relaxed">
+                        {/* 思考内容 */}
+                        {step.type === 'thinking' && (
+                          <div className="mt-2 text-xs text-muted leading-relaxed whitespace-pre-wrap">
+                            {step.content}
+                          </div>
+                        )}
+
+                        {/* 工具调用 */}
+                        {step.type === 'action' && step.toolCall && (
+                          <div className="mt-2 space-y-1">
+                            <div className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                              工具：{step.toolCall.name}
+                            </div>
+                            <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto">
+                              {JSON.stringify(step.toolCall.arguments, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {/* 工具结果 */}
+                        {step.type === 'observation' && step.toolResult && (
+                          <div className="mt-2 space-y-1">
+                            <div className={`text-xs font-medium ${step.toolResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-danger-600 dark:text-danger-400'}`}>
+                              {step.toolResult.success ? '✓ 执行成功' : '✗ 执行失败'}
+                            </div>
+                            <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto max-h-40 overflow-y-auto">
+                              {step.toolResult.success ? step.toolResult.data : step.toolResult.error}
+                            </pre>
+                          </div>
+                        )}
+
+                        {/* 错误 */}
+                        {step.type === 'error' && (
+                          <div className="mt-2 space-y-2">
+                            <div className="text-xs text-danger-600 dark:text-danger-400">
+                              {step.content}
+                            </div>
+                            {isError && !isRunning && onResumeAgentTask && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onResumeAgentTask()
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
+                              >
+                                <RotateCcw size={12} />
+                                继续任务
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 用户选择 */}
+                        {step.type === 'human_input' && step.humanChoice && (
+                          <HumanChoicePanel
+                            step={step}
+                            onHumanInput={onHumanInput}
+                            countdown={countdown}
+                            multiSelections={multiSelections}
+                            setMultiSelections={setMultiSelections}
+                            customInputMap={customInputMap}
+                            setCustomInputMap={setCustomInputMap}
+                            customExpandedMap={customExpandedMap}
+                            setCustomExpandedMap={setCustomExpandedMap}
+                          />
+                        )}
+                      </div>
+                    </div>
                   </div>
+                </>
+              )}
+
+              {/* 子 Agent 分组结束标记 */}
+              {isSubAgent && isAgentGroupEnd(step, index) && !agentGroupCollapsed && (
+                <div className="flex items-center gap-2 px-3 py-1 mx-6 text-xs text-indigo-400 dark:text-indigo-500">
+                  <CheckCircle2 size={10} />
+                  <span>{step.sourceAgentName || '子 Agent'} 任务完成</span>
                 </div>
-              </div>
+              )}
             </div>
           )
         })}

@@ -6,7 +6,7 @@
  */
 
 import { useWorkspaceStore } from '../stores/workspace-store'
-import type { CheckpointIndex, CheckpointDetail, CreateCheckpointParams } from '../types'
+import type { CheckpointIndex, CheckpointDetail, CreateCheckpointParams, AgentProfile } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 
 const api = () => window.electronAPI
@@ -166,5 +166,46 @@ export const workspaceVCSService = {
    */
   async selectFolder(): Promise<{ success: boolean; folderPath?: string; canceled?: boolean; error?: string }> {
     return api().workspace.selectFolder()
+  },
+
+  // ---- 工作区 Agent 服务 ----
+
+  /**
+   * 加载工作区独立 Agent 列表
+   */
+  async loadAgents(folderPath: string): Promise<AgentProfile[]> {
+    const result = await api().workspace.vcs.loadAgents(folderPath)
+    if (result.success && result.agents) {
+      return result.agents as AgentProfile[]
+    }
+    return []
+  },
+
+  /**
+   * 保存工作区 Agent 列表（全量覆盖）
+   */
+  async saveAgents(folderPath: string, agents: AgentProfile[]): Promise<{ success: boolean; error?: string }> {
+    return api().workspace.vcs.saveAgents(folderPath, agents)
+  },
+
+  /**
+   * 添加单个工作区 Agent
+   */
+  async addAgent(folderPath: string, agent: AgentProfile): Promise<{ success: boolean; error?: string }> {
+    return api().workspace.vcs.addAgent(folderPath, agent)
+  },
+
+  /**
+   * 更新单个工作区 Agent
+   */
+  async updateAgent(folderPath: string, agent: AgentProfile): Promise<{ success: boolean; error?: string }> {
+    return api().workspace.vcs.updateAgent(folderPath, agent)
+  },
+
+  /**
+   * 删除单个工作区 Agent
+   */
+  async deleteAgent(folderPath: string, agentId: string): Promise<{ success: boolean; error?: string }> {
+    return api().workspace.vcs.deleteAgent(folderPath, agentId)
   },
 }

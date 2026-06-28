@@ -705,7 +705,7 @@ export const WORKSPACE_TOOLS: Tool[] = [
   {
     id: 'workspace:create_agent',
     name: 'workspace_create_agent',
-    description: '创建一个全新的专业 Agent 并将其加入当前工作区团队。当现有团队成员无法胜任某项任务时使用此工具。新创建的 Agent 会拥有自己的系统提示词、工具集和专业领域，创建后可通过 workspace_dispatch_task 将任务分派给它。',
+    description: '创建一个工作区专属 Agent 并将其加入当前工作区团队。新 Agent 仅存储在当前工作区的 .ai-workspace-vcs/agents.json 中，不会污染全局 Agent 列表。当现有团队成员无法胜任某项任务时使用此工具。创建后可通过 workspace_dispatch_task 将任务分派给它。用户也可在设置中将其提升为全局 Agent。',
     parameters: {
       type: 'object',
       properties: {

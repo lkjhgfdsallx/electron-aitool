@@ -15,14 +15,17 @@ import { createPortal } from 'react-dom'
 import {
   Settings, Shield, Terminal, Clock, ExternalLink, ToggleLeft, ToggleRight,
   Database, Plug, ChevronDown, ChevronRight, Check, X, Crown, FileEdit,
+  Users, ArrowUpToLine, Trash2,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT } from '../../constants/default-agents'
 import { LeaderPromptEditorModal } from './LeaderPromptEditorModal'
 import type { Workspace, CommandPolicy, CheckpointPolicy } from '../../types'
+import type { AgentProfile } from '../../types/agent'
 
 // ---- Props ----
 
@@ -59,6 +62,12 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
   // C4: MCP 数据
   const mcpServers = useGlobalConfigStore((s) => s.mcpServers)
   const [showMCPSection, setShowMCPSection] = useState(false)
+
+  // 工作区 Agent
+  const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
+  const promoteToGlobal = useWorkspaceAgentStore((s) => s.promoteToGlobal)
+  const deleteWorkspaceAgent = useWorkspaceAgentStore((s) => s.deleteWorkspaceAgent)
+  const [showAgentSection, setShowAgentSection] = useState(false)
 
   // Leader 提示词编辑
   const getAgent = useAgentStore((s) => s.getAgent)
@@ -139,6 +148,15 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
 
   const enabledKBCount = (workspace.knowledgeBaseIds ?? []).length
   const enabledMCPCount = (workspace.mcpServerIds ?? []).length
+
+  // 工作区 Agent 快捷操作
+  const handlePromoteAgent = useCallback((agent: AgentProfile) => {
+    promoteToGlobal(agent.id)
+  }, [promoteToGlobal])
+
+  const handleDeleteAgent = useCallback((agentId: string) => {
+    deleteWorkspaceAgent(agentId, workspace.folderPath)
+  }, [deleteWorkspaceAgent, workspace.folderPath])
 
   return createPortal(
     <div
@@ -321,6 +339,66 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
               )}
               <p className="text-[9px] text-gray-400 dark:text-gray-500 pt-1">
                 工作区启用的 MCP 工具直接对 AI 领导可见
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* 工作区 Agent 管理 */}
+        <div className="rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
+          <button
+            onClick={() => setShowAgentSection(!showAgentSection)}
+            className="w-full flex items-center gap-2.5 px-3 py-2"
+          >
+            <Users size={14} className="text-gray-400" />
+            <div className="flex-1 text-left">
+              <p className="text-xs text-gray-700 dark:text-gray-300">工作区 Agent</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                {workspaceAgents.length > 0 ? `已创建 ${workspaceAgents.length} 个 Agent` : '暂无工作区 Agent'}
+              </p>
+            </div>
+            {workspaceAgents.length > 0 && (
+              <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                {workspaceAgents.length}
+              </span>
+            )}
+            {showAgentSection ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
+          </button>
+          {showAgentSection && (
+            <div className="px-3 pb-2 ml-6 space-y-1">
+              {workspaceAgents.length === 0 ? (
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 py-1">
+                  AI 领导创建的 Agent 将显示在此处
+                </p>
+              ) : (
+                workspaceAgents.map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded text-[11px] group hover:bg-surface-100 dark:hover:bg-surface-600/50 transition-colors"
+                  >
+                    <span className="text-sm flex-shrink-0">{agent.avatar || '🤖'}</span>
+                    <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{agent.name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handlePromoteAgent(agent)}
+                        title="提升为全局 Agent"
+                        className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 text-gray-400 hover:text-amber-500 transition-colors"
+                      >
+                        <ArrowUpToLine size={12} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAgent(agent.id)}
+                        title="删除"
+                        className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+              <p className="text-[9px] text-gray-400 dark:text-gray-500 pt-1">
+                工作区 Agent 仅在此工作区可用，可提升为全局 Agent
               </p>
             </div>
           )}

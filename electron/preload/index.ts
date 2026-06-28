@@ -201,6 +201,16 @@ export interface ElectronAPI {
       saveSession: (folderPath: string, sessionData: unknown) => Promise<{ success: boolean; error?: string }>
       /** 加载工作区会话（消息 + 终端历史） */
       loadSession: (folderPath: string) => Promise<{ success: boolean; session?: unknown; error?: string }>
+      /** 加载工作区 Agent 列表 */
+      loadAgents: (folderPath: string) => Promise<{ success: boolean; agents?: unknown[]; error?: string }>
+      /** 保存工作区 Agent 列表（全量覆盖） */
+      saveAgents: (folderPath: string, agents: unknown[]) => Promise<{ success: boolean; error?: string }>
+      /** 添加单个工作区 Agent */
+      addAgent: (folderPath: string, agent: unknown) => Promise<{ success: boolean; error?: string }>
+      /** 更新单个工作区 Agent */
+      updateAgent: (folderPath: string, agent: unknown) => Promise<{ success: boolean; error?: string }>
+      /** 删除单个工作区 Agent */
+      deleteAgent: (folderPath: string, agentId: string) => Promise<{ success: boolean; error?: string }>
     }
     /** 文件监控 */
     watcher: {
@@ -346,6 +356,16 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.invoke('workspace:vcs:save-session', folderPath, sessionData),
       loadSession: (folderPath: string) =>
         ipcRenderer.invoke('workspace:vcs:load-session', folderPath),
+      loadAgents: (folderPath: string) =>
+        ipcRenderer.invoke('workspace:vcs:load-agents', folderPath),
+      saveAgents: (folderPath: string, agents: unknown[]) =>
+        ipcRenderer.invoke('workspace:vcs:save-agents', folderPath, agents),
+      addAgent: (folderPath: string, agent: unknown) =>
+        ipcRenderer.invoke('workspace:vcs:add-agent', folderPath, agent),
+      updateAgent: (folderPath: string, agent: unknown) =>
+        ipcRenderer.invoke('workspace:vcs:update-agent', folderPath, agent),
+      deleteAgent: (folderPath: string, agentId: string) =>
+        ipcRenderer.invoke('workspace:vcs:delete-agent', folderPath, agentId),
     },
     watcher: {
       start: (folderPath: string) =>

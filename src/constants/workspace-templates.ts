@@ -51,7 +51,6 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
     icon: '🟢',
     category: 'backend',
     defaults: {
-      leaderAgentId: undefined,
       allowDynamicAgents: true,
       teamAgentIds: [],
       checkpointPolicy: 'auto-before-modify',
@@ -78,7 +77,6 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
     icon: '⚛️',
     category: 'fullstack',
     defaults: {
-      leaderAgentId: undefined,
       allowDynamicAgents: true,
       teamAgentIds: [],
       checkpointPolicy: 'auto-before-modify',
@@ -105,7 +103,6 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
     icon: '🐍',
     category: 'backend',
     defaults: {
-      leaderAgentId: undefined,
       allowDynamicAgents: true,
       teamAgentIds: [],
       checkpointPolicy: 'auto-before-modify',
@@ -132,7 +129,6 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
     icon: '⚡',
     category: 'frontend',
     defaults: {
-      leaderAgentId: undefined,
       allowDynamicAgents: true,
       teamAgentIds: [],
       checkpointPolicy: 'auto-before-modify',
@@ -159,7 +155,6 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
     icon: '📁',
     category: 'general',
     defaults: {
-      leaderAgentId: undefined,
       allowDynamicAgents: true,
       teamAgentIds: [],
       checkpointPolicy: 'auto-before-modify',

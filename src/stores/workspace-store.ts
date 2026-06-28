@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { useConversationStore } from './conversation-store'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
+import { useConversationStore } from './conversation-store'
+import { useWorkspaceAgentStore } from './workspace-agent-store'
 import type {
   Workspace,
   WorkspaceCreateInput,
@@ -11,6 +12,20 @@ import type {
   CommandApprovalResult,
 } from '../types'
 import { STORE_VERSIONS } from '../utils/store-migration'
+
+/** 退出工作区时，如果当前对话属于工作区，自动切换到最近的非工作区对话 */
+function switchToNonWorkspaceConversation(): void {
+  const convStore = useConversationStore.getState()
+  const currentConv = convStore.currentConversationId
+    ? convStore.conversations.find((c) => c.id === convStore.currentConversationId)
+    : null
+  if (currentConv?.workspaceId) {
+    const nonWorkspaceConvs = convStore.conversations
+      .filter((c) => !c.workspaceId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    convStore.selectConversation(nonWorkspaceConvs[0]?.id ?? null)
+  }
+}
 
 // ---- 命令审批回调存储 ----
 
@@ -215,6 +230,9 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           isLoadingCheckpoints: true,
           watcherActive: false,
         }))
+
+        // 异步加载工作区 Agent
+        useWorkspaceAgentStore.getState().loadWorkspaceAgents(workspace.folderPath)
       },
 
       deactivateWorkspace: () => {
@@ -229,6 +247,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           pendingApprovalResolve('denied')
           pendingApprovalResolve = null
         }
+        // 清空工作区 Agent 内存
+        useWorkspaceAgentStore.getState().clearWorkspaceAgents()
+        // 退出工作区时，切换到最近的非工作区对话
+        switchToNonWorkspaceConversation()
       },
 
       getActiveWorkspace: () => {
@@ -254,6 +276,8 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           pendingApprovalResolve('denied')
           pendingApprovalResolve = null
         }
+        // 切换 Tab 时重新加载目标工作区的 Agent
+        useWorkspaceAgentStore.getState().loadWorkspaceAgents(workspace.folderPath)
       },
 
       closeTab: (id: string) => {
@@ -272,9 +296,14 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             pendingApprovalResolve('denied')
             pendingApprovalResolve = null
           }
+          // 清空工作区 Agent
+          useWorkspaceAgentStore.getState().clearWorkspaceAgents()
+          // 退出工作区时，切换到最近的非工作区对话
+          switchToNonWorkspaceConversation()
         } else if (state.activeWorkspaceId === id) {
           // 关闭当前 Tab → 切换到最后一个 Tab
           const newActiveId = newTabs[newTabs.length - 1]
+          const newActive = state.workspaces.find((ws) => ws.id === newActiveId)
           set({
             openTabs: newTabs,
             activeWorkspaceId: newActiveId,
@@ -286,6 +315,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           if (pendingApprovalResolve) {
             pendingApprovalResolve('denied')
             pendingApprovalResolve = null
+          }
+          // 重新加载目标工作区的 Agent
+          if (newActive) {
+            useWorkspaceAgentStore.getState().loadWorkspaceAgents(newActive.folderPath)
           }
         } else {
           set({ openTabs: newTabs })
@@ -314,6 +347,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           pendingApprovalResolve('denied')
           pendingApprovalResolve = null
         }
+        // 清空工作区 Agent
+        useWorkspaceAgentStore.getState().clearWorkspaceAgents()
+        // 退出工作区时，切换到最近的非工作区对话
+        switchToNonWorkspaceConversation()
       },
 
       // ---- 默认工作区 (C7) ----

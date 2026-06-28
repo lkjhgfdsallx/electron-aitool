@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   X,
   Plus,
@@ -18,12 +18,16 @@ import {
   Database,
   Settings,
   ChevronDown,
-  BookOpen
+  BookOpen,
+  FolderOpen,
+  ArrowUpToLine
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
+import { SYSTEM_AGENT_TAGS } from '../../types'
 import type {
   AgentProfile,
   AgentProfileCreateInput,
@@ -63,11 +67,45 @@ const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
   enabled: true
 }
 
-export function AgentManager() {
+export interface AgentManagerProps {
+  /** 工作区模式：显示工作区 Agent 而非全局 Agent */
+  isWorkspaceMode?: boolean
+  /** 工作区根目录路径（工作区模式下必须提供） */
+  folderPath?: string
+}
+
+export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManagerProps) {
   const {
-    agents, createAgent, updateAgent, deleteAgent,
-    duplicateAgent, toggleAgentEnabled, importAgents, exportAgents
+    agents: globalAgents, createAgent: createGlobalAgent, updateAgent: updateGlobalAgent, deleteAgent: deleteGlobalAgent,
+    duplicateAgent: duplicateGlobalAgent, toggleAgentEnabled: toggleGlobalAgentEnabled,
+    importAgents: importGlobalAgents, exportAgents: exportGlobalAgents
   } = useAgentStore()
+
+  const {
+    workspaceAgents, createWorkspaceAgent, updateWorkspaceAgent, deleteWorkspaceAgent,
+    promoteToGlobal, loadWorkspaceAgents
+  } = useWorkspaceAgentStore()
+
+  // 根据模式选择 Agent 列表和操作函数
+  const agents = isWorkspaceMode ? workspaceAgents : globalAgents
+  const createAgent = isWorkspaceMode
+    ? (input: AgentProfileCreateInput) => { if (folderPath) createWorkspaceAgent(input, folderPath) }
+    : createGlobalAgent
+  const updateAgentFn = isWorkspaceMode
+    ? (input: Partial<AgentProfile> & { id: string }) => { if (folderPath) updateWorkspaceAgent(input, folderPath) }
+    : updateGlobalAgent
+  const deleteAgentFn = isWorkspaceMode
+    ? (id: string) => { if (folderPath) deleteWorkspaceAgent(id, folderPath) }
+    : deleteGlobalAgent
+  const duplicateAgentFn = isWorkspaceMode
+    ? undefined // 工作区模式暂不支持复制
+    : duplicateGlobalAgent
+  const toggleAgentEnabledFn = isWorkspaceMode
+    ? (id: string) => {
+        const agent = workspaceAgents.find((a) => a.id === id)
+        if (agent && folderPath) updateWorkspaceAgent({ id, enabled: !agent.enabled }, folderPath)
+      }
+    : toggleGlobalAgentEnabled
 
   const { providers } = useAIProviderStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
@@ -107,23 +145,42 @@ export function AgentManager() {
     setIsCreating(true)
   }
 
-  const handleSaveAgent = () => {
+  const handleSaveAgent = async () => {
     if (!agentForm.name.trim()) return
-    if (editingAgent) {
-      updateAgent({ id: editingAgent.id, ...agentForm })
-    } else {
-      createAgent(agentForm)
+    try {
+      if (editingAgent) {
+        await updateAgentFn({ id: editingAgent.id, ...agentForm })
+      } else {
+        await createAgent(agentForm)
+      }
+    } catch (err) {
+      alert(`保存失败: ${err instanceof Error ? err.message : String(err)}`)
+      return
     }
     setIsCreating(false)
     setEditingAgent(null)
   }
 
-  const handleDeleteAgent = (id: string) => {
-    if (confirm('确定删除此 Agent？')) deleteAgent(id)
+  const handleDeleteAgent = async (id: string) => {
+    if (confirm('确定删除此 Agent？')) {
+      try {
+        await deleteAgentFn(id)
+      } catch (err) {
+        alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+  }
+
+  const handlePromoteToGlobal = (id: string) => {
+    const promoted = promoteToGlobal(id)
+    if (promoted) {
+      alert(`已将 Agent "${promoted.name}" 提升为全局 Agent`)
+    }
   }
 
   const handleExportAgents = () => {
-    const data = exportAgents()
+    if (isWorkspaceMode) return // 工作区模式下不支持导出
+    const data = exportGlobalAgents()
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -134,6 +191,7 @@ export function AgentManager() {
   }
 
   const handleImportAgents = () => {
+    if (isWorkspaceMode) return // 工作区模式下不支持导入
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = '.json'
@@ -143,7 +201,7 @@ export function AgentManager() {
       try {
         const text = await file.text()
         const data = JSON.parse(text) as AgentProfile[]
-        importAgents(data)
+        importGlobalAgents(data)
       } catch {
         alert('导入失败')
       }
@@ -606,11 +664,13 @@ export function AgentManager() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Bot size={20} className="text-accent-500" />
-            Agent 管理
+            {isWorkspaceMode ? <FolderOpen size={20} className="text-amber-500" /> : <Bot size={20} className="text-accent-500" />}
+            {isWorkspaceMode ? '工作区 Agent' : 'Agent 管理'}
           </h2>
           <p className="text-sm text-muted mt-1">
-            创建和管理 AI Agent，配置其行为、工具和记忆策略
+            {isWorkspaceMode
+              ? '管理工作区独立 Agent，可提升为全局 Agent'
+              : '创建和管理 AI Agent，配置其行为、工具和记忆策略'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -620,18 +680,22 @@ export function AgentManager() {
           >
             <Plus size={14} /> 新建 Agent
           </button>
-          <button
-            onClick={handleImportAgents}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-          >
-            <Upload size={14} /> 导入
-          </button>
-          <button
-            onClick={handleExportAgents}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-          >
-            <Download size={14} /> 导出
-          </button>
+          {!isWorkspaceMode && (
+            <>
+              <button
+                onClick={handleImportAgents}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+              >
+                <Upload size={14} /> 导入
+              </button>
+              <button
+                onClick={handleExportAgents}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+              >
+                <Download size={14} /> 导出
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -658,6 +722,12 @@ export function AgentManager() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm text-surface-800 dark:text-surface-200">{agent.name}</span>
+                    {isWorkspaceMode && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                        <FolderOpen size={9} />
+                        工作区
+                      </span>
+                    )}
                     {!agent.enabled && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 text-muted dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60">
                         已禁用
@@ -667,14 +737,20 @@ export function AgentManager() {
                   {agent.description && (
                     <p className="text-xs text-muted mt-0.5 truncate">{agent.description}</p>
                   )}
-                  <p className="text-xs text-muted mt-1 truncate">
-                    {agent.systemPrompt || '未设置系统提示词'}
-                  </p>
+                  {agent.tags && agent.tags.filter((t) => t !== SYSTEM_AGENT_TAGS.WORKSPACE).length > 0 && (
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      {agent.tags.filter((t) => t !== SYSTEM_AGENT_TAGS.WORKSPACE).map((tag) => (
+                        <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-muted border border-surface-200/80 dark:border-surface-700/60">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0 ml-3">
                 <button
-                  onClick={() => toggleAgentEnabled(agent.id)}
+                  onClick={() => toggleAgentEnabledFn(agent.id)}
                   className={`p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 ${
                     agent.enabled ? 'text-green-500' : 'text-muted'
                   }`}
@@ -689,13 +765,24 @@ export function AgentManager() {
                 >
                   <Edit2 size={14} />
                 </button>
-                <button
-                  onClick={() => duplicateAgent(agent.id)}
-                  className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
-                  title="复制"
-                >
-                  <Copy size={14} />
-                </button>
+                {!isWorkspaceMode && duplicateAgentFn && (
+                  <button
+                    onClick={() => duplicateAgentFn(agent.id)}
+                    className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
+                    title="复制"
+                  >
+                    <Copy size={14} />
+                  </button>
+                )}
+                {isWorkspaceMode && (
+                  <button
+                    onClick={() => handlePromoteToGlobal(agent.id)}
+                    className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/20 text-accent-500"
+                    title="提升为全局 Agent"
+                  >
+                    <ArrowUpToLine size={14} />
+                  </button>
+                )}
                 <button
                   onClick={() => handleDeleteAgent(agent.id)}
                   className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-500"

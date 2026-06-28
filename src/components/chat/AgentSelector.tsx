@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { ChevronDown, Zap, Settings2, Search, XCircle, Check } from 'lucide-react'
+import { ChevronDown, Zap, Settings2, Search, Check, FolderOpen } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
+import { SYSTEM_AGENT_TAGS } from '../../types'
 import type { AgentProfile } from '../../types'
 
 interface AgentSelectorProps {
@@ -14,21 +16,47 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
   const [searchTerm, setSearchTerm] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const { agents } = useAgentStore()
+  const { agents: globalAgents } = useAgentStore()
+  const { workspaceAgents } = useWorkspaceAgentStore()
 
-  const selectedAgent = agents.find((a) => a.id === selectedAgentId)
-  const enabledAgents = agents.filter((a) => a.enabled)
+  // 区分工作区 Agent 和全局 Agent
+  const enabledWorkspaceAgents = useMemo(
+    () => workspaceAgents.filter((a) => a.enabled),
+    [workspaceAgents]
+  )
+  const enabledGlobalAgents = useMemo(
+    () => globalAgents.filter((a) => a.enabled && !a.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE)),
+    [globalAgents]
+  )
+
+  // 查找当前选中的 Agent（从两个 store 中）
+  const selectedAgent = useMemo(
+    () => [...workspaceAgents, ...globalAgents].find((a) => a.id === selectedAgentId),
+    [workspaceAgents, globalAgents, selectedAgentId]
+  )
 
   // 搜索过滤
-  const filteredAgents = useMemo(() => {
-    if (!searchTerm.trim()) return enabledAgents
+  const filterAgents = (agents: AgentProfile[]) => {
+    if (!searchTerm.trim()) return agents
     const term = searchTerm.toLowerCase()
-    return enabledAgents.filter(
+    return agents.filter(
       (a) =>
         a.name.toLowerCase().includes(term) ||
         (a.description && a.description.toLowerCase().includes(term))
     )
-  }, [enabledAgents, searchTerm])
+  }
+
+  const filteredWorkspaceAgents = useMemo(
+    () => filterAgents(enabledWorkspaceAgents),
+    [enabledWorkspaceAgents, searchTerm]
+  )
+  const filteredGlobalAgents = useMemo(
+    () => filterAgents(enabledGlobalAgents),
+    [enabledGlobalAgents, searchTerm]
+  )
+
+  const hasWorkspaceAgents = enabledWorkspaceAgents.length > 0
+  const hasResults = filteredWorkspaceAgents.length > 0 || filteredGlobalAgents.length > 0
 
   // 点击外部关闭下拉
   useEffect(() => {
@@ -49,6 +77,54 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
     }
   }, [isOpen])
 
+  /** 渲染单个 Agent 选项 */
+  const renderAgentItem = (agent: AgentProfile, isWorkspace: boolean) => (
+    <div
+      key={agent.id}
+      onClick={() => {
+        onSelect(agent.id)
+        setIsOpen(false)
+        setSearchTerm('')
+      }}
+      className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer ${
+        selectedAgentId === agent.id
+          ? 'bg-accent-50 dark:bg-accent-950/30 border-l-2 border-accent-500'
+          : 'hover:bg-accent-50/50 dark:hover:bg-accent-950/20 border-l-2 border-transparent'
+      }`}
+    >
+      <div className="w-8 h-8 rounded-full bg-surface-100 dark:bg-surface-700 flex items-center justify-center text-base flex-shrink-0">
+        {agent.avatar || agent.name.charAt(0).toUpperCase()}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-sm font-medium truncate ${selectedAgentId === agent.id ? 'text-accent-700 dark:text-accent-300' : 'text-gray-700 dark:text-gray-300'}`}>
+            {agent.name}
+          </span>
+          {isWorkspace && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
+              <FolderOpen size={9} />
+              工作区
+            </span>
+          )}
+        </div>
+        {agent.description && (
+          <div className="text-xs text-muted truncate">{agent.description}</div>
+        )}
+      </div>
+      {selectedAgentId === agent.id && (
+        <Check size={14} className="text-accent-500 flex-shrink-0" />
+      )}
+    </div>
+  )
+
+  /** 渲染分组标题 */
+  const renderGroupHeader = (label: string, icon: React.ReactNode) => (
+    <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
+      {icon}
+      <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</span>
+    </div>
+  )
+
   return (
     <div className="relative" ref={dropdownRef}>
       {/* 触发按钮 */}
@@ -62,6 +138,9 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
             <span className="font-medium text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
               {selectedAgent.name}
             </span>
+            {selectedAgent.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE) && (
+              <FolderOpen size={12} className="text-amber-500 flex-shrink-0" />
+            )}
           </>
         ) : (
           <>
@@ -91,7 +170,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
           </div>
 
           {/* 选项列表 */}
-          <div className="max-h-64 overflow-y-auto py-1">
+          <div className="max-h-72 overflow-y-auto py-1">
             {/* 普通对话选项 */}
             <div
               onClick={() => {
@@ -119,46 +198,37 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
               )}
             </div>
 
-            {/* Agent 列表 */}
-            {filteredAgents.length > 0 && (
+            {/* 分割线 */}
+            {hasResults && (
               <div className="border-t border-surface-200/40 dark:border-surface-700/30 my-0.5" />
             )}
 
-            {filteredAgents.length === 0 ? (
+            {/* 工作区 Agent 分组 */}
+            {filteredWorkspaceAgents.length > 0 && (
+              <>
+                {renderGroupHeader('工作区', <FolderOpen size={11} className="text-amber-500" />)}
+                {filteredWorkspaceAgents.map((agent) => renderAgentItem(agent, true))}
+              </>
+            )}
+
+            {/* 工作区/全局 Agent 分割线 */}
+            {filteredWorkspaceAgents.length > 0 && filteredGlobalAgents.length > 0 && (
+              <div className="border-t border-surface-200/30 dark:border-surface-700/20 my-0.5 mx-3" />
+            )}
+
+            {/* 全局 Agent 分组 */}
+            {filteredGlobalAgents.length > 0 && (
+              <>
+                {hasWorkspaceAgents && renderGroupHeader('全局', <Zap size={11} className="text-gray-400" />)}
+                {filteredGlobalAgents.map((agent) => renderAgentItem(agent, false))}
+              </>
+            )}
+
+            {/* 无结果 */}
+            {!hasResults && (
               <div className="px-3 py-4 text-center text-xs text-muted">
                 {searchTerm ? '未找到匹配的 Agent' : '暂无可用 Agent'}
               </div>
-            ) : (
-              filteredAgents.map((agent) => (
-                <div
-                  key={agent.id}
-                  onClick={() => {
-                    onSelect(agent.id)
-                    setIsOpen(false)
-                    setSearchTerm('')
-                  }}
-                  className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer ${
-                    selectedAgentId === agent.id
-                      ? 'bg-accent-50 dark:bg-accent-950/30 border-l-2 border-accent-500'
-                      : 'hover:bg-accent-50/50 dark:hover:bg-accent-950/20 border-l-2 border-transparent'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-full bg-surface-100 dark:bg-surface-700 flex items-center justify-center text-base flex-shrink-0">
-                    {agent.avatar || agent.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-medium truncate ${selectedAgentId === agent.id ? 'text-accent-700 dark:text-accent-300' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {agent.name}
-                    </div>
-                    {agent.description && (
-                      <div className="text-xs text-muted truncate">{agent.description}</div>
-                    )}
-                  </div>
-                  {selectedAgentId === agent.id && (
-                    <Check size={14} className="text-accent-500 flex-shrink-0" />
-                  )}
-                </div>
-              ))
             )}
           </div>
 

@@ -5,6 +5,7 @@ import { TitleBar } from './components/layout/TitleBar'
 import { CommandApprovalDialog } from './components/workspace/CommandApprovalDialog'
 import { initMCPSync } from './stores/mcp-tool-store'
 import { useWorkspaceStore } from './stores/workspace-store'
+import { useConversationStore } from './stores/conversation-store'
 import { useShortcuts } from './hooks/use-shortcuts'
 import type { ViewMode, SettingsSection } from './components/settings/SettingsNavRail'
 
@@ -17,6 +18,22 @@ export default function App() {
   useEffect(() => {
     initMCPSync()
   }, [])
+
+  // 安全保障：当不在工作区模式时，确保 currentConversationId 不指向工作区对话
+  // 解决退出工作区后对话区仍显示工作区对话的问题
+  useEffect(() => {
+    if (viewMode === 'workspace') return
+    const convStore = useConversationStore.getState()
+    const currentConv = convStore.currentConversationId
+      ? convStore.conversations.find((c) => c.id === convStore.currentConversationId)
+      : null
+    if (currentConv?.workspaceId) {
+      const nonWorkspaceConvs = convStore.conversations
+        .filter((c) => !c.workspaceId)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      convStore.selectConversation(nonWorkspaceConvs[0]?.id ?? null)
+    }
+  }, [viewMode])
 
   // 快捷键桥接：将 store 中的快捷键配置注册到 Electron globalShortcut
   const openSettingsCb = useCallback(() => {
@@ -40,9 +57,11 @@ export default function App() {
 
   /** 从工作区或其他视图返回对话页 */
   const closeSettings = () => {
-    // 离开工作区视图时，清除运行时的工作区激活状态
-    // 工作区数据（workspaces）已持久化，但 activeWorkspaceId/openTabs 是运行时状态
-    deactivateWorkspace()
+    if (viewMode === 'workspace') {
+      // 离开工作区视图时，清除运行时的工作区激活状态
+      // deactivateWorkspace 内部会自动将 currentConversationId 切换到非工作区对话
+      deactivateWorkspace()
+    }
     setViewMode('chat')
   }
 

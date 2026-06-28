@@ -49,6 +49,16 @@ export interface AgentModelConfig {
 }
 
 /**
+ * 系统保留标签
+ */
+export const SYSTEM_AGENT_TAGS = {
+  /** 标识为工作区独立 Agent */
+  WORKSPACE: 'workspace',
+} as const
+
+export type SystemAgentTag = typeof SYSTEM_AGENT_TAGS[keyof typeof SYSTEM_AGENT_TAGS]
+
+/**
  * Agent 配置文件（用户可自主设计的 Agent）
  */
 export interface AgentProfile {
@@ -70,6 +80,8 @@ export interface AgentProfile {
   modelConfig: AgentModelConfig
   /** 绑定的知识库集合 ID 列表（为空则搜索全部） */
   knowledgeBaseIds?: string[]
+  /** 标签列表（`workspace` 为系统保留标签，标识工作区独立 Agent） */
+  tags?: string[]
   /** 是否启用 */
   enabled: boolean
   createdAt: number
@@ -113,6 +125,12 @@ export interface AgentStep {
   stepIndex: number
   /** 时间戳 */
   timestamp: number
+  /** 来源 Agent ID（子 Agent 执行时标识来源） */
+  sourceAgentId?: string
+  /** 来源 Agent 名称（用于 UI 展示） */
+  sourceAgentName?: string
+  /** 来源 Agent 头像 */
+  sourceAgentAvatar?: string
 }
 
 /** Agent 运行状态 */

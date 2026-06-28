@@ -9,8 +9,10 @@ export type {
   PlanningStrategy,
   MemoryConfig,
   TerminationConfig,
-  AgentModelConfig
+  AgentModelConfig,
+  SystemAgentTag
 } from './agent'
+export { SYSTEM_AGENT_TAGS } from './agent'
 export type {
   Prompt,
   PromptCreateInput,

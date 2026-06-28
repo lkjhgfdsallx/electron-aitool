@@ -68,6 +68,7 @@ interface CheckpointMetadata {
 const VCS_DIR = '.ai-workspace-vcs'
 const INDEX_FILE = 'index.json'
 const CHECKPOINTS_DIR = 'checkpoints'
+const AGENTS_FILE = 'agents.json'
 
 /** 获取 .ai-workspace-vcs 目录路径 */
 function getVcsDir(folderPath: string): string {
@@ -578,6 +579,110 @@ async function selectFolder(): Promise<{
   }
 }
 
+// ---- 工作区 Agent 操作 ----
+
+/**
+ * 加载工作区 Agent 列表
+ */
+async function loadWorkspaceAgents(
+  folderPath: string
+): Promise<{ success: boolean; agents?: unknown[]; error?: string }> {
+  try {
+    const vcsDir = getVcsDir(folderPath)
+    const agentsPath = join(vcsDir, AGENTS_FILE)
+    const agents = await readJson<unknown[]>(agentsPath, [])
+    return { success: true, agents }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+/**
+ * 保存工作区 Agent 列表（全量覆盖）
+ */
+async function saveWorkspaceAgents(
+  folderPath: string,
+  agents: unknown[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const vcsDir = getVcsDir(folderPath)
+    await ensureDir(vcsDir)
+    await writeJson(join(vcsDir, AGENTS_FILE), agents)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+/**
+ * 添加单个工作区 Agent
+ */
+async function addWorkspaceAgent(
+  folderPath: string,
+  agent: Record<string, unknown>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const vcsDir = getVcsDir(folderPath)
+    await ensureDir(vcsDir)
+    const agentsPath = join(vcsDir, AGENTS_FILE)
+    const agents = await readJson<Record<string, unknown>[]>(agentsPath, [])
+    // 检查是否已存在
+    if (agents.some((a) => a.id === agent.id)) {
+      return { success: false, error: `Agent "${agent.id}" 已存在` }
+    }
+    agents.push(agent)
+    await writeJson(agentsPath, agents)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+/**
+ * 更新单个工作区 Agent
+ */
+async function updateWorkspaceAgent(
+  folderPath: string,
+  agent: Record<string, unknown>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const vcsDir = getVcsDir(folderPath)
+    const agentsPath = join(vcsDir, AGENTS_FILE)
+    const agents = await readJson<Record<string, unknown>[]>(agentsPath, [])
+    const index = agents.findIndex((a) => a.id === agent.id)
+    if (index === -1) {
+      return { success: false, error: `Agent "${agent.id}" 不存在` }
+    }
+    agents[index] = agent
+    await writeJson(agentsPath, agents)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
+/**
+ * 删除单个工作区 Agent
+ */
+async function deleteWorkspaceAgent(
+  folderPath: string,
+  agentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const vcsDir = getVcsDir(folderPath)
+    const agentsPath = join(vcsDir, AGENTS_FILE)
+    const agents = await readJson<Record<string, unknown>[]>(agentsPath, [])
+    const filtered = agents.filter((a) => a.id !== agentId)
+    if (filtered.length === agents.length) {
+      return { success: false, error: `Agent "${agentId}" 不存在` }
+    }
+    await writeJson(agentsPath, filtered)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+
 // ---- IPC Handler 注册 ----
 
 export function setupWorkspaceVCSHandlers(): void {
@@ -676,6 +781,45 @@ export function setupWorkspaceVCSHandlers(): void {
     'workspace:vcs:load-session',
     async (_event, folderPath: string) => {
       return loadSession(folderPath)
+    }
+  )
+
+  // ---- 工作区 Agent Handler ----
+
+  // 加载工作区 Agent 列表
+  ipcMain.handle('workspace:vcs:load-agents', async (_event, folderPath: string) => {
+    return loadWorkspaceAgents(folderPath)
+  })
+
+  // 保存工作区 Agent 列表（全量覆盖）
+  ipcMain.handle(
+    'workspace:vcs:save-agents',
+    async (_event, folderPath: string, agents: unknown[]) => {
+      return saveWorkspaceAgents(folderPath, agents)
+    }
+  )
+
+  // 添加单个工作区 Agent
+  ipcMain.handle(
+    'workspace:vcs:add-agent',
+    async (_event, folderPath: string, agent: Record<string, unknown>) => {
+      return addWorkspaceAgent(folderPath, agent)
+    }
+  )
+
+  // 更新单个工作区 Agent
+  ipcMain.handle(
+    'workspace:vcs:update-agent',
+    async (_event, folderPath: string, agent: Record<string, unknown>) => {
+      return updateWorkspaceAgent(folderPath, agent)
+    }
+  )
+
+  // 删除单个工作区 Agent
+  ipcMain.handle(
+    'workspace:vcs:delete-agent',
+    async (_event, folderPath: string, agentId: string) => {
+      return deleteWorkspaceAgent(folderPath, agentId)
     }
   )
 

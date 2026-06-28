@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
-import type { WorkspaceContext } from '../services/agent-engine'
+import type { WorkspaceContext, SubAgentActivityEvent } from '../services/agent-engine'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
@@ -14,6 +14,7 @@ import { useAgentStore } from '../stores/agent-store'
 import { useMCPToolStore } from '../stores/mcp-tool-store'
 import { useAIProviderStore } from '../stores/ai-provider-store'
 import { useWorkspaceStore } from '../stores/workspace-store'
+import { useWorkspaceAgentStore } from '../stores/workspace-agent-store'
 import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
@@ -71,21 +72,29 @@ export function useChat() {
   const siteAnalyzerStartTimeRef = useRef<number>(0)
 
   /** 根据对话的工作区关联，构建 WorkspaceContext 传递给 agent-engine */
-  const buildWorkspaceContext = useCallback((conversationId: string): WorkspaceContext | undefined => {
+  const buildWorkspaceContext = useCallback((
+    conversationId: string,
+    onSubAgentActivity?: (event: SubAgentActivityEvent) => void
+  ): WorkspaceContext | undefined => {
     const conv = useConversationStore.getState().conversations.find((c) => c.id === conversationId)
     if (!conv?.workspaceId) return undefined
     const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
     if (!ws) return undefined
-    const agents = useAgentStore.getState().agents
+    // 从全局 Agent 和工作区 Agent 中查找团队成员
+    const allAgents = [
+      ...useAgentStore.getState().agents,
+      ...useWorkspaceAgentStore.getState().workspaceAgents,
+    ]
     const teamAgents = ws.teamAgentIds
-      .map((id) => agents.find((a) => a.id === id))
+      .map((id) => allAgents.find((a) => a.id === id))
       .filter((a): a is NonNullable<typeof a> => !!a)
       .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
 
     // 构建子任务分派回调（真正运行子 Agent 并返回结果）
     const dispatchSubTask = async (agentId: string, taskDescription: string): Promise<string> => {
-      const agentStore = useAgentStore.getState()
-      const targetAgent = agentStore.getAgent(agentId)
+      // 优先从工作区 Agent 中查找，再从全局 Agent 中查找
+      const targetAgent = useWorkspaceAgentStore.getState().getWorkspaceAgent(agentId)
+        ?? useAgentStore.getState().getAgent(agentId)
       if (!targetAgent) throw new Error(`Agent "${agentId}" 不存在`)
 
       // 解析目标 Agent 的 AI 配置
@@ -108,9 +117,12 @@ export function useChat() {
 
       // 从 store 读取最新的团队成员列表（而非使用快照）
       const freshWs = useWorkspaceStore.getState().workspaces.find((w) => w.id === ws.id)
-      const freshAgents = useAgentStore.getState().agents
+      const freshAllAgents = [
+        ...useAgentStore.getState().agents,
+        ...useWorkspaceAgentStore.getState().workspaceAgents,
+      ]
       const freshTeamAgents = (freshWs?.teamAgentIds ?? [])
-        .map((id) => freshAgents.find((a) => a.id === id))
+        .map((id) => freshAllAgents.find((a) => a.id === id))
         .filter((a): a is NonNullable<typeof a> => !!a)
         .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
 
@@ -131,11 +143,39 @@ export function useChat() {
         config,
         subSignal,
         {
-          onStep: () => {},
-          onToken: (token) => { finalContent += token },
+          onStep: (step) => {
+            // 将子 Agent 步骤实时上报给 UI
+            onSubAgentActivity?.({
+              agentId: targetAgent.id,
+              agentName: targetAgent.name,
+              agentAvatar: targetAgent.avatar,
+              type: 'step',
+              step
+            })
+          },
+          onToken: (token) => {
+            finalContent += token
+          },
           onReasoningToken: () => {},
-          onStatusChange: () => {},
-          onError: (err) => { throw new Error(err) },
+          onStatusChange: (status) => {
+            onSubAgentActivity?.({
+              agentId: targetAgent.id,
+              agentName: targetAgent.name,
+              agentAvatar: targetAgent.avatar,
+              type: 'status_change',
+              status
+            })
+          },
+          onError: (err) => {
+            onSubAgentActivity?.({
+              agentId: targetAgent.id,
+              agentName: targetAgent.name,
+              agentAvatar: targetAgent.avatar,
+              type: 'error',
+              error: err
+            })
+            throw new Error(err)
+          },
           onDone: (content) => { if (content) finalContent = content },
         },
         subWorkspaceContext
@@ -152,8 +192,6 @@ export function useChat() {
       avatar?: string
       enabledToolIds?: string[]
     }): Promise<string> => {
-      const agentStore = useAgentStore.getState()
-
       // 为新 Agent 设置合理的默认工具：工作区文件工具 + 核心工具
       const defaultWorkspaceToolIds = [
         'workspace:read_file', 'workspace:write_file',
@@ -163,8 +201,9 @@ export function useChat() {
         ? input.enabledToolIds
         : defaultWorkspaceToolIds
 
-      // 创建 Agent
-      const newAgent = agentStore.createAgent({
+      // 创建工作区 Agent（而非全局 Agent），自动带有 workspace 标签
+      const workspaceAgentStore = useWorkspaceAgentStore.getState()
+      const newAgent = await workspaceAgentStore.createWorkspaceAgent({
         name: input.name,
         description: input.description,
         systemPrompt: input.systemPrompt,
@@ -172,10 +211,10 @@ export function useChat() {
         enabledToolIds: toolIds,
         planningStrategy: 'react',
         memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
-        termination: { maxSteps: 50, timeoutSeconds: 300, autoStopOnGoal: true },
+        termination: { maxSteps: 50, timeoutSeconds: 0, autoStopOnGoal: true },
         modelConfig: {},
         enabled: true,
-      })
+      }, ws.folderPath)
 
       // 从 store 读取最新的 teamAgentIds（而非使用快照），避免覆盖之前创建的 Agent
       const freshWs = useWorkspaceStore.getState().workspaces.find((w) => w.id === ws.id)
@@ -376,8 +415,54 @@ export function useChat() {
       let finalContent = ''
       let reasoningContent = ''
 
+      // 子 Agent 活动回调：将子 Agent 步骤实时注入到 Leader 消息的 agentSteps 中
+      const onSubAgentActivity = (event: SubAgentActivityEvent) => {
+        if (event.type === 'step' && event.step) {
+          // 给步骤打上子 Agent 来源标记
+          const subStep: AgentStep = {
+            ...event.step,
+            sourceAgentId: event.agentId,
+            sourceAgentName: event.agentName,
+            sourceAgentAvatar: event.agentAvatar,
+          }
+          agentSteps.push(subStep)
+          updateMessage(assistantMsg.id, {
+            content: finalContent,
+            agentSteps: [...agentSteps],
+            isStreaming: true
+          })
+        } else if (event.type === 'status_change') {
+          // 子 Agent 状态变更（completed/error/stopped）时也更新 UI
+          if (event.status === 'completed' || event.status === 'error' || event.status === 'stopped') {
+            updateMessage(assistantMsg.id, {
+              content: finalContent,
+              agentSteps: [...agentSteps],
+              isStreaming: true // 保持 streaming，因为 Leader 还在等结果
+            })
+          }
+        } else if (event.type === 'error' && event.error) {
+          // 子 Agent 出错时记录错误步骤
+          const errorStep: AgentStep = {
+            id: crypto.randomUUID(),
+            type: 'error',
+            content: event.error,
+            stepIndex: agentSteps.length,
+            timestamp: Date.now(),
+            sourceAgentId: event.agentId,
+            sourceAgentName: event.agentName,
+            sourceAgentAvatar: event.agentAvatar,
+          }
+          agentSteps.push(errorStep)
+          updateMessage(assistantMsg.id, {
+            content: finalContent,
+            agentSteps: [...agentSteps],
+            isStreaming: true
+          })
+        }
+      }
+
       // 将包含附件内容的完整消息传递给 Agent 引擎
-      const wsContext = buildWorkspaceContext(convId)
+      const wsContext = buildWorkspaceContext(convId, onSubAgentActivity)
       await runAgent(
         agent,
         agentMessage,
