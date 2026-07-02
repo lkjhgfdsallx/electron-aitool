@@ -6,6 +6,8 @@
 
 import { openDB } from 'idb'
 import { getModelFileCacheStats, clearModelFileCache } from './embedding-service'
+import { conversationDb } from './conversation-db'
+import { useConversationStore } from '../stores/conversation-store'
 
 // ==================== 类型 ====================
 
@@ -47,7 +49,7 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
 
   // ---- localStorage 缓存 ----
 
-  // 对话消息
+  // 对话元数据（localStorage，仅含 conversations 列表，不再含 messages）
   const convSize = getLocalStorageItemSize('conversations')
   let convCount = 0
   try {
@@ -56,13 +58,33 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   } catch { /* ignore */ }
   regions.push({
     key: 'conversations',
-    name: '对话消息缓存',
-    description: '所有对话的元数据和消息记录',
+    name: '对话元数据',
+    description: '对话列表元数据（标题、时间、Agent 等配置）',
     storage: 'localStorage',
     sizeBytes: convSize,
     recordCount: convCount,
-    clearable: true
+    clearable: false
   })
+
+  // ⚡ 对话消息（IndexedDB ConversationData，逐条存储）
+  try {
+    const msgCount = await conversationDb.getMessageCount()
+    // 估算消息大小：取全部消息序列化后的 JSON 大小
+    let msgSize = 0
+    if (msgCount > 0) {
+      const allMessages = await conversationDb.getAllMessages()
+      msgSize = new Blob([JSON.stringify(allMessages)]).size
+    }
+    regions.push({
+      key: 'conversation-messages',
+      name: '对话消息数据',
+      description: '所有对话的消息内容（逐条存储在 IndexedDB 中）',
+      storage: 'indexedDB',
+      sizeBytes: msgSize,
+      recordCount: msgCount,
+      clearable: true
+    })
+  } catch { /* 数据库不存在 */ }
 
   // AI 源配置（含模型列表缓存）
   const aiProvSize = getLocalStorageItemSize('ai-providers')
@@ -260,7 +282,7 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
 export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   // ---- localStorage 缓存（同步，快速逐条返回） ----
 
-  // 对话消息
+  // 对话元数据（localStorage，仅含 conversations 列表，不再含 messages）
   const convSize = getLocalStorageItemSize('conversations')
   let convCount = 0
   try {
@@ -269,13 +291,32 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   } catch { /* ignore */ }
   yield {
     key: 'conversations',
-    name: '对话消息缓存',
-    description: '所有对话的元数据和消息记录',
+    name: '对话元数据',
+    description: '对话列表元数据（标题、时间、Agent 等配置）',
     storage: 'localStorage',
     sizeBytes: convSize,
     recordCount: convCount,
-    clearable: true
+    clearable: false
   }
+
+  // ⚡ 对话消息（IndexedDB ConversationData，逐条存储）
+  try {
+    const msgCount = await conversationDb.getMessageCount()
+    let msgSize = 0
+    if (msgCount > 0) {
+      const allMessages = await conversationDb.getAllMessages()
+      msgSize = new Blob([JSON.stringify(allMessages)]).size
+    }
+    yield {
+      key: 'conversation-messages',
+      name: '对话消息数据',
+      description: '所有对话的消息内容（逐条存储在 IndexedDB 中）',
+      storage: 'indexedDB',
+      sizeBytes: msgSize,
+      recordCount: msgCount,
+      clearable: true
+    }
+  } catch { /* 数据库不存在 */ }
 
   // AI 源配置（含模型列表缓存）
   const aiProvSize = getLocalStorageItemSize('ai-providers')
@@ -471,8 +512,9 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
 export async function clearCache(regionKey: string): Promise<void> {
   switch (regionKey) {
     case 'conversations':
-      // 清除所有对话消息，保留对话元数据
-      clearConversationMessages()
+    case 'conversation-messages':
+      // 清除所有对话消息（IDB + 内存），保留对话元数据
+      await clearConversationMessages()
       break
 
     case 'ai-providers-models':
@@ -508,24 +550,17 @@ export async function clearCache(regionKey: string): Promise<void> {
   }
 }
 
-/** 清除所有对话的消息内容 */
-function clearConversationMessages(): void {
-  try {
-    const raw = localStorage.getItem('conversations')
-    if (!raw) return
-    const data = JSON.parse(raw)
-    if (data.state) {
-      data.state.messages = {}
-      data.state.conversations = (data.state.conversations ?? []).map(
-        (c: Record<string, unknown>) => ({
-          ...c,
-          messageCount: 0,
-          lastMessagePreview: undefined
-        })
-      )
-      localStorage.setItem('conversations', JSON.stringify(data))
-    }
-  } catch { /* ignore */ }
+/** 清除所有对话的消息内容（IDB + 内存） */
+async function clearConversationMessages(): Promise<void> {
+  // ⚡ 清空 IDB 中所有消息
+  await conversationDb.clearAllMessages()
+
+  // ⚡ 清空 store 内存中的所有消息，并重置对话元数据
+  const store = useConversationStore.getState()
+  const convIds = Object.keys(store.messages)
+  for (const convId of convIds) {
+    store.clearMessages(convId)
+  }
 }
 
 /** 清除 AI Provider 的模型列表缓存 */

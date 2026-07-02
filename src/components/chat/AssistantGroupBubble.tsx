@@ -1,9 +1,11 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, memo } from 'react'
 import {
   Copy,
   RotateCcw,
   Check,
-  Bot
+  Bot,
+  Forward,
+  AlertTriangle
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { SelectionBoundary } from '../ui/SelectionBoundary'
@@ -19,19 +21,22 @@ interface AssistantGroupBubbleProps {
   showAvatar?: boolean
   messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
+  /** 继续生成：在已有内容基础上让 AI 从断点继续输出 */
+  onContinueGeneration?: (messageId: string) => void
 }
 
 /**
  * 将多轮工具调用产生的多条 assistant+tool 消息合并渲染为单个气泡
  * 用户看到的是一次完整的 AI 回复，而非多段碎片
  */
-export function AssistantGroupBubble({
+export const AssistantGroupBubble = memo(function AssistantGroupBubble({
   messages,
   showTimestamp = true,
   showTokenUsage = true,
   showAvatar = true,
   messageAlignment = 'left-right',
-  onRegenerate
+  onRegenerate,
+  onContinueGeneration
 }: AssistantGroupBubbleProps) {
   const [copied, setCopied] = useState(false)
 
@@ -163,7 +168,7 @@ export function AssistantGroupBubble({
         {/* 思考过程 */}
         {allReasoningContent && (
           <SelectionBoundary>
-            <ThinkingSection content={allReasoningContent} />
+            <ThinkingSection content={allReasoningContent} isStreaming={isStreaming} />
           </SelectionBoundary>
         )}
 
@@ -180,6 +185,30 @@ export function AssistantGroupBubble({
             <MarkdownRenderer content={finalContent} />
           </SelectionBoundary>
         )}
+
+        {/* 截断消息提示 + 继续生成按钮 */}
+        {(() => {
+          const truncatedMsg = assistantMsgs.find(m => m.finishReason === 'abort' || m.finishReason === 'length')
+          if (!truncatedMsg || isStreaming) return null
+          return (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/40">
+              <AlertTriangle size={14} className="text-blue-500 flex-shrink-0" />
+              <span className="text-xs text-blue-700 dark:text-blue-300 flex-1">
+                {truncatedMsg.finishReason === 'length' ? '回复已达到最大长度限制，可以续写' : '回复被中断，可以继续生成'}
+              </span>
+              {onContinueGeneration && (
+                <button
+                  onClick={() => onContinueGeneration(truncatedMsg.id)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors shadow-sm"
+                  title="继续生成"
+                >
+                  <Forward size={12} />
+                  继续生成
+                </button>
+              )}
+            </div>
+          )
+        })()}
 
         {/* 操作按钮 */}
         {!isStreaming && (
@@ -208,7 +237,33 @@ export function AssistantGroupBubble({
       </div>
     </div>
   )
-}
+}, (prevProps, nextProps) => {
+  // 自定义比较：只在消息核心字段变化时重渲染
+  if (prevProps.messages.length !== nextProps.messages.length) return false
+  for (let i = 0; i < prevProps.messages.length; i++) {
+    const prev = prevProps.messages[i]
+    const next = nextProps.messages[i]
+    if (
+      prev.id !== next.id ||
+      prev.content !== next.content ||
+      prev.isStreaming !== next.isStreaming ||
+      prev.isError !== next.isError ||
+      prev.reasoningContent !== next.reasoningContent ||
+      prev.tokenUsage !== next.tokenUsage ||
+      prev.toolCalls !== next.toolCalls
+    ) {
+      return false
+    }
+  }
+  return (
+    prevProps.showTimestamp === nextProps.showTimestamp &&
+    prevProps.showTokenUsage === nextProps.showTokenUsage &&
+    prevProps.showAvatar === nextProps.showAvatar &&
+    prevProps.messageAlignment === nextProps.messageAlignment &&
+    prevProps.onRegenerate === nextProps.onRegenerate &&
+    prevProps.onContinueGeneration === nextProps.onContinueGeneration
+  )
+})
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp)

@@ -10,7 +10,9 @@ import type {
   CheckpointIndex,
   CommandApprovalRequest,
   CommandApprovalResult,
+  AutoApprovalConfig,
 } from '../types'
+import type { FileActionApprovalRequest, FileActionApprovalResult } from '../services/agent-engine'
 import { STORE_VERSIONS } from '../utils/store-migration'
 
 /** 退出工作区时，如果当前对话属于工作区，自动切换到最近的非工作区对话 */
@@ -31,6 +33,11 @@ function switchToNonWorkspaceConversation(): void {
 
 /** 待处理的审批回调（不在 persist 范围内） */
 let pendingApprovalResolve: ((result: CommandApprovalResult) => void) | null = null
+
+// ---- 文件操作审批回调存储（阶段 1 新增） ----
+
+/** 待处理的文件操作审批回调 */
+let pendingFileApprovalResolve: ((result: FileActionApprovalResult) => void) | null = null
 
 // ---- Store 接口 ----
 
@@ -105,6 +112,18 @@ interface WorkspaceStore {
   /** 清除审批请求 */
   clearCommandApproval: () => void
 
+  // ---- 文件操作审批（阶段 1 新增） ----
+  /** 当前待审批的文件操作请求 */
+  pendingFileActionApproval: FileActionApprovalRequest | null
+  /** 发起文件操作审批请求 */
+  requestFileActionApproval: (request: FileActionApprovalRequest) => Promise<FileActionApprovalResult>
+  /** 用户审批/拒绝文件操作后回调 */
+  resolveFileActionApproval: (result: FileActionApprovalResult) => void
+  /** 清除文件操作审批请求 */
+  clearFileActionApproval: () => void
+  /** 更新工作区的自动审批配置 */
+  updateAutoApproval: (workspaceId: string, config: Partial<AutoApprovalConfig>) => void
+
   // ---- 工作区对话管理 ----
   /** 将对话关联到工作区 */
   assignConversationToWorkspace: (conversationId: string, workspaceId: string) => void
@@ -124,6 +143,18 @@ const defaultContextConfig = {
   keepCheckpointBeforeCompression: true,
 }
 
+// ---- 默认自动审批配置（阶段 1 新增，参考 ROO CODE Auto-Approve） ----
+
+const defaultAutoApprovalConfig: AutoApprovalConfig = {
+  enabled: false,
+  readFiles: true,
+  listFiles: true,
+  writeFiles: false,
+  executeSafeCommands: false,
+  browser: true,
+  mcpTools: false,
+}
+
 // ---- Store 创建 ----
 
 export const useWorkspaceStore = create<WorkspaceStore>()(
@@ -136,6 +167,8 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       defaultWorkspaceId: null,
       checkpointIndex: [],
       pendingCommandApproval: null,
+      /** 当前待审批的文件操作请求（阶段 1 新增） */
+      pendingFileActionApproval: null as FileActionApprovalRequest | null,
       isLoadingCheckpoints: false,
       watcherActive: false,
 
@@ -165,6 +198,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           contextConfig: input.contextConfig ?? defaultContextConfig,
           knowledgeBaseIds: input.knowledgeBaseIds ?? [],
           mcpServerIds: input.mcpServerIds ?? [],
+          autoApproval: input.autoApproval ?? { ...defaultAutoApprovalConfig },
           createdAt: now,
           updatedAt: now,
         }
@@ -413,6 +447,41 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         }
       },
 
+      // ---- 文件操作审批（阶段 1 新增，参考 ROO CODE Auto-Approve） ----
+
+      requestFileActionApproval: (request: FileActionApprovalRequest) => {
+        set({ pendingFileActionApproval: request })
+        return new Promise<FileActionApprovalResult>((resolve) => {
+          pendingFileApprovalResolve = resolve
+        })
+      },
+
+      resolveFileActionApproval: (result: FileActionApprovalResult) => {
+        set({ pendingFileActionApproval: null })
+        if (pendingFileApprovalResolve) {
+          pendingFileApprovalResolve(result)
+          pendingFileApprovalResolve = null
+        }
+      },
+
+      clearFileActionApproval: () => {
+        set({ pendingFileActionApproval: null })
+        if (pendingFileApprovalResolve) {
+          pendingFileApprovalResolve('denied')
+          pendingFileApprovalResolve = null
+        }
+      },
+
+      updateAutoApproval: (workspaceId, config) => {
+        set((state) => ({
+          workspaces: state.workspaces.map((w) =>
+            w.id === workspaceId
+              ? { ...w, autoApproval: { ...w.autoApproval, ...config }, updatedAt: Date.now() }
+              : w
+          ),
+        }))
+      },
+
       // ---- 工作区对话管理 ----
 
       assignConversationToWorkspace: (conversationId: string, workspaceId: string) => {
@@ -437,10 +506,24 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       }),
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>
-        if (version < STORE_VERSIONS.WORKSPACE) {
-          // 未来版本迁移在此添加
-          if (!('openTabs' in state)) (state as Record<string, unknown>).openTabs = []
-          if (!('defaultWorkspaceId' in state)) (state as Record<string, unknown>).defaultWorkspaceId = null
+        // v2 → v3: 为旧工作区补充 autoApproval 字段（ROO CODE Auto-Approve）
+        if (version < 3) {
+          if (!('openTabs' in state)) state.openTabs = []
+          if (!('defaultWorkspaceId' in state)) state.defaultWorkspaceId = null
+          // 为每个旧工作区补充 autoApproval 默认配置
+          const defaultAutoApproval = {
+            enabled: false,
+            readFiles: true,
+            listFiles: true,
+            writeFiles: false,
+            executeSafeCommands: false,
+            browser: true,
+            mcpTools: false,
+          }
+          const workspaces = (state.workspaces as Array<Record<string, unknown>>) || []
+          state.workspaces = workspaces.map((w) =>
+            w.autoApproval ? w : { ...w, autoApproval: { ...defaultAutoApproval } }
+          )
         }
         return state as unknown as WorkspaceStore
       },

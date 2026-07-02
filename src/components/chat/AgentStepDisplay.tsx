@@ -73,6 +73,13 @@ const stepTypeConfig = {
     bgColor: 'bg-blue-50 dark:bg-blue-950/30',
     borderColor: 'border-blue-200 dark:border-blue-800',
     label: '用户选择'
+  },
+  subtask_result: {
+    icon: Users,
+    color: 'text-teal-500',
+    bgColor: 'bg-teal-50 dark:bg-teal-950/30',
+    borderColor: 'border-teal-200 dark:border-teal-800',
+    label: '子任务成果'
   }
 }
 
@@ -414,6 +421,56 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
                             customExpandedMap={customExpandedMap}
                             setCustomExpandedMap={setCustomExpandedMap}
                           />
+                        )}
+
+                        {/* 子任务成果（Boomerang 回流） */}
+                        {step.type === 'subtask_result' && step.subtaskResult && (
+                          <div className="mt-2 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                任务:
+                              </span>
+                              <span className="text-xs text-gray-700 dark:text-gray-300 flex-1 truncate">
+                                {step.subtaskResult.task}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                  step.subtaskResult.status === 'success'
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : step.subtaskResult.status === 'error'
+                                    ? 'bg-danger-100 text-danger-700 dark:bg-danger-900/30 dark:text-danger-400'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                }`}
+                              >
+                                {step.subtaskResult.status === 'success'
+                                  ? '成功'
+                                  : step.subtaskResult.status === 'error'
+                                  ? '失败'
+                                  : '部分完成'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                              执行 {step.subtaskResult.stepCount} 步
+                              {step.subtaskResult.artifacts && step.subtaskResult.artifacts.length > 0 && (
+                                <span className="ml-2">
+                                  · 产物: {step.subtaskResult.artifacts.slice(0, 3).join(', ')}
+                                  {step.subtaskResult.artifacts.length > 3 && '...'}
+                                </span>
+                              )}
+                            </div>
+                            {step.subtaskResult.content && (
+                              <div className="text-xs text-gray-600 dark:text-gray-400 bg-surface-50 dark:bg-surface-800/50 rounded-lg p-2.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+                                {step.subtaskResult.content.length > 800
+                                  ? step.subtaskResult.content.slice(0, 800) + '...'
+                                  : step.subtaskResult.content}
+                              </div>
+                            )}
+                            {step.subtaskResult.error && (
+                              <div className="text-xs text-danger-600 dark:text-danger-400">
+                                错误: {step.subtaskResult.error}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>

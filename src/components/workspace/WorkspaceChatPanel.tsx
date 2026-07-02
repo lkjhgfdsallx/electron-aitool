@@ -96,7 +96,7 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
 
   const { getVisibleMessages, getMessages, switchBranch, getConversation,
     createConversation, deleteConversation, selectConversation,
-    getConversationsByWorkspaceId } = useConversationStore()
+    getConversationsByWorkspaceId, loadConversationMessages } = useConversationStore()
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
 
@@ -105,6 +105,7 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     sendMessage,
     stopGeneration,
     regenerateMessage,
+    continueGeneration,
     editAndResend,
     handleHumanInput,
     resumeAgentTask,
@@ -154,6 +155,13 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceConversations.length, activeConvId, workspace.id])
+
+  // ⚡ 切换工作区对话时从 IDB 懒加载消息到内存（放在 activeConvId 定义之后）
+  useEffect(() => {
+    if (activeConvId) {
+      loadConversationMessages(activeConvId)
+    }
+  }, [activeConvId, loadConversationMessages])
 
   // 点击外部关闭下拉菜单
   useEffect(() => {
@@ -489,6 +497,7 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
                     showAvatar={showAvatar}
                     messageAlignment={messageAlignment}
                     onRegenerate={regenerateMessage}
+                    onContinueGeneration={continueGeneration}
                   />
                 )
               }
@@ -520,6 +529,7 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
                   showAvatar={showAvatar}
                   messageAlignment={messageAlignment}
                   onRegenerate={regenerateMessage}
+                  onContinueGeneration={continueGeneration}
                   onEditAndResend={editAndResend}
                   onHumanInput={handleHumanInput}
                   onResumeAgentTask={resumeAgentTask}
@@ -541,6 +551,8 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
           onStop={stopGeneration}
           isStreaming={isStreaming}
           runtimeContext={runtimeContext}
+          workspacePath={workspace.folderPath}
+          isWorkspaceMode={true}
         />
       </div>
     </div>

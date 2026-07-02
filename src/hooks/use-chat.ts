@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
-import type { WorkspaceContext, SubAgentActivityEvent } from '../services/agent-engine'
+import type { WorkspaceContext, SubAgentActivityEvent, FileActionApprovalRequest, FileActionApprovalResult } from '../services/agent-engine'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
@@ -63,6 +63,80 @@ function mapProgressTypeToPhase(type: string): SiteAnalyzerLiveProgress['phase']
   }
 }
 
+// ==================== 流式输出节流缓冲 ====================
+//
+// 性能优化核心：将高频的 token 回调批量合并，
+// 使用 requestAnimationFrame 节流，每帧最多触发一次 store 更新。
+// 这样无论 token 到达多么频繁（几十次/秒 → 几百次/秒），
+// React 渲染频率始终稳定在 ~60fps，避免卡顿。
+
+class StreamingBuffer {
+  private pendingUpdate: Partial<Message> | null = null
+  private rafId: number | null = null
+  private messageId: string | null = null
+
+  /** 累积 token，合并为单次 store 更新 */
+  push(messageId: string, update: Partial<Message>): void {
+    this.messageId = messageId
+    if (!this.pendingUpdate) {
+      this.pendingUpdate = { ...update }
+    } else {
+      // 合并：content 拼接，其他字段覆盖
+      const pending = this.pendingUpdate
+      if (update.content !== undefined && pending.content !== undefined) {
+        // 如果都有 content，取较长的那个（避免重复拼接）
+        // 场景：onToken 先推了 "abc"，然后 onReasoningToken 推了 content="abc" + reasoningContent
+        // 此时后者已经包含最新完整 content，直接覆盖
+        if (update.content.length >= (pending.content as string).length) {
+          pending.content = update.content
+        }
+      } else if (update.content !== undefined) {
+        pending.content = update.content
+      }
+      // 合并其余字段
+      for (const [key, value] of Object.entries(update)) {
+        if (key === 'content') continue // 已处理
+        ;(pending as Record<string, unknown>)[key] = value
+      }
+    }
+    this.scheduleFlush()
+  }
+
+  /** 强制刷新所有待更新（完成/出错时调用，确保最终状态正确） */
+  flush(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId)
+      this.rafId = null
+    }
+    if (this.pendingUpdate && this.messageId) {
+      useConversationStore.getState().updateMessage(this.messageId, this.pendingUpdate)
+      this.pendingUpdate = null
+    }
+    this.messageId = null
+  }
+
+  /** 重置缓冲（开始新的流式请求时调用） */
+  reset(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId)
+      this.rafId = null
+    }
+    this.pendingUpdate = null
+    this.messageId = null
+  }
+
+  private scheduleFlush(): void {
+    if (this.rafId !== null) return
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = null
+      if (this.pendingUpdate && this.messageId) {
+        useConversationStore.getState().updateMessage(this.messageId, this.pendingUpdate)
+        this.pendingUpdate = null
+      }
+    })
+  }
+}
+
 /**
  * 聊天 Hook - 处理消息发送、工具调用、Agent 模式
  */
@@ -70,6 +144,8 @@ export function useChat() {
   const abortControllerRef = useRef<AbortController | null>(null)
   // 网站分析开始时间（用于在进度面板中显示耗时）
   const siteAnalyzerStartTimeRef = useRef<number>(0)
+  // 流式输出节流缓冲（每帧最多触发一次 store 更新）
+  const streamingBufferRef = useRef<StreamingBuffer>(new StreamingBuffer())
 
   /** 根据对话的工作区关联，构建 WorkspaceContext 传递给 agent-engine */
   const buildWorkspaceContext = useCallback((
@@ -90,8 +166,13 @@ export function useChat() {
       .filter((a): a is NonNullable<typeof a> => !!a)
       .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
 
-    // 构建子任务分派回调（真正运行子 Agent 并返回结果）
-    const dispatchSubTask = async (agentId: string, taskDescription: string): Promise<string> => {
+    // 构建子任务分派回调（真正运行子 Agent 并返回结构化结果 JSON）
+    // Boomerang: 接收 contextSummary（主 Agent 提供的上下文摘要），作为子 Agent 的背景信息
+    const dispatchSubTask = async (
+      agentId: string,
+      taskDescription: string,
+      contextSummary?: string,
+    ): Promise<string> => {
       // 优先从工作区 Agent 中查找，再从全局 Agent 中查找
       const targetAgent = useWorkspaceAgentStore.getState().getWorkspaceAgent(agentId)
         ?? useAgentStore.getState().getAgent(agentId)
@@ -133,55 +214,101 @@ export function useChat() {
 
       // 运行子 Agent 并收集输出
       let finalContent = ''
+      let stepCount = 0
+      const artifacts: string[] = []
       const subSignal = new AbortController().signal
 
-      await runAgent(
-        targetAgent,
-        taskDescription,
-        [],  // 子 Agent 无历史上下文
-        targetTools,
-        config,
-        subSignal,
-        {
-          onStep: (step) => {
-            // 将子 Agent 步骤实时上报给 UI
-            onSubAgentActivity?.({
-              agentId: targetAgent.id,
-              agentName: targetAgent.name,
-              agentAvatar: targetAgent.avatar,
-              type: 'step',
-              step
-            })
-          },
-          onToken: (token) => {
-            finalContent += token
-          },
-          onReasoningToken: () => {},
-          onStatusChange: (status) => {
-            onSubAgentActivity?.({
-              agentId: targetAgent.id,
-              agentName: targetAgent.name,
-              agentAvatar: targetAgent.avatar,
-              type: 'status_change',
-              status
-            })
-          },
-          onError: (err) => {
-            onSubAgentActivity?.({
-              agentId: targetAgent.id,
-              agentName: targetAgent.name,
-              agentAvatar: targetAgent.avatar,
-              type: 'error',
-              error: err
-            })
-            throw new Error(err)
-          },
-          onDone: (content) => { if (content) finalContent = content },
-        },
-        subWorkspaceContext
-      )
+      // Boomerang: 若有上下文摘要，构造为子 Agent 的背景 system 消息
+      const ts = Date.now()
+      const initialMessages = contextSummary
+        ? [{
+            id: `subctx-${targetAgent.id}-${ts}`,
+            role: 'system' as const,
+            content: `[背景上下文]\n${contextSummary}`,
+            conversationId: '',
+            timestamp: ts,
+          }]
+        : []
 
-      return finalContent
+      const buildResult = (status: 'success' | 'error', error?: string) => {
+        const result = {
+          agentId: targetAgent.id,
+          agentName: targetAgent.name,
+          task: taskDescription,
+          content: finalContent,
+          status,
+          stepCount,
+          error,
+          artifacts,
+          timestamp: Date.now(),
+        }
+        onSubAgentActivity?.({
+          agentId: targetAgent.id,
+          agentName: targetAgent.name,
+          agentAvatar: targetAgent.avatar,
+          type: 'done',
+          result,
+        })
+        return JSON.stringify(result)
+      }
+
+      try {
+        await runAgent(
+          targetAgent,
+          taskDescription,
+          initialMessages,
+          targetTools,
+          config,
+          subSignal,
+          {
+            onStep: (step) => {
+              stepCount++
+              // 收集产物路径（write_file 等工具调用）
+              const toolCall = step.toolCall
+              if (toolCall && toolCall.name.includes('write_file') && toolCall.arguments?.path) {
+                const p = String(toolCall.arguments.path)
+                if (!artifacts.includes(p)) artifacts.push(p)
+              }
+              onSubAgentActivity?.({
+                agentId: targetAgent.id,
+                agentName: targetAgent.name,
+                agentAvatar: targetAgent.avatar,
+                type: 'step',
+                step
+              })
+            },
+            onToken: (token) => {
+              finalContent += token
+            },
+            onReasoningToken: () => {},
+            onStatusChange: (status) => {
+              onSubAgentActivity?.({
+                agentId: targetAgent.id,
+                agentName: targetAgent.name,
+                agentAvatar: targetAgent.avatar,
+                type: 'status_change',
+                status
+              })
+            },
+            onError: (err) => {
+              onSubAgentActivity?.({
+                agentId: targetAgent.id,
+                agentName: targetAgent.name,
+                agentAvatar: targetAgent.avatar,
+                type: 'error',
+                error: err
+              })
+              throw new Error(err)
+            },
+            onDone: (content) => { if (content) finalContent = content },
+          },
+          subWorkspaceContext
+        )
+      } catch (err) {
+        return buildResult('error', err instanceof Error ? err.message : String(err))
+      }
+
+      return buildResult('success')
     }
 
     // 构建创建 Agent 回调（创建新 Agent 并加入工作区团队）
@@ -235,12 +362,21 @@ export function useChat() {
       return newAgent.id
     }
 
+    // 文件操作审批回调（阶段 1 新增，参考 ROO CODE Auto-Approve）
+    const onFileActionApproval = async (
+      request: FileActionApprovalRequest
+    ): Promise<FileActionApprovalResult> => {
+      return useWorkspaceStore.getState().requestFileActionApproval(request)
+    }
+
     return {
       folderPath: ws.folderPath,
       workspaceId: ws.id,
       teamAgents,
       dispatchSubTask,
       createAgent,
+      autoApproval: ws.autoApproval,
+      onFileActionApproval,
     }
   }, [])
 
@@ -458,6 +594,26 @@ export function useChat() {
             agentSteps: [...agentSteps],
             isStreaming: true
           })
+        } else if (event.type === 'done' && event.result) {
+          // Boomerang: 子任务结构化成果回流，注入成果步骤供 UI 展示
+          const r = event.result
+          const resultStep: AgentStep = {
+            id: crypto.randomUUID(),
+            type: 'subtask_result',
+            content: r.content || '',
+            stepIndex: agentSteps.length,
+            timestamp: Date.now(),
+            sourceAgentId: event.agentId,
+            sourceAgentName: event.agentName,
+            sourceAgentAvatar: event.agentAvatar,
+            subtaskResult: r,
+          }
+          agentSteps.push(resultStep)
+          updateMessage(assistantMsg.id, {
+            content: finalContent,
+            agentSteps: [...agentSteps],
+            isStreaming: true
+          })
         }
       }
 
@@ -479,6 +635,8 @@ export function useChat() {
               finalContent = ''
               reasoningContent = ''
             }
+            // 步骤变更需要立即刷新（低频事件，不需要节流）
+            streamingBufferRef.current.flush()
             updateMessage(assistantMsg.id, {
               content: finalContent,
               agentSteps: [...agentSteps],
@@ -487,30 +645,33 @@ export function useChat() {
           },
           onToken: (token) => {
             finalContent += token
-            // 实时更新消息内容，让用户能看到 Agent 的流式输出
-            updateMessage(assistantMsg.id, {
+            // ⚡ 性能优化：onToken 是高频回调（每个 token 一次），不再每次展开 agentSteps 数组
+            // agentSteps 只在低频的 onStep/onSubAgentActivity 回调中更新，避免 O(n) 数组复制 × 高频调用
+            streamingBufferRef.current.push(assistantMsg.id, {
               content: finalContent,
-              agentSteps: [...agentSteps],
               isStreaming: true
             })
           },
           onReasoningToken: (token) => {
             reasoningContent += token
-            updateMessage(assistantMsg.id, {
+            // ⚡ 同上：onReasoningToken 也是高频回调，不再展开 agentSteps
+            streamingBufferRef.current.push(assistantMsg.id, {
               content: finalContent,
               reasoningContent,
-              agentSteps: [...agentSteps],
               isStreaming: true
             })
           },
           onStatusChange: (status) => {
+            // 完成时强制刷新缓冲，确保最终状态正确
+            streamingBufferRef.current.flush()
             if (status === 'completed' || status === 'error' || status === 'stopped') {
               updateMessage(assistantMsg.id, {
                 content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
                 isStreaming: false,
                 isError: status === 'error',
                 reasoningContent: reasoningContent || undefined,
-                agentSteps: [...agentSteps]
+                agentSteps: [...agentSteps],
+                finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
               })
               isStreamingRef.current = false
               if (status === 'completed') {
@@ -558,7 +719,8 @@ export function useChat() {
               content: doneContent || finalContent || '',
               isStreaming: false,
               agentSteps: [...agentSteps],
-              reasoningContent: reasoningContent || undefined
+              reasoningContent: reasoningContent || undefined,
+              finishReason: 'stop'
             })
             isStreamingRef.current = false
           },
@@ -741,11 +903,12 @@ export function useChat() {
         {
           onToken: (token) => {
             fullContent += token
-            updateMessage(assistantMsg.id, { content: fullContent })
+            // 节流：通过 StreamingBuffer 批量合并更新，每帧最多刷新一次
+            streamingBufferRef.current.push(assistantMsg.id, { content: fullContent })
           },
           onReasoningToken: (token) => {
             reasoningContent += token
-            updateMessage(assistantMsg.id, {
+            streamingBufferRef.current.push(assistantMsg.id, {
               content: fullContent,
               reasoningContent
             })
@@ -754,12 +917,15 @@ export function useChat() {
             pendingToolCalls = toolCalls
           },
           onUsage: (usage) => {
+            // usage 更新频率低，不需要节流
             updateMessage(assistantMsg.id, {
               content: fullContent,
               tokenUsage: usage
             })
           },
           onDone: async (finishReason) => {
+            // 完成时强制刷新缓冲，确保最终状态正确
+            streamingBufferRef.current.flush()
             if (pendingToolCalls.length > 0) {
               updateMessage(assistantMsg.id, {
                 content: fullContent,
@@ -777,7 +943,8 @@ export function useChat() {
               const finalContent = notice ? fullContent + notice : fullContent
               updateMessage(assistantMsg.id, {
                 content: finalContent,
-                isStreaming: false
+                isStreaming: false,
+                finishReason
               })
               notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
             }
@@ -887,7 +1054,8 @@ export function useChat() {
               updateMessage(limitReplyMsg.id, {
                 content: notice ? limitFullContent + notice : limitFullContent,
                 isStreaming: false,
-                reasoningContent: limitReasoningContent || undefined
+                reasoningContent: limitReasoningContent || undefined,
+                finishReason
               })
               isStreamingRef.current = false
             },
@@ -996,11 +1164,11 @@ export function useChat() {
         {
           onToken: (token) => {
             fullContent += token
-            updateMessage(replyMsg.id, { content: fullContent })
+            streamingBufferRef.current.push(replyMsg.id, { content: fullContent })
           },
           onReasoningToken: (token) => {
             reasoningContent += token
-            updateMessage(replyMsg.id, {
+            streamingBufferRef.current.push(replyMsg.id, {
               content: fullContent,
               reasoningContent
             })
@@ -1012,6 +1180,7 @@ export function useChat() {
             updateMessage(replyMsg.id, { tokenUsage: usage })
           },
           onDone: async (finishReason) => {
+            streamingBufferRef.current.flush()
             if (pendingToolCalls.length > 0) {
               // AI 又发起了工具调用 → 更新消息显示工具调用状态
               updateMessage(replyMsg.id, {
@@ -1039,7 +1208,8 @@ export function useChat() {
               updateMessage(replyMsg.id, {
                 content: notice ? fullContent + notice : fullContent,
                 isStreaming: false,
-                reasoningContent: reasoningContent || undefined
+                reasoningContent: reasoningContent || undefined,
+                finishReason
               })
               isStreamingRef.current = false
             }
@@ -1070,15 +1240,17 @@ export function useChat() {
     humanInputResolversRef.current.clear()
 
     // 立即将所有正在流式输出的消息标记为非流式，防止 UI 状态残留
-    if (currentConversationId) {
-      const msgs = getMessages(currentConversationId)
+    // 从 store 获取最新的 currentConversationId，确保工作区等场景能正确停止
+    const latestConversationId = useConversationStore.getState().currentConversationId
+    if (latestConversationId) {
+      const msgs = getMessages(latestConversationId)
       for (const m of msgs) {
         if (m.isStreaming) {
-          updateMessage(m.id, { isStreaming: false })
+          updateMessage(m.id, { isStreaming: false, finishReason: 'abort' })
         }
       }
     }
-  }, [currentConversationId, getMessages, updateMessage])
+  }, [getMessages, updateMessage])
 
   /**
    * 重新生成消息（不重新添加用户消息）
@@ -1145,24 +1317,31 @@ export function useChat() {
                 finalContent = ''
                 reasoningContent = ''
               }
+              // 步骤变更需要立即刷新（低频事件）
+              streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
             },
             onToken: (token) => {
               finalContent += token
-              updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
+              // ⚡ 性能优化：onToken 高频回调不再展开 agentSteps，只在 onStep 低频回调中更新
+              streamingBufferRef.current.push(assistantMsg.id, { content: finalContent, isStreaming: true })
             },
             onReasoningToken: (token) => {
               reasoningContent += token
-              updateMessage(assistantMsg.id, { content: finalContent, reasoningContent, agentSteps: [...agentSteps], isStreaming: true })
+              // ⚡ 同上：不再展开 agentSteps
+              streamingBufferRef.current.push(assistantMsg.id, { content: finalContent, reasoningContent, isStreaming: true })
             },
             onStatusChange: (status) => {
+              // 完成时强制刷新缓冲
+              streamingBufferRef.current.flush()
               if (status === 'completed' || status === 'error' || status === 'stopped') {
                 updateMessage(assistantMsg.id, {
                   content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
                   isStreaming: false,
                   isError: status === 'error',
                   reasoningContent: reasoningContent || undefined,
-                  agentSteps: [...agentSteps]
+                  agentSteps: [...agentSteps],
+                  finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
                 })
                 isStreamingRef.current = false
                 if (status === 'completed') {
@@ -1171,11 +1350,13 @@ export function useChat() {
               }
             },
             onError: (error) => {
+              streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: finalContent || error, isStreaming: false, isError: true, agentSteps: [...agentSteps] })
               isStreamingRef.current = false
             },
             onDone: (doneContent) => {
-              updateMessage(assistantMsg.id, { content: doneContent || finalContent || '', isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined })
+              streamingBufferRef.current.flush()
+              updateMessage(assistantMsg.id, { content: doneContent || finalContent || '', isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined, finishReason: 'stop' })
               isStreamingRef.current = false
             },
             onHumanInput: async (step) => {
@@ -1264,11 +1445,13 @@ export function useChat() {
           {
             onToken: (token) => {
               fullContent += token
-              updateMessage(assistantMsg.id, { content: fullContent })
+              // 节流：通过 StreamingBuffer 批量合并更新
+              streamingBufferRef.current.push(assistantMsg.id, { content: fullContent })
             },
             onReasoningToken: (token) => {
               reasoningContent += token
-              updateMessage(assistantMsg.id, { content: fullContent, reasoningContent })
+              // 节流：通过 StreamingBuffer 批量合并更新
+              streamingBufferRef.current.push(assistantMsg.id, { content: fullContent, reasoningContent })
             },
             onToolCalls: (toolCalls) => {
               pendingToolCalls = toolCalls
@@ -1277,6 +1460,8 @@ export function useChat() {
               updateMessage(assistantMsg.id, { content: fullContent, tokenUsage: usage })
             },
             onDone: async (finishReason) => {
+              // 完成时强制刷新缓冲
+              streamingBufferRef.current.flush()
               if (pendingToolCalls.length > 0) {
                 updateMessage(assistantMsg.id, {
                   content: fullContent,
@@ -1287,11 +1472,12 @@ export function useChat() {
                 await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools5], currentBranchIdx)
               } else {
                 const notice = getFinishNotice(finishReason)
-                updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false })
+                updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
               }
               isStreamingRef.current = false
             },
             onError: (error) => {
+              streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
               isStreamingRef.current = false
             }
@@ -1393,6 +1579,8 @@ export function useChat() {
               finalContent = ''
               reasoningContent = ''
             }
+            // 步骤变更需要立即刷新（低频事件）
+            streamingBufferRef.current.flush()
             updateMessage(messageId, {
               content: finalContent,
               agentSteps: [...agentSteps],
@@ -1401,29 +1589,32 @@ export function useChat() {
           },
           onToken: (token) => {
             finalContent += token
-            updateMessage(messageId, {
+            // ⚡ 性能优化：onToken 高频回调不再展开 agentSteps
+            streamingBufferRef.current.push(messageId, {
               content: finalContent,
-              agentSteps: [...agentSteps],
               isStreaming: true
             })
           },
           onReasoningToken: (token) => {
             reasoningContent += token
-            updateMessage(messageId, {
+            // ⚡ 同上：不再展开 agentSteps
+            streamingBufferRef.current.push(messageId, {
               content: finalContent,
               reasoningContent,
-              agentSteps: [...agentSteps],
               isStreaming: true
             })
           },
           onStatusChange: (status) => {
+            // 完成时强制刷新缓冲
+            streamingBufferRef.current.flush()
             if (status === 'completed' || status === 'error' || status === 'stopped') {
               updateMessage(messageId, {
                 content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
                 isStreaming: false,
                 isError: status === 'error',
                 reasoningContent: reasoningContent || undefined,
-                agentSteps: [...agentSteps]
+                agentSteps: [...agentSteps],
+                finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
               })
               isStreamingRef.current = false
               if (status === 'completed') {
@@ -1432,6 +1623,7 @@ export function useChat() {
             }
           },
           onError: (error) => {
+            streamingBufferRef.current.flush()
             updateMessage(messageId, {
               content: finalContent || error,
               isStreaming: false,
@@ -1441,11 +1633,13 @@ export function useChat() {
             isStreamingRef.current = false
           },
           onDone: (doneContent) => {
+            streamingBufferRef.current.flush()
             updateMessage(messageId, {
               content: doneContent || finalContent || '',
               isStreaming: false,
               agentSteps: [...agentSteps],
-              reasoningContent: reasoningContent || undefined
+              reasoningContent: reasoningContent || undefined,
+              finishReason: 'stop'
             })
             isStreamingRef.current = false
           },
@@ -1618,24 +1812,31 @@ export function useChat() {
                 finalContent = ''
                 reasoningContent = ''
               }
+              // 步骤变更需要立即刷新（低频事件）
+              streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
             },
             onToken: (token) => {
               finalContent += token
-              updateMessage(assistantMsg.id, { content: finalContent, agentSteps: [...agentSteps], isStreaming: true })
+              // ⚡ 性能优化：onToken 高频回调不再展开 agentSteps，只在 onStep 低频回调中更新
+              streamingBufferRef.current.push(assistantMsg.id, { content: finalContent, isStreaming: true })
             },
             onReasoningToken: (token) => {
               reasoningContent += token
-              updateMessage(assistantMsg.id, { content: finalContent, reasoningContent, agentSteps: [...agentSteps], isStreaming: true })
+              // ⚡ 同上：不再展开 agentSteps
+              streamingBufferRef.current.push(assistantMsg.id, { content: finalContent, reasoningContent, isStreaming: true })
             },
             onStatusChange: (status) => {
+              // 完成时强制刷新缓冲
+              streamingBufferRef.current.flush()
               if (status === 'completed' || status === 'error' || status === 'stopped') {
                 updateMessage(assistantMsg.id, {
                   content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
                   isStreaming: false,
                   isError: status === 'error',
                   reasoningContent: reasoningContent || undefined,
-                  agentSteps: [...agentSteps]
+                  agentSteps: [...agentSteps],
+                  finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
                 })
                 isStreamingRef.current = false
                 if (status === 'completed') {
@@ -1644,11 +1845,13 @@ export function useChat() {
               }
             },
             onError: (error) => {
+              streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: finalContent || error, isStreaming: false, isError: true, agentSteps: [...agentSteps] })
               isStreamingRef.current = false
             },
             onDone: (doneContent) => {
-              updateMessage(assistantMsg.id, { content: doneContent || finalContent || '', isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined })
+              streamingBufferRef.current.flush()
+              updateMessage(assistantMsg.id, { content: doneContent || finalContent || '', isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined, finishReason: 'stop' })
               isStreamingRef.current = false
             },
             onHumanInput: async (step) => {
@@ -1737,11 +1940,13 @@ export function useChat() {
           {
             onToken: (token) => {
               fullContent += token
-              updateMessage(assistantMsg.id, { content: fullContent })
+              // 节流：通过 StreamingBuffer 批量合并更新
+              streamingBufferRef.current.push(assistantMsg.id, { content: fullContent })
             },
             onReasoningToken: (token) => {
               reasoningContent += token
-              updateMessage(assistantMsg.id, { content: fullContent, reasoningContent })
+              // 节流：通过 StreamingBuffer 批量合并更新
+              streamingBufferRef.current.push(assistantMsg.id, { content: fullContent, reasoningContent })
             },
             onToolCalls: (toolCalls) => {
               pendingToolCalls = toolCalls
@@ -1750,6 +1955,8 @@ export function useChat() {
               updateMessage(assistantMsg.id, { content: fullContent, tokenUsage: usage })
             },
             onDone: async (finishReason) => {
+              // 完成时强制刷新缓冲
+              streamingBufferRef.current.flush()
               if (pendingToolCalls.length > 0) {
                 updateMessage(assistantMsg.id, {
                   content: fullContent,
@@ -1760,11 +1967,12 @@ export function useChat() {
                 await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools7], newBranchIndex)
               } else {
                 const notice = getFinishNotice(finishReason)
-                updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false })
+                updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
               }
               isStreamingRef.current = false
             },
             onError: (error) => {
+              streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
               isStreamingRef.current = false
             }
@@ -1794,8 +2002,308 @@ export function useChat() {
   )
 
   /**
+   * 继续生成：在已有 assistant 消息内容基础上，让 AI 从断点继续输出
+   * 不删除任何消息，而是将已有内容包含在上下文中，追加请求让模型继续
+   */
+  const continueGeneration = useCallback(
+    async (messageId: string) => {
+      if (isStreamingRef.current) return
+
+      // 通过消息 ID 获取所属对话 ID，不依赖 currentConversationId
+      // 这样在工作区等场景下也能正确工作
+      let targetConversationId = useConversationStore.getState().getConversationIdByMessageId(messageId)
+      
+      // Fallback: 如果索引中没有找到（如页面刷新后索引丢失），尝试使用 currentConversationId
+      if (!targetConversationId) {
+        const fallbackConvId = useConversationStore.getState().currentConversationId
+        if (fallbackConvId) {
+          const fallbackMessages = getVisibleMessages(fallbackConvId)
+          const fallbackMsg = fallbackMessages.find(m => m.id === messageId)
+          if (fallbackMsg) {
+            targetConversationId = fallbackConvId
+          }
+        }
+      }
+      
+      if (!targetConversationId) return
+
+      const visibleMessages = getVisibleMessages(targetConversationId)
+      const msgIndex = visibleMessages.findIndex((m) => m.id === messageId)
+      if (msgIndex < 0) return
+
+      const targetMsg = visibleMessages[msgIndex]
+      if (targetMsg.role !== 'assistant') return
+
+      const currentBranchIdx = getCurrentBranchIndex(targetConversationId)
+
+      // 检查是否为 Agent 模式
+      const agent = (() => {
+        const conversation = getConversation(targetConversationId)
+        if (!conversation?.agentId) return undefined
+        return getAgent(conversation.agentId)
+      })()
+
+      isStreamingRef.current = true
+      abortControllerRef.current = new AbortController()
+
+      if (agent && agent.enabled) {
+        // Agent 模式：使用 resumeAgent 从已有步骤继续
+        const existingSteps = targetMsg.agentSteps ?? []
+        const agentSteps: AgentStep[] = [...existingSteps]
+        let finalContent = targetMsg.content ?? ''
+        let reasoningContent = targetMsg.reasoningContent ?? ''
+
+        updateMessage(messageId, { isStreaming: true, isError: false, finishReason: undefined })
+
+        const history = getMessages(targetConversationId)
+        const allTools = getAvailableTools()
+        const wsContext = buildWorkspaceContext(targetConversationId)
+
+        await resumeAgent(
+          agent,
+          history,
+          allTools,
+          resolveCurrentConfig(targetConversationId, agent)!,
+          abortControllerRef.current.signal,
+          {
+            onStep: (step) => {
+              agentSteps.push(step)
+              if (step.type === 'thinking' || step.type === 'action') {
+                finalContent = ''
+                reasoningContent = ''
+              }
+              // 步骤变更需要立即刷新（低频事件）
+              streamingBufferRef.current.flush()
+              updateMessage(messageId, {
+                content: finalContent,
+                agentSteps: [...agentSteps],
+                isStreaming: true
+              })
+            },
+            onToken: (token) => {
+              finalContent += token
+              // ⚡ 性能优化：onToken 高频回调不再展开 agentSteps
+              streamingBufferRef.current.push(messageId, {
+                content: finalContent,
+                isStreaming: true
+              })
+            },
+            onReasoningToken: (token) => {
+              reasoningContent += token
+              // ⚡ 同上：不再展开 agentSteps
+              streamingBufferRef.current.push(messageId, {
+                content: finalContent,
+                reasoningContent,
+                isStreaming: true
+              })
+            },
+            onStatusChange: (status) => {
+              // 完成时强制刷新缓冲
+              streamingBufferRef.current.flush()
+              if (status === 'completed' || status === 'error' || status === 'stopped') {
+                updateMessage(messageId, {
+                  content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
+                  isStreaming: false,
+                  isError: status === 'error',
+                  reasoningContent: reasoningContent || undefined,
+                  agentSteps: [...agentSteps],
+                  finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
+                })
+                isStreamingRef.current = false
+                if (status === 'completed') {
+                  notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
+                }
+              }
+            },
+            onError: (error) => {
+              streamingBufferRef.current.flush()
+              updateMessage(messageId, {
+                content: finalContent || error,
+                isStreaming: false,
+                isError: true,
+                agentSteps: [...agentSteps],
+                finishReason: 'error'
+              })
+              isStreamingRef.current = false
+            },
+            onDone: (doneContent) => {
+              streamingBufferRef.current.flush()
+              updateMessage(messageId, {
+                content: doneContent || finalContent || '',
+                isStreaming: false,
+                agentSteps: [...agentSteps],
+                reasoningContent: reasoningContent || undefined,
+                finishReason: 'stop'
+              })
+              isStreamingRef.current = false
+            },
+            onHumanInput: async (step) => {
+              return new Promise<string | string[]>((resolve, reject) => {
+                humanInputResolversRef.current.set(step.id, resolve)
+                const timeoutId = setTimeout(() => {
+                  if (humanInputResolversRef.current.has(step.id)) {
+                    humanInputResolversRef.current.delete(step.id)
+                    const firstOption = step.humanChoice?.options[0]?.value ?? ''
+                    const defaultValue = step.humanChoice?.allowMultiple ? [firstOption] : firstOption
+                    resolve(defaultValue)
+                  }
+                }, 60_000)
+                const signal = abortControllerRef.current?.signal
+                if (signal?.aborted) {
+                  clearTimeout(timeoutId)
+                  humanInputResolversRef.current.delete(step.id)
+                  reject(new Error('aborted'))
+                  return
+                }
+                const onAbort = () => {
+                  clearTimeout(timeoutId)
+                  humanInputResolversRef.current.delete(step.id)
+                  reject(new Error('aborted'))
+                }
+                signal?.addEventListener('abort', onAbort, { once: true })
+              })
+            },
+            onReportReady: (reportHtml) => {
+              updateMessage(messageId, { hasReport: true })
+              reportStore.saveReport(messageId, reportHtml).catch(console.error)
+            },
+            onSiteAnalyzerProgress: (progress) => {
+              if (progress.type === 'started') {
+                siteAnalyzerStartTimeRef.current = Date.now()
+              }
+              const phase = mapProgressTypeToPhase(progress.type)
+              updateMessage(messageId, {
+                siteAnalyzerProgress: {
+                  phase,
+                  message: progress.message,
+                  pagesCrawled: progress.pagesCrawled,
+                  totalPages: progress.totalPages,
+                  apisFound: progress.apisFound,
+                  pagesAnalyzed: progress.pagesAnalyzed,
+                  currentUrl: progress.currentUrl,
+                  startTime: siteAnalyzerStartTimeRef.current,
+                  error: progress.error
+                }
+              })
+              if (phase === 'completed' || phase === 'error') {
+                setTimeout(() => {
+                  updateMessage(messageId, { siteAnalyzerProgress: undefined })
+                }, 3000)
+              }
+            }
+          },
+          wsContext
+        )
+      } else {
+        // 普通模式：参考 ai-service.ts 自动续写逻辑
+        // 不发送完整的 assistant 消息（避免模型重复生成），
+        // 而是追加空的 assistant 消息作为续写标记 + "继续" 用户消息
+        const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
+        const mcpTools = useMCPToolStore.getState().mcpTools
+        const normalModeTools = [...BUILT_IN_TOOLS, ...mcpTools]
+        const toolDefs = toolService.toToolDefinitions(normalModeTools)
+
+        // 构建续写上下文：包含 targetMsg 之前的所有消息（不包含 targetMsg 本身）
+        // 然后追加空的 assistant 消息作为续写标记，再追加 "继续" 用户消息
+        // 这样 API 会从上下文继续生成而非重复已有内容
+        const existingContent = targetMsg.content ?? ''
+        const continueHistory: Message[] = [
+          ...visibleMessages.slice(0, msgIndex),  // 不包含 targetMsg
+        ]
+        // 追加空的 assistant 消息作为续写标记（与 ai-service.ts 自动续写一致）
+        continueHistory.push({
+          id: '__continue_assistant_marker__',
+          conversationId: targetConversationId,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now()
+        })
+        continueHistory.push({
+          id: '__continue_user_msg__',
+          conversationId: targetConversationId,
+          role: 'user',
+          content: '继续',
+          timestamp: Date.now()
+        })
+
+        // 标记原消息为流式中
+        updateMessage(messageId, { isStreaming: true, finishReason: undefined })
+
+        let fullContent = existingContent
+        let reasoningContent = targetMsg.reasoningContent ?? ''
+        let pendingToolCalls: Array<{ id: string; name: string; arguments: string }> = []
+
+        await aiService.streamChat(
+          continueHistory,
+          resolveCurrentConfig(targetConversationId)!,
+          prompt?.content ?? null,
+          toolDefs,
+          abortControllerRef.current.signal,
+          {
+            onToken: (token) => {
+              fullContent += token
+              // 节流：通过 StreamingBuffer 批量合并更新
+              streamingBufferRef.current.push(messageId, { content: fullContent })
+            },
+            onReasoningToken: (token) => {
+              reasoningContent += token
+              // 节流：通过 StreamingBuffer 批量合并更新
+              streamingBufferRef.current.push(messageId, { content: fullContent, reasoningContent })
+            },
+            onToolCalls: (toolCalls) => {
+              pendingToolCalls = toolCalls
+            },
+            onUsage: (usage) => {
+              updateMessage(messageId, { content: fullContent, tokenUsage: usage })
+            },
+            onDone: async (finishReason) => {
+              // 完成时强制刷新缓冲
+              streamingBufferRef.current.flush()
+              if (pendingToolCalls.length > 0) {
+                updateMessage(messageId, {
+                  content: fullContent,
+                  isStreaming: false,
+                  toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const })),
+                  finishReason
+                })
+                const mcpToolsNext = useMCPToolStore.getState().mcpTools
+                await handleToolCalls(targetConversationId, messageId, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpToolsNext], currentBranchIdx)
+              } else {
+                const notice = getFinishNotice(finishReason)
+                updateMessage(messageId, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
+              }
+              isStreamingRef.current = false
+            },
+            onError: (error) => {
+              streamingBufferRef.current.flush()
+              updateMessage(messageId, { content: fullContent || error, isStreaming: false, isError: true, finishReason: 'error' })
+              isStreamingRef.current = false
+            }
+          },
+          resolveCurrentRequestConfig(targetConversationId)
+        )
+      }
+    },
+    [
+      resolveCurrentConfig,
+      resolveCurrentRequestConfig,
+      selectedPromptId,
+      getPrompt,
+      getAgent,
+      getConversation,
+      getVisibleMessages,
+      getCurrentBranchIndex,
+      updateMessage,
+      getMessages,
+      getAvailableTools,
+      handleToolCalls,
+      buildWorkspaceContext
+    ]
+  )
+
+  /**
    * 继续被中断的任务
-   * 找到中断消息之前的用户消息，重新发送以继续任务
+   * 保留已有的 assistant 内容，从中断点继续生成而非重新生成
    */
   const continueInterruptedTask = useCallback(
     async (messageId: string) => {
@@ -1808,36 +2316,43 @@ export function useChat() {
       const interruptedMsg = messages[msgIndex]
       if (!interruptedMsg.wasInterrupted) return
 
-      // 找到中断消息之前的用户消息
-      let userMsgIndex = -1
-      for (let i = msgIndex - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          userMsgIndex = i
-          break
+      // 如果已有内容，直接走继续生成逻辑
+      if (interruptedMsg.content) {
+        // 清除中断标记，然后继续生成
+        updateMessage(messageId, { wasInterrupted: undefined, finishReason: 'abort' })
+        await continueGeneration(messageId)
+      } else {
+        // 没有已生成内容，需要重新开始
+        // 清除中断标记
+        updateMessage(messageId, { wasInterrupted: undefined })
+
+        // 删除中断的 assistant 消息及之后的所有消息（保留用户消息）
+        for (let i = messages.length - 1; i >= msgIndex; i--) {
+          useConversationStore.getState().deleteMessage(currentConversationId, messages[i].id)
+        }
+
+        // 找到中断消息之前的用户消息，重新发送
+        let userMsgIndex = -1
+        for (let i = msgIndex - 1; i >= 0; i--) {
+          if (messages[i].role === 'user') {
+            userMsgIndex = i
+            break
+          }
+        }
+        if (userMsgIndex >= 0) {
+          const userMsg = messages[userMsgIndex]
+          await sendMessage(userMsg.content, currentConversationId, userMsg.attachments)
         }
       }
-
-      // 清除中断标记
-      updateMessage(messageId, { wasInterrupted: undefined })
-
-      // 删除中断的 assistant 消息及之后的所有消息（保留用户消息）
-      for (let i = messages.length - 1; i >= msgIndex; i--) {
-        useConversationStore.getState().deleteMessage(currentConversationId, messages[i].id)
-      }
-
-      // 重新发送用户消息以继续任务
-      if (userMsgIndex >= 0) {
-        const userMsg = messages[userMsgIndex]
-        await sendMessage(userMsg.content, currentConversationId, userMsg.attachments)
-      }
     },
-    [currentConversationId, getMessages, updateMessage, sendMessage]
+    [currentConversationId, getMessages, updateMessage, sendMessage, continueGeneration]
   )
 
   return {
     sendMessage,
     stopGeneration,
     regenerateMessage,
+    continueGeneration,
     editAndResend,
     isStreaming: isStreamingRef.current,
     handleHumanInput,

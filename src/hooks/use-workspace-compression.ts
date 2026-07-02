@@ -47,18 +47,21 @@ export function useWorkspaceCompression() {
     messages: Message[],
     conversationId: string,
     tokensBefore?: number,
+    /** 触发压缩的消息 ID */
+    messageId?: string,
   ): Promise<CompressionMarkerData | null> => {
     const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
     if (!workspace) return null
 
     try {
-      // 1. 创建 pre-compression 存档点
+      // 1. 创建 pre-compression 存档点（关联触发消息）
       const checkpointResult = await workspaceVCSService.createCheckpoint({
         folderPath: workspace.folderPath,
         description: `上下文压缩前存档（${messages.length} 条消息）`,
         type: 'pre-compression',
         workspaceId: workspace.id,
         conversationId,
+        messageId,
       })
 
       if (!checkpointResult.success || !checkpointResult.checkpointId) {
@@ -78,12 +81,13 @@ export function useWorkspaceCompression() {
         // 不阻止压缩，存档点已创建
       }
 
-      // 3. 返回压缩标记数据
+      // 3. 返回压缩标记数据（含 Token 消耗信息）
       return {
         checkpointId: checkpointResult.checkpointId,
         compressedAt: Date.now(),
         compressedMessageCount: messages.length,
         tokensBefore,
+        tokensAfter: undefined, // 压缩后的 Token 数由调用方在压缩完成后回填
       }
     } catch (err) {
       console.error('[use-workspace-compression] 准备压缩失败:', err)

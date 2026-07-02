@@ -14,6 +14,10 @@ import { useChat } from '../../hooks/use-chat'
 import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
 import type { Message, MessageAttachment, PromptRuntimeContext } from '../../types'
 
+/** ⚡ 稳定的空数组引用，避免每次渲染创建新的 [] 导致 useMemo 失效 */
+const EMPTY_MESSAGES: Message[] = []
+const EMPTY_RENDER_GROUPS: RenderGroup[] = []
+
 /** 消息渲染组：单条消息或多条合并的 assistant 组 */
 type RenderGroup =
   | { type: 'single'; message: Message }
@@ -66,11 +70,11 @@ interface ChatWindowProps {
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases } = useConversationStore()
+  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases, loadConversationMessages } = useConversationStore()
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, handleHumanInput, resumeAgentTask, continueInterruptedTask } = useChat()
+  const { sendMessage, stopGeneration, regenerateMessage, continueGeneration, editAndResend, handleHumanInput, resumeAgentTask, continueInterruptedTask } = useChat()
 
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
   const kbDropdownRef = useRef<HTMLDivElement>(null)
@@ -83,6 +87,13 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   useEffect(() => {
     useConversationStore.getState().cleanupStaleStreaming()
   }, [])
+
+  // ⚡ 切换对话时从 IDB 懒加载消息到内存（不在内存中的对话才触发 IDB 读取）
+  useEffect(() => {
+    if (currentConversationId) {
+      loadConversationMessages(currentConversationId)
+    }
+  }, [currentConversationId, loadConversationMessages])
 
   // 点击外部关闭知识库下拉菜单
   useEffect(() => {
@@ -97,13 +108,57 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [kbDropdownOpen])
 
-  // 使用可见消息（支持分支切换）
-  const messages = currentConversationId ? getVisibleMessages(currentConversationId) : []
+  // ⚡ 使用稳定空数组引用，避免每次渲染创建新 [] 导致 useMemo 失效
+  const messages = currentConversationId ? getVisibleMessages(currentConversationId) : EMPTY_MESSAGES
   const currentConversation = currentConversationId ? getConversation(currentConversationId) : undefined
 
-  // 将消息分组：普通模式下连续的 assistant+tool 消息合并为一个气泡
-  const renderGroups = useMemo(() => groupMessages(messages), [messages])
+  // ⚡ 消息分组：依赖稳定的 messages 引用（visibleMessagesCache 保证了非流式场景的引用稳定）
+  // 流式场景下 messages 仍会变化，但子组件的 memo+自定义比较器会过滤无效重渲染
+  const renderGroups = useMemo(() => {
+    if (messages.length === 0) return EMPTY_RENDER_GROUPS
+    return groupMessages(messages)
+  }, [messages])
   const activeBranches = currentConversation?.activeBranches ?? {}
+
+  // 性能优化：缓存回调函数引用，避免每次渲染创建新函数
+  // 注意：handleSwitchBranch 需在其他 memoized 回调之前定义，因为 memoizedOnSwitchBranch 依赖它
+  /** 切换分支 */
+  const handleSwitchBranch = useCallback(
+    (forkMessageId: string, branchIndex: number) => {
+      if (currentConversationId) {
+        switchBranch(currentConversationId, forkMessageId, branchIndex)
+      }
+    },
+    [currentConversationId, switchBranch]
+  )
+
+  const memoizedOnRegenerate = useCallback((messageId: string) => {
+    regenerateMessage(messageId)
+  }, [regenerateMessage])
+
+  const memoizedOnContinueGeneration = useCallback((messageId: string) => {
+    continueGeneration(messageId)
+  }, [continueGeneration])
+
+  const memoizedOnEditAndResend = useCallback((messageId: string, content: string) => {
+    editAndResend(messageId, content)
+  }, [editAndResend])
+
+  const memoizedOnHumanInput = useCallback((stepId: string, value: string | string[]) => {
+    handleHumanInput(stepId, value)
+  }, [handleHumanInput])
+
+  const memoizedOnResumeAgentTask = useCallback((messageId: string) => {
+    resumeAgentTask(messageId)
+  }, [resumeAgentTask])
+
+  const memoizedOnContinueInterruptedTask = useCallback((messageId: string) => {
+    continueInterruptedTask(messageId)
+  }, [continueInterruptedTask])
+
+  const memoizedOnSwitchBranch = useCallback((forkMessageId: string, branchIndex: number) => {
+    handleSwitchBranch(forkMessageId, branchIndex)
+  }, [handleSwitchBranch])
 
   // 获取当前对话关联的 Agent
   const currentAgent = currentConversation?.agentId ? getAgent(currentConversation.agentId) : undefined
@@ -114,10 +169,11 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     defaultModel: currentAgent?.modelConfig?.modelId,
   }), [currentAgent?.name, currentAgent?.modelConfig?.modelId])
 
-  // 自动滚动到底部
+  // ⚡ 自动滚动到底部：流式输出时用即时滚动（避免每帧平滑滚动造成卡顿），稳定后用平滑滚动
+  const isStreaming = messages.some((m) => m.isStreaming)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' })
+  }, [messages, isStreaming])
 
   // 判断是否为网站分析 Agent 且对话为空（显示表单）
   const isWebsiteAnalyzer = currentConversation?.agentId === WEBSITE_ANALYZER_AGENT_ID
@@ -185,15 +241,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     [currentConversationId, setConversationAgent]
   )
 
-  /** 切换分支 */
-  const handleSwitchBranch = useCallback(
-    (forkMessageId: string, branchIndex: number) => {
-      if (currentConversationId) {
-        switchBranch(currentConversationId, forkMessageId, branchIndex)
-      }
-    },
-    [currentConversationId, switchBranch]
-  )
 
   /** 获取分支点消息的当前激活分支索引 */
   const getActiveBranchIndex = useCallback(
@@ -463,7 +510,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
           )
         ) : (
           <div className="max-w-3xl mx-auto py-4 flex flex-col overflow-hidden">
-            {renderGroups.map((group, idx) => {
+            {renderGroups.map((group) => {
               if (group.type === 'assistant-group') {
                 return (
                   <AssistantGroupBubble
@@ -473,7 +520,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                     showTokenUsage={showTokenUsage}
                     showAvatar={showAvatar}
                     messageAlignment={messageAlignment}
-                    onRegenerate={regenerateMessage}
+                    onRegenerate={memoizedOnRegenerate}
+                    onContinueGeneration={memoizedOnContinueGeneration}
                   />
                 )
               }
@@ -486,13 +534,14 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                   showTokenUsage={showTokenUsage}
                   showAvatar={showAvatar}
                   messageAlignment={messageAlignment}
-                  onRegenerate={regenerateMessage}
-                  onEditAndResend={editAndResend}
-                  onHumanInput={handleHumanInput}
-                  onResumeAgentTask={resumeAgentTask}
-                  onContinueInterruptedTask={continueInterruptedTask}
+                  onRegenerate={memoizedOnRegenerate}
+                  onContinueGeneration={memoizedOnContinueGeneration}
+                  onEditAndResend={memoizedOnEditAndResend}
+                  onHumanInput={memoizedOnHumanInput}
+                  onResumeAgentTask={memoizedOnResumeAgentTask}
+                  onContinueInterruptedTask={memoizedOnContinueInterruptedTask}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
-                  onSwitchBranch={handleSwitchBranch}
+                  onSwitchBranch={memoizedOnSwitchBranch}
                 />
               )
             })}

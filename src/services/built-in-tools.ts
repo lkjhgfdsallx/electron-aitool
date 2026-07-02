@@ -717,7 +717,7 @@ export const WORKSPACE_TOOLS: Tool[] = [
   {
     id: 'workspace:dispatch_task',
     name: 'workspace_dispatch_task',
-    description: '将任务分派给团队中的某个 Agent 执行。你可以为不同的子任务指定不同的 Agent，实现并行协作。被分派的 Agent 会收到任务描述并在其上下文中独立执行，完成后返回结果给你。',
+    description: '将任务分派给团队中的某个 Agent 执行（Boomerang 模式）。你可以为不同的子任务指定不同的 Agent，实现并行协作。被分派的 Agent 会收到任务描述与上下文摘要，在其隔离的上下文中独立执行，完成后结构化结果回流给你（含 status/content/stepCount/artifacts 等字段）。结果回流后，你应基于结果进行整合与决策。',
     parameters: {
       type: 'object',
       properties: {
@@ -728,6 +728,10 @@ export const WORKSPACE_TOOLS: Tool[] = [
         task_description: {
           type: 'string',
           description: '对任务的详细描述，包含足够的上下文信息让 Agent 能独立完成任务。例如："请检查 src/utils 目录下的所有工具函数，找出没有单元测试覆盖的函数，并为每个函数编写测试用例。"'
+        },
+        context_summary: {
+          type: 'string',
+          description: '（可选）传递给子 Agent 的上下文摘要。建议包含：当前整体目标、已完成的进展、相关文件路径、约定与约束。这能显著提升子 Agent 在隔离上下文中的产出质量。'
         }
       },
       required: ['agent_id', 'task_description']

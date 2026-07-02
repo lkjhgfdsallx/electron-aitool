@@ -7,6 +7,7 @@
 
 import JSZip from 'jszip'
 import { openDB } from 'idb'
+import { conversationDb } from './conversation-db'
 
 // ==================== 常量 ====================
 
@@ -30,6 +31,7 @@ const EXCLUDED_LOCAL_STORAGE_KEYS = ['skills-preferences'] as const
 /** IndexedDB 数据库名称 */
 const KB_DB_NAME = 'KnowledgeBase'
 const REPORTS_DB_NAME = 'SiteAnalyzerReports'
+const CONVERSATION_DB_NAME = 'ConversationData'
 
 // ==================== 类型 ====================
 
@@ -57,6 +59,8 @@ export interface RestoreOptions {
   restoreReports?: boolean
   /** 是否恢复 Skills 数据 */
   restoreSkills?: boolean
+  /** 是否恢复对话消息（IndexedDB） */
+  restoreConversationMessages?: boolean
 }
 
 // ==================== 备份 ====================
@@ -75,7 +79,7 @@ export async function createBackup(
     exportedAt: new Date().toISOString(),
     appVersion: '1.0.0',
     localStorageKeys: [...LOCAL_STORAGE_KEYS],
-    indexedDBDatabases: [KB_DB_NAME, REPORTS_DB_NAME, 'Skills']
+    indexedDBDatabases: [KB_DB_NAME, REPORTS_DB_NAME, 'Skills', CONVERSATION_DB_NAME]
   }
   zip.file('metadata.json', JSON.stringify(metadata, null, 2))
 
@@ -103,16 +107,31 @@ export async function createBackup(
   onProgress?.('备份 Skills 数据...', totalLS + 2, totalLS + 4)
   await backupSkills(zip)
 
-  // 6. 生成 zip
-  onProgress?.('生成备份文件...', totalLS + 3, totalLS + 4)
+  // 6. 备份对话消息（IndexedDB）
+  onProgress?.('备份对话消息...', totalLS + 3, totalLS + 5)
+  await backupConversationMessages(zip)
+
+  // 7. 生成 zip
+  onProgress?.('生成备份文件...', totalLS + 4, totalLS + 5)
   const blob = await zip.generateAsync({
     type: 'blob',
     compression: 'DEFLATE',
     compressionOptions: { level: 6 }
   })
 
-  onProgress?.('备份完成', totalLS + 4, totalLS + 4)
+  onProgress?.('备份完成', totalLS + 5, totalLS + 5)
   return blob
+}
+
+/** 备份对话消息（IndexedDB ConversationData） */
+async function backupConversationMessages(zip: JSZip): Promise<void> {
+  try {
+    const messages = await conversationDb.getAllMessages()
+    if (messages.length > 0) {
+      const convFolder = zip.folder('indexeddb/conversations')!
+      convFolder.file('messages.json', JSON.stringify(messages, null, 2))
+    }
+  } catch { /* 数据库不存在，跳过 */ }
 }
 
 /** 备份知识库 IndexedDB 数据 */
@@ -213,7 +232,8 @@ export async function restoreFromBackup(
     restoreLocalStorage = true,
     restoreKnowledgeBase = true,
     restoreReports = true,
-    restoreSkills = true
+    restoreSkills = true,
+    restoreConversationMessages = true
   } = options
 
   const errors: string[] = []
@@ -287,11 +307,21 @@ export async function restoreFromBackup(
 
   // 6. 恢复 Skills
   if (restoreSkills) {
-    onProgress?.('恢复 Skills 数据...', 4, 6)
+    onProgress?.('恢复 Skills 数据...', 4, 7)
     try {
       await restoreSkillsData(zip)
     } catch (e) {
       errors.push(`恢复 Skills 失败: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  // 7. 恢复对话消息
+  if (restoreConversationMessages) {
+    onProgress?.('恢复对话消息...', 5, 7)
+    try {
+      await restoreConversationMessagesData(zip)
+    } catch (e) {
+      errors.push(`恢复对话消息失败: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
@@ -448,6 +478,19 @@ async function restoreSkillsData(zip: JSZip): Promise<void> {
     await tx.store.put(item)
   }
   await tx.done
+}
+
+/** 恢复对话消息（IndexedDB ConversationData） */
+async function restoreConversationMessagesData(zip: JSZip): Promise<void> {
+  const convFolder = zip.folder('indexeddb/conversations')
+  if (!convFolder) return
+
+  const messagesFile = convFolder.file('messages.json')
+  if (!messagesFile) return
+
+  const messages = JSON.parse(await messagesFile.async('string'))
+  // ⚡ 使用 conversationDb 的批量写入 API（确保 store/schema 已初始化）
+  await conversationDb.saveMessages(messages)
 }
 
 // ==================== 辅助 ====================

@@ -24,7 +24,7 @@ import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT } from '../../constants/default-agents'
 import { LeaderPromptEditorModal } from './LeaderPromptEditorModal'
-import type { Workspace, CommandPolicy, CheckpointPolicy } from '../../types'
+import type { Workspace, CommandPolicy, CheckpointPolicy, AutoApprovalConfig } from '../../types'
 import type { AgentProfile } from '../../types/agent'
 
 // ---- Props ----
@@ -41,6 +41,7 @@ interface WorkspaceSettingsPopoverProps {
 
 export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSettings, anchorRef }: WorkspaceSettingsPopoverProps) {
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
+  const updateAutoApproval = useWorkspaceStore((s) => s.updateAutoApproval)
   const ref = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
 
@@ -115,6 +116,28 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
       checkpointPolicy: policy,
     })
   }, [workspace, updateWorkspace])
+
+  // 自动审批矩阵：切换单个权限字段
+  const toggleAutoApprovalField = useCallback(
+    <K extends keyof AutoApprovalConfig>(field: K, value: AutoApprovalConfig[K]) => {
+      updateAutoApproval(workspace.id, { [field]: value } as Partial<AutoApprovalConfig>)
+    },
+    [workspace.id, updateAutoApproval],
+  )
+
+  // 自动审批权限项配置（排除 enabled 主开关）
+  const autoApprovalItems: Array<{
+    field: 'readFiles' | 'listFiles' | 'writeFiles' | 'executeSafeCommands' | 'browser' | 'mcpTools'
+    label: string
+    desc: string
+  }> = [
+    { field: 'readFiles', label: '读取文件', desc: 'read_file' },
+    { field: 'listFiles', label: '列举目录', desc: 'list_files' },
+    { field: 'writeFiles', label: '写入文件', desc: 'write_file' },
+    { field: 'executeSafeCommands', label: '安全命令', desc: '只读 shell' },
+    { field: 'browser', label: '浏览器操作', desc: 'site_analyzer' },
+    { field: 'mcpTools', label: 'MCP 工具', desc: '已关联服务器' },
+  ]
 
   // C3: 切换知识库关联
   const toggleKnowledgeBase = useCallback((collectionId: string) => {
@@ -226,6 +249,60 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
             </div>
           </div>
         )}
+
+        {/* 自动审批矩阵 */}
+        <div className="rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
+          <div className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-2.5">
+              <FileEdit size={14} className="text-gray-400" />
+              <div>
+                <p className="text-xs text-gray-700 dark:text-gray-300">自动审批矩阵</p>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                  {workspace.autoApproval?.enabled ? '已启用精细控制' : '未启用，全部弹窗确认'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => toggleAutoApprovalField('enabled', !workspace.autoApproval?.enabled)}
+              className={`transition-colors ${
+                workspace.autoApproval?.enabled ? 'text-teal-500' : 'text-gray-300 dark:text-gray-600'
+              }`}
+            >
+              {workspace.autoApproval?.enabled ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+            </button>
+          </div>
+          {workspace.autoApproval?.enabled && (
+            <div className="ml-6 mb-2 mr-3 space-y-1 border-t border-surface-100 dark:border-surface-700 pt-2">
+              {autoApprovalItems.map((item) => (
+                <div key={item.field} className="flex items-center justify-between py-0.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-gray-600 dark:text-gray-400 truncate">{item.label}</p>
+                    <p className="text-[9px] text-gray-400 dark:text-gray-500 truncate">{item.desc}</p>
+                  </div>
+                  <button
+                    onClick={() =>
+                      toggleAutoApprovalField(
+                        item.field,
+                        !workspace.autoApproval?.[item.field],
+                      )
+                    }
+                    className={`flex-shrink-0 ml-2 transition-colors ${
+                      workspace.autoApproval?.[item.field]
+                        ? 'text-teal-500'
+                        : 'text-gray-300 dark:text-gray-600'
+                    }`}
+                  >
+                    {workspace.autoApproval?.[item.field] ? (
+                      <ToggleRight size={18} />
+                    ) : (
+                      <ToggleLeft size={18} />
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* 存档策略 */}
         <div className="px-3 py-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">

@@ -129,8 +129,11 @@ export type {
   FolderSelectResult,
   CreateCheckpointParams,
   RestoreConfirmInfo,
+  ToolGroup,
+  AgentToolPermission,
+  AutoApprovalConfig,
 } from './workspace'
-export { DEFAULT_CONTEXT_CONFIG, DEFAULT_WORKSPACE_INPUT } from './workspace'
+export { DEFAULT_CONTEXT_CONFIG, DEFAULT_WORKSPACE_INPUT, DEFAULT_AUTO_APPROVAL_CONFIG } from './workspace'
 
 // ==================== 界面偏好类型 ====================
 

@@ -3,6 +3,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { MainArea } from './components/layout/MainArea'
 import { TitleBar } from './components/layout/TitleBar'
 import { CommandApprovalDialog } from './components/workspace/CommandApprovalDialog'
+import { FileActionApprovalDialog } from './components/workspace/FileActionApprovalDialog'
 import { initMCPSync } from './stores/mcp-tool-store'
 import { useWorkspaceStore } from './stores/workspace-store'
 import { useConversationStore } from './stores/conversation-store'
@@ -17,6 +18,11 @@ export default function App() {
   // 应用启动时初始化 MCP 工具同步（监听配置变更，自动刷新工具列表）
   useEffect(() => {
     initMCPSync()
+  }, [])
+
+  // ⚡ 应用启动时初始化消息数据（localStorage→IDB 迁移 + 加载当前对话消息）
+  useEffect(() => {
+    useConversationStore.getState().initializeMessages()
   }, [])
 
   // 安全保障：当不在工作区模式时，确保 currentConversationId 不指向工作区对话
@@ -97,6 +103,8 @@ export default function App() {
 
       {/* 工作区：全局命令审批弹窗（覆盖在所有内容之上） */}
       <CommandApprovalDialog />
+      {/* 工作区：文件操作审批弹窗（阶段 1 新增，参考 ROO CODE Auto-Approve） */}
+      <FileActionApprovalDialog />
     </div>
   )
 }

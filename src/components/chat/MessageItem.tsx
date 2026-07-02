@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, memo, useMemo } from 'react'
 import {
   Copy,
   Pencil,
@@ -21,7 +21,8 @@ import {
   Maximize2,
   Minimize2,
   PlayCircle,
-  AlertTriangle
+  AlertTriangle,
+  Forward
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { SelectionBoundary } from '../ui/SelectionBoundary'
@@ -46,6 +47,8 @@ interface MessageItemProps {
   showAvatar?: boolean
   messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
+  /** 继续生成：在已有内容基础上让 AI 从断点继续输出 */
+  onContinueGeneration?: (messageId: string) => void
   onEdit?: (messageId: string, content: string) => void
   /** 编辑并重新发送（创建对话分支） */
   onEditAndResend?: (messageId: string, content: string) => void
@@ -67,13 +70,14 @@ const roleConfig = {
   tool: { icon: Wrench, bgClass: 'bg-gradient-to-br from-amber-500 to-orange-600', label: '工具' }
 }
 
-export function MessageItem({
+export const MessageItem = memo(function MessageItem({
   message,
   showTimestamp = true,
   showTokenUsage = true,
   showAvatar = true,
   messageAlignment = 'left-right',
   onRegenerate,
+  onContinueGeneration,
   onEdit,
   onEditAndResend,
   onHumanInput,
@@ -261,7 +265,7 @@ export function MessageItem({
         {/* 思考过程 */}
         {message.reasoningContent && (
           <SelectionBoundary>
-            <ThinkingSection content={message.reasoningContent} />
+            <ThinkingSection content={message.reasoningContent} isStreaming={message.isStreaming} />
           </SelectionBoundary>
         )}
 
@@ -366,32 +370,29 @@ export function MessageItem({
           </div>
         )}
 
-        {/* 附件显示 */}
-        {message.attachments && message.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {message.attachments.map((att, index) => (
-              <div
-                key={index}
-                className="flex items-center gap-1.5 px-2 py-1 bg-surface-50 dark:bg-surface-800/60 rounded-xl text-xs border border-surface-200/80 dark:border-surface-700/60"
+        {/* 截断消息提示 + 继续生成按钮 */}
+        {(message.finishReason === 'abort' || message.finishReason === 'length') && !message.isStreaming && !message.wasInterrupted && message.content && (
+          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/40">
+            <AlertTriangle size={14} className="text-blue-500 flex-shrink-0" />
+            <span className="text-xs text-blue-700 dark:text-blue-300 flex-1">
+              {message.finishReason === 'length' ? '回复已达到最大长度限制，可以续写' : '回复被中断，可以继续生成'}
+            </span>
+            {onContinueGeneration && (
+              <button
+                onClick={() => onContinueGeneration(message.id)}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors shadow-sm"
+                title="继续生成"
               >
-                {att.type.startsWith('image/') ? (
-                  <Image size={14} className="text-accent-500 flex-shrink-0" />
-                ) : att.type === 'application/pdf' ? (
-                  <FileText size={14} className="text-danger-500 flex-shrink-0" />
-                ) : att.type.includes('word') || att.type.includes('document') ? (
-                  <FileText size={14} className="text-accent-600 flex-shrink-0" />
-                ) : (
-                  <FileIcon size={14} className="text-muted flex-shrink-0" />
-                )}
-                <span className="text-gray-700 dark:text-gray-300 max-w-[150px] truncate">
-                  {att.name}
-                </span>
-                <span className="text-muted">
-                  {formatFileSize(att.size)}
-                </span>
-              </div>
-            ))}
+                <Forward size={12} />
+                继续生成
+              </button>
+            )}
           </div>
+        )}
+
+        {/* 附件显示 - 使用懒加载减少初始渲染 */}
+        {message.attachments && message.attachments.length > 0 && (
+          <AttachmentList attachments={message.attachments} />
         )}
 
         {/* 分支导航（仅分支点用户消息显示） */}
@@ -484,7 +485,34 @@ export function MessageItem({
       )}
     </div>
   )
-}
+}, (prevProps, nextProps) => {
+  // 自定义比较函数：只在关键属性变化时重渲染
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.isStreaming === nextProps.message.isStreaming &&
+    prevProps.message.isError === nextProps.message.isError &&
+    prevProps.message.reasoningContent === nextProps.message.reasoningContent &&
+    prevProps.message.tokenUsage === nextProps.message.tokenUsage &&
+    prevProps.message.finishReason === nextProps.message.finishReason &&
+    prevProps.message.hasReport === nextProps.message.hasReport &&
+    prevProps.message.toolCalls === nextProps.message.toolCalls &&
+    prevProps.message.agentSteps === nextProps.message.agentSteps &&
+    prevProps.message.attachments === nextProps.message.attachments &&
+    prevProps.showTimestamp === nextProps.showTimestamp &&
+    prevProps.showTokenUsage === nextProps.showTokenUsage &&
+    prevProps.showAvatar === nextProps.showAvatar &&
+    prevProps.messageAlignment === nextProps.messageAlignment &&
+    prevProps.activeBranchIndex === nextProps.activeBranchIndex &&
+    prevProps.onRegenerate === nextProps.onRegenerate &&
+    prevProps.onContinueGeneration === nextProps.onContinueGeneration &&
+    prevProps.onEditAndResend === nextProps.onEditAndResend &&
+    prevProps.onHumanInput === nextProps.onHumanInput &&
+    prevProps.onResumeAgentTask === nextProps.onResumeAgentTask &&
+    prevProps.onContinueInterruptedTask === nextProps.onContinueInterruptedTask &&
+    prevProps.onSwitchBranch === nextProps.onSwitchBranch
+  )
+})
 
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp)
@@ -608,3 +636,48 @@ function ReportModal({ reportHtml, isFullscreen, onClose, onToggleFullscreen, on
     </div>
   )
 }
+
+/** 附件列表组件（懒加载优化） */
+const AttachmentList = memo(function AttachmentList({ attachments }: { attachments: NonNullable<Message['attachments']> }) {
+  // 性能优化：超过 5 个附件时，只渲染前 5 个，后续按需展开
+  const [expanded, setExpanded] = useState(false)
+  const displayAttachments = useMemo(() => {
+    if (attachments.length <= 5 || expanded) return attachments
+    return attachments.slice(0, 5)
+  }, [attachments, expanded])
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {displayAttachments.map((att, index) => (
+        <div
+          key={index}
+          className="flex items-center gap-1.5 px-2 py-1 bg-surface-50 dark:bg-surface-800/60 rounded-xl text-xs border border-surface-200/80 dark:border-surface-700/60"
+        >
+          {att.type.startsWith('image/') ? (
+            <Image size={14} className="text-accent-500 flex-shrink-0" />
+          ) : att.type === 'application/pdf' ? (
+            <FileText size={14} className="text-danger-500 flex-shrink-0" />
+          ) : att.type.includes('word') || att.type.includes('document') ? (
+            <FileText size={14} className="text-accent-600 flex-shrink-0" />
+          ) : (
+            <FileIcon size={14} className="text-muted flex-shrink-0" />
+          )}
+          <span className="text-gray-700 dark:text-gray-300 max-w-[150px] truncate">
+            {att.name}
+          </span>
+          <span className="text-muted">
+            {formatFileSize(att.size)}
+          </span>
+        </div>
+      ))}
+      {!expanded && attachments.length > 5 && (
+        <button
+          onClick={() => setExpanded(true)}
+          className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/20 rounded-xl border border-accent-200/60 dark:border-accent-800/40 transition-colors"
+        >
+          +{attachments.length - 5} 更多
+        </button>
+      )}
+    </div>
+  )
+})

@@ -5,6 +5,9 @@ import { extractFileText } from '../../utils/file-extraction'
 import { PromptSearchPanel } from './PromptSearchPanel'
 import { VariableFillDialog } from './VariableFillDialog'
 import { PromptVariableEngine } from '../../services/prompt-variable-engine'
+import { SlashCommandMenu } from './SlashCommandMenu'
+import { resolveSlashCommand } from '../../services/slash-command-service'
+import type { SlashCommand } from '../../services/slash-command-service'
 import type { MessageAttachment, Prompt, PromptRuntimeContext } from '../../types'
 
 interface MessageInputProps {
@@ -14,6 +17,10 @@ interface MessageInputProps {
   disabled?: boolean
   onOpenPromptManager?: () => void
   runtimeContext?: PromptRuntimeContext
+  /** 工作区路径（用于 Slash 命令加载自定义命令） */
+  workspacePath?: string
+  /** 是否处于工作区模式 */
+  isWorkspaceMode?: boolean
 }
 
 /** 支持的文件类型 */
@@ -60,7 +67,7 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager, runtimeContext }: MessageInputProps) {
+export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager, runtimeContext, workspacePath, isWorkspaceMode }: MessageInputProps) {
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<MessageAttachment[]>([])
   const [isExtracting, setIsExtracting] = useState(false)
@@ -196,7 +203,29 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }, [])
 
-  /** 从 Slash 面板选择提示词 */
+  /** 从 Slash 命令菜单选择命令 */
+  const handleSlashCommandSelect = useCallback(async (command: SlashCommand) => {
+    setShowSlashPanel(false)
+
+    // 解析命令并生成消息
+    const input = content.startsWith('/') ? content : `/${command.name}`
+    const resolved = await resolveSlashCommand(input, workspacePath)
+
+    // 判断是否直接发送还是填入编辑区
+    // 对于以 / 开头的模板（如 /checkpoint, /restore），直接发送
+    // 对于自然语言模板（如 /init, /status），填入编辑区让用户确认
+    const shouldAutoSend = resolved.message.startsWith('/')
+
+    if (shouldAutoSend) {
+      onSend(resolved.message)
+      setContent('')
+    } else {
+      setContent(resolved.message)
+      textareaRef.current?.focus()
+    }
+  }, [content, workspacePath, onSend])
+
+  /** 从 Slash 面板选择提示词（保留原有 PromptSearchPanel 的兼容） */
   const handleSlashSelect = useCallback((prompt: Prompt) => {
     setShowSlashPanel(false)
 
@@ -354,14 +383,15 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
       {showSlashPanel && (
         <div className="fixed inset-0 z-30" onClick={() => setShowSlashPanel(false)}>
           <div
-            className="absolute bottom-24 left-1/2 -translate-x-1/2"
+            className="absolute bottom-24 left-1/2 -translate-x-1/2 w-80"
             onClick={(e) => e.stopPropagation()}
           >
-            <PromptSearchPanel
-              prompts={prompts}
-              onSelect={handleSlashSelect}
+            <SlashCommandMenu
+              query={content}
+              workspacePath={workspacePath}
+              isWorkspaceMode={isWorkspaceMode}
+              onSelect={handleSlashCommandSelect}
               onClose={() => setShowSlashPanel(false)}
-              onOpenPromptManager={onOpenPromptManager}
             />
           </div>
         </div>

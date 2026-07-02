@@ -96,7 +96,7 @@ export type AgentProfileUpdateInput = Partial<Omit<AgentProfile, 'id' | 'created
 // ==================== Agent 执行步骤类型 ====================
 
 /** Agent 步骤类型 */
-export type AgentStepType = 'thinking' | 'action' | 'observation' | 'final_answer' | 'error' | 'human_input'
+export type AgentStepType = 'thinking' | 'action' | 'observation' | 'final_answer' | 'error' | 'human_input' | 'subtask_result'
 
 /** 单个 Agent 执行步骤 */
 export interface AgentStep {
@@ -133,6 +133,18 @@ export interface AgentStep {
   sourceAgentName?: string
   /** 来源 Agent 头像 */
   sourceAgentAvatar?: string
+  /** 子任务结构化成果（type='subtask_result' 时，Boomerang 回流） */
+  subtaskResult?: {
+    agentId: string
+    agentName: string
+    task: string
+    content: string
+    status: 'success' | 'error' | 'partial'
+    stepCount: number
+    error?: string
+    artifacts?: string[]
+    timestamp: number
+  }
 }
 
 /** Agent 运行状态 */

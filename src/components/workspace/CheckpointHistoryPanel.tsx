@@ -51,9 +51,11 @@ function formatTime(timestamp: number): string {
 interface CheckpointHistoryPanelProps {
   open: boolean
   onClose: () => void
+  /** 导航到指定消息（点击检查点关联的消息时调用） */
+  onNavigateMessage?: (messageId: string) => void
 }
 
-export function CheckpointHistoryPanel({ open, onClose }: CheckpointHistoryPanelProps) {
+export function CheckpointHistoryPanel({ open, onClose, onNavigateMessage }: CheckpointHistoryPanelProps) {
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const checkpointIndex = useWorkspaceStore((s) => s.checkpointIndex)
@@ -217,6 +219,21 @@ export function CheckpointHistoryPanel({ open, onClose }: CheckpointHistoryPanel
                           <span>{cp.filesChanged} 文件</span>
                           {cp.linesAdded > 0 && <span className="text-emerald-500">+{cp.linesAdded}</span>}
                           {cp.linesRemoved > 0 && <span className="text-red-500">-{cp.linesRemoved}</span>}
+                        </div>
+                      )}
+                      {/* 关联消息跳转 */}
+                      {cp.messageId && onNavigateMessage && (
+                        <div
+                          className="mt-1.5 flex items-center gap-1 text-[10px] text-teal-500 hover:text-teal-600 dark:hover:text-teal-400 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onNavigateMessage(cp.messageId!)
+                          }}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          </svg>
+                          <span>查看触发消息</span>
                         </div>
                       )}
                     </button>

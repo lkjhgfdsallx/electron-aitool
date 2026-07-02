@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, type MouseEvent } from 'react'
+import { useMemo, useCallback, useEffect, useState, useRef, type MouseEvent } from 'react'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import katex from 'katex'
@@ -180,9 +180,93 @@ function plainTextToHtml(text: string): string {
 interface MarkdownRendererProps {
   content: string
   className?: string
+  /** 是否启用节流解析（流式输出时建议启用，默认 true） */
+  throttle?: boolean
 }
 
-export function MarkdownRenderer({ content, className = '' }: MarkdownRendererProps) {
+/**
+ * ⚡ 节流 Markdown 解析（替代防抖，解决内存爆炸问题）
+ *
+ * 旧方案（防抖）的问题：每次 content 变化都立即全量调用 parseMarkdown，
+ * 流式输出时 content 每 ~16ms 变化一次，导致 ~60次/秒的 marked+KaTeX 解析，
+ * 每次解析产生大量中间字符串对象，造成内存爆炸。
+ *
+ * 节流策略：
+ * - 首次内容 → 立即解析（保证首屏响应）
+ * - 之后每 throttleMs 最多解析一次（~6-7次/秒）
+ * - 内容稳定后 catch-up 定时器保证最终版本正确渲染
+ *
+ * 效果：将解析频率从 ~60/s 降至 ~6-7/s，主线程阻塞减少 ~90%
+ */
+function useThrottledHtml(content: string, throttleMs: number): string {
+  const [html, setHtml] = useState('')
+  const contentRef = useRef(content)
+  const lastParseTimeRef = useRef(0)
+  const timerRef = useRef<number>(0)
+
+  // 保持 contentRef 与最新 content 同步（定时器回调中使用）
+  useEffect(() => {
+    contentRef.current = content
+  }, [content])
+
+  useEffect(() => {
+    if (!content) {
+      setHtml('')
+      lastParseTimeRef.current = 0
+      return
+    }
+
+    // 清除之前的 catch-up 定时器
+    clearTimeout(timerRef.current)
+
+    const now = performance.now()
+    const elapsed = now - lastParseTimeRef.current
+
+    if (lastParseTimeRef.current === 0 || elapsed >= throttleMs) {
+      // 首次渲染或节流窗口已过 → 立即解析
+      lastParseTimeRef.current = now
+      setHtml(parseMarkdown(content))
+
+      // 安排下一个节流窗口的 catch-up 定时器
+      timerRef.current = window.setTimeout(() => {
+        lastParseTimeRef.current = performance.now()
+        setHtml(parseMarkdown(contentRef.current))
+      }, throttleMs)
+    } else {
+      // 节流窗口内 → 不立即解析，在窗口结束时 catch-up
+      const remaining = throttleMs - elapsed
+      timerRef.current = window.setTimeout(() => {
+        lastParseTimeRef.current = performance.now()
+        setHtml(parseMarkdown(contentRef.current))
+      }, remaining)
+    }
+
+    return () => clearTimeout(timerRef.current)
+  }, [content, throttleMs])
+
+  return html
+}
+
+/** 同步解析 Markdown（提取为独立函数，避免重复代码） */
+function parseMarkdown(content: string): string {
+  if (!content) return ''
+  try {
+    const { protectedMarkdown, formulas } = extractLatex(content)
+    const result = marked.parse(protectedMarkdown)
+    if (typeof result !== 'string') {
+      return plainTextToHtml(content)
+    }
+    const processed = restoreLatex(result, formulas)
+    if (!processed || processed.trim() === '') {
+      return plainTextToHtml(content)
+    }
+    return processed
+  } catch {
+    return plainTextToHtml(content)
+  }
+}
+
+export function MarkdownRenderer({ content, className = '', throttle = true }: MarkdownRendererProps) {
   const codeHighlightTheme = useSettingsStore((s) => s.codeHighlightTheme)
 
   // 动态加载代码高亮主题
@@ -190,34 +274,11 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
     HLJS_THEME_MAP[codeHighlightTheme]?.()
   }, [codeHighlightTheme])
 
-  const html = useMemo(() => {
-    if (!content) return ''
-    try {
-      // 1. 在 marked 解析前，提取所有 LaTeX 公式为安全占位符
-      const { protectedMarkdown, formulas } = extractLatex(content)
+  // ⚡ 节流解析：流式输出时每 150ms 最多解析一次，避免内存爆炸
+  // throttle=false 时传入 0ms 节流间隔，等同于即时解析（用于非流式场景如编辑器预览）
+  const throttledHtml = useThrottledHtml(content, throttle ? 150 : 0)
 
-      // 2. marked 解析（不会干扰 LaTeX，因为已替换为占位符）
-      const result = marked.parse(protectedMarkdown)
-
-      // 处理 marked v15 可能返回 Promise 的情况
-      if (typeof result !== 'string') {
-        return plainTextToHtml(content)
-      }
-
-      // 3. 将占位符替换为 KaTeX 渲染结果
-      const processed = restoreLatex(result, formulas)
-
-      // 如果 marked 输出为空但内容不为空，使用纯文本回退
-      if (!processed || processed.trim() === '') {
-        return plainTextToHtml(content)
-      }
-
-      return processed
-    } catch {
-      // 出错时回退到纯文本渲染
-      return plainTextToHtml(content)
-    }
-  }, [content])
+  const html = throttledHtml
 
   // 事件委托：点击公式容器直接复制 LaTeX 源码
   const handleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {

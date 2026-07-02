@@ -18,9 +18,11 @@ import type {
   Message,
   Tool,
   ToolDefinition,
-  ToolExecuteResult
+  ToolExecuteResult,
+  AutoApprovalConfig
 } from '../types'
 import { aiService } from './ai-service'
+import { isToolAutoApproved } from './tool-group-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { executeMathTool } from './math-tools'
@@ -54,6 +56,30 @@ export interface AgentEngineCallbacks {
   onSiteAnalyzerProgress?: (progress: { taskId: string; type: string; message: string; pagesCrawled?: number; totalPages?: number; apisFound?: number; pagesAnalyzed?: number; currentUrl?: string; error?: string }) => void
 }
 
+/** 子任务结构化结果（Boomerang 模式回流，参考 ROO CODE new_task 结果） */
+export interface SubTaskResult {
+  /** 子 Agent ID */
+  agentId: string
+  /** 子 Agent 名称 */
+  agentName: string
+  /** 任务描述 */
+  task: string
+  /** 最终文本输出 */
+  content: string
+  /** 执行状态 */
+  status: 'success' | 'error' | 'partial'
+  /** 完成原因 */
+  finishReason?: string
+  /** 执行步骤数 */
+  stepCount: number
+  /** 错误信息（status='error' 时） */
+  error?: string
+  /** 子 Agent 声称创建/修改的关键产物路径（可选） */
+  artifacts?: string[]
+  /** 时间戳 */
+  timestamp: number
+}
+
 /** 子 Agent 活动事件 */
 export interface SubAgentActivityEvent {
   /** 子 Agent ID */
@@ -63,13 +89,15 @@ export interface SubAgentActivityEvent {
   /** 子 Agent 头像 */
   agentAvatar?: string
   /** 事件类型 */
-  type: 'step' | 'status_change' | 'error'
+  type: 'step' | 'status_change' | 'error' | 'done'
   /** Agent 步骤（type='step' 时） */
   step?: AgentStep
   /** 状态变更（type='status_change' 时） */
   status?: string
   /** 错误信息（type='error' 时） */
   error?: string
+  /** 结构化结果（type='done' 时，Boomerang 回流） */
+  result?: SubTaskResult
 }
 
 /** 工作区上下文（在 Agent 运行时注入） */
@@ -81,7 +109,7 @@ export interface WorkspaceContext {
   /** 团队 Agent 列表（仅包含 ID、名称、描述等摘要信息） */
   teamAgents: Array<{ id: string; name: string; description: string; avatar: string }>
   /** 由上层注入的子任务分派函数（调用后会真正运行目标 Agent 并返回其最终输出） */
-  dispatchSubTask?: (agentId: string, taskDescription: string) => Promise<string>
+  dispatchSubTask?: (agentId: string, taskDescription: string, contextSummary?: string) => Promise<string>
   /** 由上层注入的创建 Agent 函数（创建新 Agent 并加入工作区团队，返回 Agent ID） */
   createAgent?: (input: {
     name: string
@@ -92,7 +120,42 @@ export interface WorkspaceContext {
   }) => Promise<string>
   /** 子 Agent 活动回调（将子 Agent 的执行步骤实时上报给 UI） */
   onSubAgentActivity?: (event: SubAgentActivityEvent) => void
+
+  // ---- 自动审批（阶段 1 新增，参考 ROO CODE Auto-Approve） ----
+
+  /** 工作区的自动审批配置矩阵（来自 workspace.autoApproval） */
+  autoApproval?: AutoApprovalConfig
+  /** 文件操作审批回调（当自动审批未通过时，由上层弹出审批弹窗） */
+  onFileActionApproval?: (request: FileActionApprovalRequest) => Promise<FileActionApprovalResult>
 }
+
+/** 文件操作审批请求（发送给 UI 层） */
+export interface FileActionApprovalRequest {
+  /** 请求 ID */
+  id: string
+  /** 操作类型 */
+  actionType: 'write-file' | 'read-file' | 'list-files'
+  /** 工具显示名称 */
+  toolName: string
+  /** 目标文件路径（相对于工作区根目录） */
+  filePath: string
+  /** 写入内容预览（仅 write-file 时提供，截断到前 500 字符） */
+  contentPreview?: string
+  /** 风险等级 */
+  riskLevel: 'low' | 'medium' | 'high'
+  /** 发起请求的 Agent ID */
+  agentId?: string
+  /** 发起请求的 Agent 名称 */
+  agentName?: string
+  /** 请求时间 */
+  timestamp: number
+}
+
+/** 文件操作审批结果 */
+export type FileActionApprovalResult =
+  | 'approved-once'   // 仅此一次批准
+  | 'approved-always' // 永远允许（更新 autoApproval 配置）
+  | 'denied'          // 拒绝
 
 /** Agent 内部消息格式（支持工具调用） */
 interface AgentMessage {
@@ -804,11 +867,79 @@ export async function runAgent(
     return cleaned ? `${base}/${cleaned}` : base
   }
 
+  /**
+   * 检查文件操作是否需要人工审批（阶段 1 新增，参考 ROO CODE Auto-Approve）
+   *
+   * 判断逻辑：
+   * 1. 无 workspaceContext.autoApproval → 默认放行（兼容旧逻辑）
+   * 2. 调用 isToolAutoApproved 判断是否可自动批准
+   * 3. 不可自动批准时，调用 onFileActionApproval 让用户审批
+   * 4. 用户拒绝 → 抛出错误中止操作
+   *
+   * @returns true 表示允许执行，false 或抛出异常表示拒绝
+   */
+  const checkFileActionApproval = async (
+    tool: Tool,
+    filePath: string,
+    contentPreview?: string
+  ): Promise<boolean> => {
+    if (!workspaceContext?.autoApproval) return true // 未配置自动审批，默认放行
+
+    // 尝试自动批准
+    if (isToolAutoApproved(tool, workspaceContext.autoApproval)) {
+      return true
+    }
+
+    // 无法自动批准，需要人工审批
+    if (!workspaceContext.onFileActionApproval) {
+      // 没有审批回调，保守拒绝
+      return false
+    }
+
+    const riskLevel = tool.id === 'workspace:write_file' ? 'medium' : 'low'
+    const request: FileActionApprovalRequest = {
+      id: `fa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      actionType: tool.id === 'workspace:write_file' ? 'write-file'
+        : tool.id === 'workspace:read_file' ? 'read-file'
+        : 'list-files',
+      toolName: tool.name,
+      filePath,
+      contentPreview: contentPreview ? contentPreview.slice(0, 500) : undefined,
+      riskLevel,
+      timestamp: Date.now(),
+    }
+
+    const result = await workspaceContext.onFileActionApproval(request)
+    if (result === 'denied') {
+      return false
+    }
+    if (result === 'approved-always' && workspaceContext.autoApproval) {
+      // 永久批准：更新自动审批配置（让后续同类操作自动通过）
+      // 这里仅标记当前内存中的配置，持久化由上层处理
+      if (tool.id === 'workspace:write_file') {
+        workspaceContext.autoApproval.writeFiles = true
+      } else if (tool.id === 'workspace:read_file') {
+        workspaceContext.autoApproval.readFiles = true
+      } else if (tool.id === 'workspace:list_files') {
+        workspaceContext.autoApproval.listFiles = true
+      }
+    }
+    return true
+  }
+
   const handleWorkspaceReadFile = async (args: Record<string, unknown>): Promise<ToolExecuteResult> => {
     if (!workspaceContext) return { success: false, data: '', error: '当前对话未关联工作区' }
     const relativePath = String(args.file_path ?? '')
     if (!relativePath) return { success: false, data: '', error: '需要 file_path 参数' }
     try {
+      // 自动审批检查（阶段 1 新增）
+      const readTool = WORKSPACE_TOOLS.find((t) => t.id === 'workspace:read_file')
+      if (readTool) {
+        const approved = await checkFileActionApproval(readTool, relativePath)
+        if (!approved) {
+          return { success: false, data: '', error: '用户拒绝了读取文件操作' }
+        }
+      }
       const absolutePath = resolveWorkspacePath(relativePath)
       const result = await workspaceFsService.readFile(absolutePath)
       if (result.success && result.content !== undefined) {
@@ -836,6 +967,14 @@ export async function runAgent(
     if (!relativePath) return { success: false, data: '', error: '需要 file_path 参数' }
     if (content === '') return { success: false, data: '', error: '需要 content 参数' }
     try {
+      // 自动审批检查（阶段 1 新增，写入是中风险操作）
+      const writeTool = WORKSPACE_TOOLS.find((t) => t.id === 'workspace:write_file')
+      if (writeTool) {
+        const approved = await checkFileActionApproval(writeTool, relativePath, content)
+        if (!approved) {
+          return { success: false, data: '', error: '用户拒绝了写入文件操作' }
+        }
+      }
       const absolutePath = resolveWorkspacePath(relativePath)
       await workspaceFsService.writeFile(absolutePath, content)
       return {
@@ -969,14 +1108,23 @@ export async function runAgent(
     }
 
     try {
-      const result = await workspaceContext.dispatchSubTask(agentId, taskDescription)
+      // Boomerang: 携带上下文摘要（可选，由主 Agent 提供）
+      const contextSummary = args.context_summary ? String(args.context_summary) : undefined
+      // dispatchSubTask 现在返回结构化结果的 JSON 字符串
+      const resultJson = await workspaceContext.dispatchSubTask(
+        agentId, taskDescription, contextSummary,
+      )
+      // 尝试解析结构化结果，回传给主 Agent 时附带摘要信息
+      let parsed: unknown = resultJson
+      try { parsed = JSON.parse(resultJson) } catch { /* 保持原始字符串 */ }
       return {
         success: true,
         data: JSON.stringify({
           dispatched_to: targetAgent.name,
           agent_id: agentId,
           task: taskDescription,
-          result: result
+          context_summary_provided: Boolean(contextSummary),
+          result: parsed,
         })
       }
     } catch (err) {

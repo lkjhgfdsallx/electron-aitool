@@ -20,6 +20,7 @@ import {
   Zap
 } from 'lucide-react'
 import { useConversationStore } from '../../stores/conversation-store'
+import { conversationDb } from '../../services/conversation-db'
 import {
   exportConversation,
   batchExportConversations,
@@ -88,7 +89,7 @@ function SectionCard({ children, className = '' }: { children: React.ReactNode; 
 // ==================== 1. 对话导出 ====================
 
 function ExportSection() {
-  const { conversations, getMessages } = useConversationStore()
+  const { conversations } = useConversationStore()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [format, setFormat] = useState<ExportFormat>('markdown')
   const [status, setStatus] = useState<StatusMessage | null>(null)
@@ -118,9 +119,13 @@ function ExportSection() {
 
     setExporting(true)
     try {
-      const items = conversations
-        .filter((c) => selectedIds.has(c.id))
-        .map((c) => ({ conversation: c, messages: getMessages(c.id) }))
+      // ⚡ 逐个从 IDB 加载消息（不再依赖内存中的消息缓存）
+      const selectedConversations = conversations.filter((c) => selectedIds.has(c.id))
+      const items = []
+      for (const conv of selectedConversations) {
+        const messages = await conversationDb.getMessagesByConversationId(conv.id)
+        items.push({ conversation: conv, messages })
+      }
 
       if (items.length === 1) {
         const result = exportConversation(items[0].conversation, items[0].messages, format)
@@ -530,8 +535,9 @@ function PrivacySection() {
   const [rangePreview, setRangePreview] = useState<Array<{ id: string; title: string; createdAt: number; messageCount: number }>>([])
 
   // 加载敏感数据摘要
-  const loadSummary = useCallback(() => {
-    setSummary(scanSensitiveData())
+  const loadSummary = useCallback(async () => {
+    const data = await scanSensitiveData()
+    setSummary(data)
   }, [])
 
   useEffect(() => { loadSummary() }, [loadSummary])
@@ -588,7 +594,7 @@ function PrivacySection() {
   }
 
   // 按时间范围删除对话
-  const handleDeleteByRange = () => {
+  const handleDeleteByRange = async () => {
     if (!startDate || !endDate) return
     if (rangePreview.length === 0) {
       handlePreviewRange()
@@ -604,14 +610,14 @@ function PrivacySection() {
       start: new Date(startDate).getTime(),
       end: new Date(endDate).getTime() + 24 * 60 * 60 * 1000 - 1
     }
-    const deleted = deleteConversationsByTimeRange(range)
+    const deleted = await deleteConversationsByTimeRange(range)
     setStatus({ type: 'success', text: `已删除 ${deleted} 个对话` })
     setRangePreview([])
     loadSummary()
   }
 
   // 删除所有对话
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
     if (!summary?.totalConversations) {
       setStatus({ type: 'info', text: '没有对话记录' })
       return
@@ -625,7 +631,7 @@ function PrivacySection() {
     const confirmed2 = confirm('最终确认：真的要删除所有对话吗？')
     if (!confirmed2) return
 
-    const deleted = deleteAllConversations()
+    const deleted = await deleteAllConversations()
     setStatus({ type: 'success', text: `已删除 ${deleted} 个对话` })
     setRangePreview([])
     loadSummary()

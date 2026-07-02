@@ -7,6 +7,9 @@
  * - 按时间段删除对话记录
  */
 
+import { conversationDb } from './conversation-db'
+import { useConversationStore } from '../stores/conversation-store'
+
 // ==================== 类型 ====================
 
 /** 敏感数据统计 */
@@ -36,7 +39,7 @@ export interface TimeRange {
 /**
  * 扫描当前应用中的敏感数据概况
  */
-export function scanSensitiveData(): SensitiveDataSummary {
+export async function scanSensitiveData(): Promise<SensitiveDataSummary> {
   let hasGlobalApiKey = false
   let providerCount = 0
   let providersWithKey = 0
@@ -59,16 +62,13 @@ export function scanSensitiveData(): SensitiveDataSummary {
     providersWithKey = providers.filter((p: { apiKey?: string }) => !!p.apiKey).length
   } catch { /* ignore */ }
 
-  // 扫描对话
+  // 扫描对话（元数据在 localStorage，消息在 IndexedDB）
   try {
     const convData = JSON.parse(localStorage.getItem('conversations') || '{}')
     const conversations = convData.state?.conversations ?? []
-    const messages = convData.state?.messages ?? {}
     totalConversations = conversations.length
-    totalMessages = Object.values(messages).reduce(
-      (sum: number, msgs) => sum + ((msgs as unknown[])?.length ?? 0),
-      0
-    )
+    // ⚡ 消息总数从 IDB 异步获取（conversationId 索引计数）
+    totalMessages = await conversationDb.getMessageCount()
   } catch { /* ignore */ }
 
   return {
@@ -188,14 +188,10 @@ export function getConversationsInTimeRange(range: TimeRange): Array<{ id: strin
  * 删除指定时间范围内的对话及其消息
  * @returns 被删除的对话数量
  */
-export function deleteConversationsByTimeRange(range: TimeRange): number {
+export async function deleteConversationsByTimeRange(range: TimeRange): Promise<number> {
   try {
-    const raw = localStorage.getItem('conversations')
-    if (!raw) return 0
-    const data = JSON.parse(raw)
-
-    const conversations = data.state?.conversations ?? []
-    const messages = data.state?.messages ?? {}
+    const store = useConversationStore.getState()
+    const conversations = store.conversations
 
     // 找出范围内的对话 ID
     const idsToDelete = new Set<string>()
@@ -207,23 +203,11 @@ export function deleteConversationsByTimeRange(range: TimeRange): number {
 
     if (idsToDelete.size === 0) return 0
 
-    // 过滤对话列表
-    data.state.conversations = conversations.filter(
-      (c: { id: string }) => !idsToDelete.has(c.id)
-    )
-
-    // 删除关联消息
+    // ⚡ 逐个删除对话（store 的 deleteConversation 会同步清理内存 + IDB 消息）
     for (const id of idsToDelete) {
-      delete messages[id]
-    }
-    data.state.messages = messages
-
-    // 如果当前选中的对话被删除，重置选择
-    if (idsToDelete.has(data.state.currentConversationId)) {
-      data.state.currentConversationId = data.state.conversations[0]?.id ?? null
+      store.deleteConversation(id)
     }
 
-    localStorage.setItem('conversations', JSON.stringify(data))
     return idsToDelete.size
   } catch {
     return 0
@@ -234,18 +218,20 @@ export function deleteConversationsByTimeRange(range: TimeRange): number {
  * 删除所有对话记录
  * @returns 被删除的对话数量
  */
-export function deleteAllConversations(): number {
+export async function deleteAllConversations(): Promise<number> {
   try {
-    const raw = localStorage.getItem('conversations')
-    if (!raw) return 0
-    const data = JSON.parse(raw)
+    const store = useConversationStore.getState()
+    const count = store.conversations.length
 
-    const count = data.state?.conversations?.length ?? 0
-    data.state.conversations = []
-    data.state.messages = {}
-    data.state.currentConversationId = null
+    // ⚡ 逐个删除对话（store 的 deleteConversation 会同步清理内存 + IDB 消息）
+    const allIds = store.conversations.map((c) => c.id)
+    for (const id of allIds) {
+      store.deleteConversation(id)
+    }
 
-    localStorage.setItem('conversations', JSON.stringify(data))
+    // 额外保险：清空 IDB 中所有残留消息
+    await conversationDb.clearAllMessages().catch(() => { /* ignore */ })
+
     return count
   } catch {
     return 0

@@ -54,6 +54,49 @@ export interface ContextConfig {
   keepCheckpointBeforeCompression: boolean
 }
 
+// ---- 工具组（参考 ROO CODE Tool Groups） ----
+
+/** 工具组分类（参考 ROO CODE 的 read / edit / browser / mcp / terminal 分组） */
+export type ToolGroup =
+  | 'read'          // 只读：list_files, read_file, search_files
+  | 'edit'          // 编辑：write_file, patch_file
+  | 'terminal'      // 终端：execute_command
+  | 'browser'       // 浏览器：web_search, fetch_webpage, site_analyzer
+  | 'mcp'           // MCP 工具
+  | 'dispatch'      // 指挥：dispatch_task, create_agent
+  | 'analysis'      // 分析：math_*, knowledge_search, calculate
+  | 'memory'        // 记忆：remember, recall, ask_human
+
+/** Agent 的工具权限配置（替代纯 enabledToolIds 的灵活方案） */
+export interface AgentToolPermission {
+  /** 启用的工具组（粗粒度，便于快速配置） */
+  groups: ToolGroup[]
+  /** 额外白名单工具 ID（精确到单个工具，用于补充工具组外的工具） */
+  allowedToolIds?: string[]
+  /** 黑名单工具 ID（优先级最高，即使所属组已启用也会被排除） */
+  deniedToolIds?: string[]
+}
+
+// ---- 精细自动审批矩阵（参考 ROO CODE Auto-Approve Dropdown） ----
+
+/** 自动审批配置矩阵（按操作类型独立开关） */
+export interface AutoApprovalConfig {
+  /** 全局总开关（master pause/resume，关闭后所有自动审批失效） */
+  enabled: boolean
+  /** 自动批准读取文件（低风险，建议开启） */
+  readFiles: boolean
+  /** 自动批准列目录（低风险，建议开启） */
+  listFiles: boolean
+  /** 自动批准写入/修改文件（中风险，默认关闭需确认） */
+  writeFiles: boolean
+  /** 自动批准执行安全命令（基于 safeCommandWhitelist 判定） */
+  executeSafeCommands: boolean
+  /** 自动批准网页搜索/抓取（低风险） */
+  browser: boolean
+  /** 自动批准 MCP 工具调用（风险取决于具体 MCP，默认关闭） */
+  mcpTools: boolean
+}
+
 // ---- 工作区实体 ----
 
 /** 工作区配置 */
@@ -92,6 +135,8 @@ export interface Workspace {
   knowledgeBaseIds: string[]
   /** 关联的 MCP 服务器 ID 列表 */
   mcpServerIds: string[]
+  /** 自动审批矩阵（精细控制，参考 ROO CODE） */
+  autoApproval: AutoApprovalConfig
   /** 创建时间 */
   createdAt: number
   /** 更新时间 */
@@ -114,6 +159,8 @@ export interface CheckpointIndex {
   workspaceId: string
   /** 关联的对话 ID */
   conversationId?: string
+  /** 关联的对话消息 ID（触发该检查点的消息） */
+  messageId?: string
   /** 存档描述 */
   description: string
   /** 存档类型 */
@@ -196,6 +243,8 @@ export interface CreateCheckpointParams {
   workspaceId: string
   /** 关联的对话 ID */
   conversationId?: string
+  /** 关联的对话消息 ID（触发该检查点的消息） */
+  messageId?: string
   /** 需要快照的文件路径列表（相对于工作区根目录） */
   filePaths?: string[]
 }
@@ -228,6 +277,21 @@ export const DEFAULT_CONTEXT_CONFIG: ContextConfig = {
   keepCheckpointBeforeCompression: true,
 }
 
+/**
+ * 默认自动审批配置（保守策略，参考 ROO CODE Auto-Approve）
+ *
+ * 设计原则：低风险操作自动批准以减少打断，高风险操作默认需人工确认。
+ */
+export const DEFAULT_AUTO_APPROVAL_CONFIG: AutoApprovalConfig = {
+  enabled: false,                // 默认关闭总开关，需用户显式启用
+  readFiles: true,               // 读取文件：低风险，建议自动批准
+  listFiles: true,               // 列目录：低风险，建议自动批准
+  writeFiles: false,             // 写入文件：中风险，默认需确认
+  executeSafeCommands: false,    // 安全命令：默认需确认（与 commandPolicy 配合）
+  browser: true,                 // 网页操作：低风险，建议自动批准
+  mcpTools: false,               // MCP 工具：风险不定，默认需确认
+}
+
 /** 默认工作区配置 */
 export const DEFAULT_WORKSPACE_INPUT: Omit<WorkspaceCreateInput, 'folderPath'> = {
   name: '',
@@ -245,4 +309,5 @@ export const DEFAULT_WORKSPACE_INPUT: Omit<WorkspaceCreateInput, 'folderPath'> =
   contextConfig: DEFAULT_CONTEXT_CONFIG,
   knowledgeBaseIds: [],
   mcpServerIds: [],
+  autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
 }

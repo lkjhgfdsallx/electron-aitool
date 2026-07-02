@@ -61,6 +61,8 @@ export interface Message {
   isError?: boolean
   /** 任务是否被中断（应用重启后检测到残留的 isStreaming 标记） */
   wasInterrupted?: boolean
+  /** 流式完成的 finish_reason：'stop' 正常结束、'length' 达到 max_tokens 截断、'abort' 中断 */
+  finishReason?: string
   isEdited?: boolean
   parentId?: string     // 重新生成时关联的原始消息 ID
   attachments?: MessageAttachment[] // 附件列表

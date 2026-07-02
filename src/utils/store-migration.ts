@@ -106,8 +106,8 @@ export const STORE_VERSIONS = {
   CUSTOM_TOOLS: 1,
   /** tool-stats-store (tool-stats) */
   TOOL_STATS: 1,
-  /** workspace-store (workspaces) - v2: 新增 openTabs, defaultWorkspaceId */
-  WORKSPACE: 2,
+  /** workspace-store (workspaces) - v3: 新增 autoApproval (ROO CODE Auto-Approve) */
+  WORKSPACE: 3,
   /** skill-store (skills) */
   SKILLS: 1,
 } as const
