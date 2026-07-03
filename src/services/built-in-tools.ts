@@ -630,6 +630,101 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
     isBuiltIn: true,
     isMCP: false,
     enabled: true
+  },
+
+  // ==================== 结构化任务规划工具（Phase 3） ====================
+  // 让 LLM 通过 function calling 产出结构化 Plan，引擎写入并发布事件
+  // UI（AgentTodoPanel）展示任务列表，用户可查看/确认计划
+
+  {
+    id: 'agent-builtin:create_plan',
+    name: 'create_plan',
+    description: '创建结构化任务计划。将复杂任务拆解为有序子任务列表，每个任务可指定依赖关系和分派目标。计划创建后状态为 draft（草稿），在 plan-and-execute 策略下需用户确认后才执行。使用此工具能让任务执行更有条理、可跟踪。',
+    parameters: {
+      type: 'object',
+      properties: {
+        goal: {
+          type: 'string',
+          description: '任务的总体目标，一句话描述要达成什么。例如"完成一个待办事项应用的前后端开发"'
+        },
+        tasks: {
+          type: 'array',
+          description: '任务列表，按执行顺序排列',
+          items: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: '任务标题，简短概括该任务，例如"设计数据库模型"'
+              },
+              description: {
+                type: 'string',
+                description: '任务详细描述，包括要做什么、预期产出'
+              },
+              dependsOnIndexes: {
+                type: 'array',
+                items: { type: 'number' },
+                description: '该任务依赖的任务序号（从0开始的数组下标）。被依赖的任务完成后此任务才能执行。无依赖则留空。例如[0,1]表示依赖第1和第2个任务'
+              },
+              assigneeId: {
+                type: 'string',
+                description: '（可选）分派给哪个 Agent 执行（多 Agent 工作区场景）。为空表示由当前 Agent 自行执行'
+              }
+            },
+            required: ['title', 'description']
+          }
+        }
+      },
+      required: ['goal', 'tasks']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'agent-builtin:update_task',
+    name: 'update_task',
+    description: '更新计划中某个任务的状态、备注或产物。在执行任务过程中调用此工具标记进度。任务状态包括：pending(待执行)、in_progress(进行中)、completed(已完成)、failed(失败)、blocked(阻塞)。',
+    parameters: {
+      type: 'object',
+      properties: {
+        taskId: {
+          type: 'string',
+          description: '要更新的任务 ID（create_plan 返回的任务 id）'
+        },
+        status: {
+          type: 'string',
+          enum: ['pending', 'in_progress', 'completed', 'failed', 'blocked'],
+          description: '新的任务状态'
+        },
+        notes: {
+          type: 'string',
+          description: '（可选）追加的备注信息，如执行过程中的发现、遇到的问题'
+        },
+        artifacts: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '（可选）该任务产出的文件路径列表'
+        }
+      },
+      required: ['taskId']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'agent-builtin:get_plan',
+    name: 'get_plan',
+    description: '获取当前任务计划的完整状态，包括所有任务的进度、状态、依赖关系。在需要回顾整体进度或确认下一步时调用。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
   }
 ]
 
@@ -767,9 +862,116 @@ export const WORKSPACE_TOOLS: Tool[] = [
           type: 'array',
           items: { type: 'string' },
           description: '该 Agent 可使用的工具 ID 列表。工作区 Agent 自动拥有 workspace_read_file、workspace_write_file、workspace_list_files、workspace_execute_command 等工作区工具。如需额外工具请列出其 ID。'
+        },
+        // ---- Phase 4 增强字段（全部可选） ----
+        planning_strategy: {
+          type: 'string',
+          enum: ['react', 'plan-and-execute', 'trial-and-error'],
+          description: '可选。规划策略：react=ReAct思考-行动-观察循环（默认），plan-and-execute=先拆解子任务再逐步执行，trial-and-error=允许试错重试。复杂任务建议用 plan-and-execute。'
+        },
+        memory_config: {
+          type: 'object',
+          description: '可选。记忆配置。historyTurns=对话历史保留轮数（默认10），longTermEnabled=是否启用长期记忆（默认false），crossSession=是否跨会话记忆（默认false）。',
+          properties: {
+            historyTurns: { type: 'number', description: '对话历史保留轮数' },
+            longTermEnabled: { type: 'boolean', description: '是否启用长期记忆' },
+            crossSession: { type: 'boolean', description: '是否跨会话记忆' }
+          }
+        },
+        termination_config: {
+          type: 'object',
+          description: '可选。终止条件。maxSteps=最大推理步数（默认50，0=无限），timeoutSeconds=超时秒数（0=不超时），autoStopOnGoal=达到目标后自动结束（默认true）。',
+          properties: {
+            maxSteps: { type: 'number', description: '最大推理步数（0=无限）' },
+            timeoutSeconds: { type: 'number', description: '超时时间秒数（0=不超时）' },
+            autoStopOnGoal: { type: 'boolean', description: '达到目标后自动结束' }
+          }
+        },
+        model_config: {
+          type: 'object',
+          description: '可选。模型配置，可覆盖全局配置。providerId=绑定AI源ID，modelId=绑定模型ID，temperature=温度，maxTokens=最大token数。留空则使用对话/全局配置。',
+          properties: {
+            providerId: { type: 'string', description: '绑定的 AI 源 ID' },
+            modelId: { type: 'string', description: '绑定的模型 ID' },
+            temperature: { type: 'number', description: 'temperature 参数' },
+            maxTokens: { type: 'number', description: 'max_tokens 参数' }
+          }
+        },
+        knowledge_base_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选。绑定的知识库集合 ID 列表。为空则搜索全部知识库。指定后 Agent 的 knowledge_search 工具仅在这些集合中检索。'
+        },
+        context_policy: {
+          type: 'object',
+          description: '可选。上下文管理策略。strategy=fixed(固定截断)或compress(摘要压缩)，maxTokens=触发阈值，keepRecentTurns=保留最近轮数。',
+          properties: {
+            strategy: { type: 'string', enum: ['fixed', 'compress'], description: '策略：fixed=固定截断，compress=摘要压缩' },
+            maxTokens: { type: 'number', description: '触发压缩/截断的 token 阈值' },
+            keepRecentTurns: { type: 'number', description: '保留的原始最近轮数' }
+          }
+        },
+        approval_policy: {
+          type: 'object',
+          description: '可选。工具审批策略。requireApprovalFor=需要审批的工具名列表，autoApproveRead=自动批准只读工具，autoApproveWrite=自动批准写工具。',
+          properties: {
+            requireApprovalFor: { type: 'array', items: { type: 'string' }, description: '需要审批的工具名列表' },
+            autoApproveRead: { type: 'boolean', description: '自动批准只读类工具' },
+            autoApproveWrite: { type: 'boolean', description: '自动批准写类工具' }
+          }
+        },
+        max_parallel_subtasks: {
+          type: 'number',
+          description: '可选。并行子任务度上限。控制 workspace_dispatch_parallel 同时执行的最大子任务数。'
         }
       },
       required: ['name', 'description', 'system_prompt']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+
+  // ==================== 并行子任务派发工具（Phase 3） ====================
+  // Leader Agent 一次输出多个子任务，引擎用 Promise.all 并行执行
+  // 结合 Plan 的 dependsOn，引擎自动按拓扑序批量并行
+
+  {
+    id: 'workspace:dispatch_parallel',
+    name: 'workspace_dispatch_parallel',
+    description: '并行分派多个子任务给团队成员执行。适用于多个无依赖或可并行的子任务场景，能显著缩短总执行时间。引擎会自动处理依赖关系：有依赖的任务会等待前置完成后再执行。每个子任务的结果按入参顺序返回。',
+    parameters: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          description: '要并行执行的子任务列表',
+          items: {
+            type: 'object',
+            properties: {
+              agent_id: {
+                type: 'string',
+                description: '执行此子任务的 Agent ID（必须是当前工作区团队成员）'
+              },
+              task_description: {
+                type: 'string',
+                description: '子任务的详细描述'
+              },
+              context_summary: {
+                type: 'string',
+                description: '（可选）传递给子 Agent 的上下文摘要'
+              },
+              depends_on_indexes: {
+                type: 'array',
+                items: { type: 'number' },
+                description: '（可选）此子任务依赖的其他子任务序号（从0开始）。被依赖的子任务完成后此任务才会执行，实现拓扑排序调度'
+              }
+            },
+            required: ['agent_id', 'task_description']
+          }
+        }
+      },
+      required: ['tasks']
     },
     isBuiltIn: true,
     isMCP: false,

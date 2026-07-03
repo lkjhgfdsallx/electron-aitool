@@ -1,6 +1,7 @@
 // ==================== 消息相关类型 ====================
 
 import type { AgentStep } from './agent'
+import type { AgentPlan } from './agent-plan'
 
 /** 网站分析实时进度 */
 export interface SiteAnalyzerLiveProgress {
@@ -72,8 +73,12 @@ export interface Message {
   siteAnalyzerProgress?: SiteAnalyzerLiveProgress
   /** Agent 执行步骤（Agent 模式下的思考链、工具调用等） */
   agentSteps?: AgentStep[]
+  /** Agent 结构化执行计划（Phase 3：plan-and-execute 策略产出） */
+  agentPlan?: AgentPlan
   /** 关联的 Agent ID */
   agentId?: string
+  /** Agent 运行的唯一 ID（用于 checkpoint 恢复） */
+  agentRunId?: string
   /** 分支索引（对话分支功能，0 为主分支） */
   branchIndex?: number
   /** 分支总数（仅在分支点用户消息上设置，表示该处分叉的数量） */

@@ -74,7 +74,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { sendMessage, stopGeneration, regenerateMessage, continueGeneration, editAndResend, handleHumanInput, resumeAgentTask, continueInterruptedTask } = useChat()
+  const { sendMessage, stopGeneration, regenerateMessage, continueGeneration, editAndResend, handleHumanInput } = useChat()
 
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
   const kbDropdownRef = useRef<HTMLDivElement>(null)
@@ -147,14 +147,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   const memoizedOnHumanInput = useCallback((stepId: string, value: string | string[]) => {
     handleHumanInput(stepId, value)
   }, [handleHumanInput])
-
-  const memoizedOnResumeAgentTask = useCallback((messageId: string) => {
-    resumeAgentTask(messageId)
-  }, [resumeAgentTask])
-
-  const memoizedOnContinueInterruptedTask = useCallback((messageId: string) => {
-    continueInterruptedTask(messageId)
-  }, [continueInterruptedTask])
 
   const memoizedOnSwitchBranch = useCallback((forkMessageId: string, branchIndex: number) => {
     handleSwitchBranch(forkMessageId, branchIndex)
@@ -538,8 +530,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                   onContinueGeneration={memoizedOnContinueGeneration}
                   onEditAndResend={memoizedOnEditAndResend}
                   onHumanInput={memoizedOnHumanInput}
-                  onResumeAgentTask={memoizedOnResumeAgentTask}
-                  onContinueInterruptedTask={memoizedOnContinueInterruptedTask}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={memoizedOnSwitchBranch}
                 />

@@ -108,8 +108,6 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     continueGeneration,
     editAndResend,
     handleHumanInput,
-    resumeAgentTask,
-    continueInterruptedTask,
   } = useChat()
 
   // 应用启动时清理残留的 isStreaming 标记（防止意外关闭后 UI 状态异常）
@@ -532,8 +530,6 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
                   onContinueGeneration={continueGeneration}
                   onEditAndResend={editAndResend}
                   onHumanInput={handleHumanInput}
-                  onResumeAgentTask={resumeAgentTask}
-                  onContinueInterruptedTask={continueInterruptedTask}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={handleSwitchBranch}
                 />

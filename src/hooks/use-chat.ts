@@ -3,7 +3,9 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { runAgent, resumeAgent } from '../services/agent-engine'
-import type { WorkspaceContext, SubAgentActivityEvent, FileActionApprovalRequest, FileActionApprovalResult } from '../services/agent-engine'
+import type { WorkspaceContext, CreateAgentInput, SubAgentActivityEvent, FileActionApprovalRequest, FileActionApprovalResult } from '../services/agent-engine'
+import { agentEventBus } from '../services/agent/event-bus'
+import type { AgentPlan } from '../types/agent-plan'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
@@ -17,7 +19,8 @@ import { useWorkspaceStore } from '../stores/workspace-store'
 import { useWorkspaceAgentStore } from '../stores/workspace-agent-store'
 import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
-import type { Message, Tool, ToolDefinition, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
+import type { Message, Tool, ToolDefinition, ToolExecuteResult, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
+import type { AgentEvent } from '../services/agent/event-bus'
 
 /** 根据 finishReason 生成截断/中断提示（'length' 已由自动续写机制处理） */
 function getFinishNotice(finishReason?: string): string | null {
@@ -26,6 +29,15 @@ function getFinishNotice(finishReason?: string): string | null {
     return '\n\n> ⚠️ **回复中断**：流连接在生成过程中异常断开，输出可能不完整。请检查网络连接或 API 服务状态。'
   }
   return null
+}
+
+/** 联网相关工具名集合，用于根据 webSearchEnabled 设置过滤工具 */
+const WEB_TOOL_NAMES = new Set(['web_search', 'fetch_webpage'])
+
+/** 根据联网开关过滤工具列表：webSearchEnabled=false 时移除联网工具 */
+function filterWebTools(tools: Tool[]): Tool[] {
+  const webSearchEnabled = useSettingsStore.getState().webSearchEnabled
+  return tools.filter((t) => !WEB_TOOL_NAMES.has(t.name) || webSearchEnabled)
 }
 
 /** 将进度事件类型映射到阶段 */
@@ -164,7 +176,7 @@ export function useChat() {
     const teamAgents = ws.teamAgentIds
       .map((id) => allAgents.find((a) => a.id === id))
       .filter((a): a is NonNullable<typeof a> => !!a)
-      .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖', enabledToolIds: a.enabledToolIds }))
 
     // 构建子任务分派回调（真正运行子 Agent 并返回结构化结果 JSON）
     // Boomerang: 接收 contextSummary（主 Agent 提供的上下文摘要），作为子 Agent 的背景信息
@@ -205,7 +217,7 @@ export function useChat() {
       const freshTeamAgents = (freshWs?.teamAgentIds ?? [])
         .map((id) => freshAllAgents.find((a) => a.id === id))
         .filter((a): a is NonNullable<typeof a> => !!a)
-        .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖' }))
+        .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖', enabledToolIds: a.enabledToolIds }))
 
       // 构建子 Agent 的工作区上下文（不含 dispatchSubTask/createAgent 以避免递归）
       const subWorkspaceContext: WorkspaceContext | undefined = ws
@@ -302,7 +314,8 @@ export function useChat() {
             },
             onDone: (content) => { if (content) finalContent = content },
           },
-          subWorkspaceContext
+          subWorkspaceContext,
+          undefined // 子 Agent 不需要 conversationId（checkpoint 由主 Agent 管理）
         )
       } catch (err) {
         return buildResult('error', err instanceof Error ? err.message : String(err))
@@ -312,13 +325,9 @@ export function useChat() {
     }
 
     // 构建创建 Agent 回调（创建新 Agent 并加入工作区团队）
-    const createAgent = async (input: {
-      name: string
-      description: string
-      systemPrompt: string
-      avatar?: string
-      enabledToolIds?: string[]
-    }): Promise<string> => {
+    // 支持 Phase 4 增强字段：planningStrategy, memoryConfig, termination, modelConfig,
+    // knowledgeBaseIds, contextPolicy, approvalPolicy, maxParallelSubtasks
+    const createAgent = async (input: CreateAgentInput): Promise<string> => {
       // 为新 Agent 设置合理的默认工具：工作区文件工具 + 核心工具
       const defaultWorkspaceToolIds = [
         'workspace:read_file', 'workspace:write_file',
@@ -329,6 +338,7 @@ export function useChat() {
         : defaultWorkspaceToolIds
 
       // 创建工作区 Agent（而非全局 Agent），自动带有 workspace 标签
+      // Phase 4 字段优先使用传入值，未提供则使用合理默认值
       const workspaceAgentStore = useWorkspaceAgentStore.getState()
       const newAgent = await workspaceAgentStore.createWorkspaceAgent({
         name: input.name,
@@ -336,10 +346,14 @@ export function useChat() {
         systemPrompt: input.systemPrompt,
         avatar: input.avatar ?? '🤖',
         enabledToolIds: toolIds,
-        planningStrategy: 'react',
-        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
-        termination: { maxSteps: 50, timeoutSeconds: 0, autoStopOnGoal: true },
-        modelConfig: {},
+        planningStrategy: input.planningStrategy ?? 'react',
+        memoryConfig: input.memoryConfig ?? { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: input.termination ?? { maxSteps: 50, timeoutSeconds: 0, autoStopOnGoal: true },
+        modelConfig: input.modelConfig ?? {},
+        knowledgeBaseIds: input.knowledgeBaseIds,
+        contextPolicy: input.contextPolicy,
+        approvalPolicy: input.approvalPolicy,
+        maxParallelSubtasks: input.maxParallelSubtasks,
         enabled: true,
       }, ws.folderPath)
 
@@ -357,6 +371,7 @@ export function useChat() {
         name: newAgent.name,
         description: newAgent.description,
         avatar: newAgent.avatar ?? '🤖',
+        enabledToolIds: newAgent.enabledToolIds,
       })
 
       return newAgent.id
@@ -369,11 +384,78 @@ export function useChat() {
       return useWorkspaceStore.getState().requestFileActionApproval(request)
     }
 
+    // Phase 3: 并行子任务分派
+    // 接收多个子任务，根据 dependsOnIndexes 做拓扑分层，同层任务用 Promise.all 并行执行。
+    // 结果按入参顺序返回（与串行 dispatchSubTask 的返回格式一致）。
+    const dispatchTasks = async (
+      tasks: Array<{ agentId: string; task: string; context?: string; dependsOnIndexes?: number[] }>,
+    ): Promise<string[]> => {
+      if (tasks.length === 0) return []
+
+      // 结果数组（按入参顺序填充）
+      const results: string[] = new Array(tasks.length).fill('')
+
+      // 拓扑分层：将任务按依赖关系分成多个批次
+      // 同一批次内的任务无相互依赖，可并行执行
+      const resolved = new Set<number>()
+      const batches: number[][] = []
+      const maxIterations = tasks.length + 1
+      let iteration = 0
+
+      while (resolved.size < tasks.length) {
+        if (iteration++ > maxIterations) {
+          // 循环依赖兜底：把剩余任务全部放入最后一批
+          const remaining = tasks.map((_, i) => i).filter((i) => !resolved.has(i))
+          batches.push(remaining)
+          remaining.forEach((i) => resolved.add(i))
+          break
+        }
+        const batch: number[] = []
+        for (let i = 0; i < tasks.length; i++) {
+          if (resolved.has(i)) continue
+          const deps = tasks[i].dependsOnIndexes ?? []
+          // 所有依赖都已 resolved（或依赖索引越界则忽略）
+          const allDepsResolved = deps.every((d) => d < 0 || d >= tasks.length || resolved.has(d))
+          if (allDepsResolved) batch.push(i)
+        }
+        if (batch.length === 0) {
+          // 剩余任务存在循环依赖，直接全部放入最后一批避免死锁
+          const remaining = tasks.map((_, i) => i).filter((i) => !resolved.has(i))
+          batches.push(remaining)
+          remaining.forEach((i) => resolved.add(i))
+          break
+        }
+        batches.push(batch)
+        batch.forEach((i) => resolved.add(i))
+      }
+
+      // 按批次执行：同批次内并行，批次间串行（等待前置完成）
+      for (const batch of batches) {
+        const batchPromises = batch.map((idx) =>
+          dispatchSubTask(tasks[idx].agentId, tasks[idx].task, tasks[idx].context)
+            .then((result) => { results[idx] = result })
+            .catch((err) => {
+              results[idx] = JSON.stringify({
+                agentId: tasks[idx].agentId,
+                task: tasks[idx].task,
+                status: 'error',
+                error: err instanceof Error ? err.message : String(err),
+                timestamp: Date.now(),
+              })
+            }),
+        )
+        await Promise.all(batchPromises)
+      }
+
+      return results
+    }
+
     return {
       folderPath: ws.folderPath,
       workspaceId: ws.id,
       teamAgents,
       dispatchSubTask,
+      dispatchTasks,
       createAgent,
       autoApproval: ws.autoApproval,
       onFileActionApproval,
@@ -445,7 +527,8 @@ export function useChat() {
   const getAvailableTools = useCallback((): Tool[] => {
     const mcpTools = useMCPToolStore.getState().mcpTools
     const customTools = useCustomToolStore.getState().customTools.filter((t) => t.enabled)
-    return [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...mcpTools, ...customTools]
+    // 联网工具也需要根据开关过滤（Agent 模式同样受此限制）
+    return filterWebTools([...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...mcpTools, ...customTools])
   }, [])
 
   /**
@@ -619,6 +702,51 @@ export function useChat() {
 
       // 将包含附件内容的完整消息传递给 Agent 引擎
       const wsContext = buildWorkspaceContext(convId, onSubAgentActivity)
+
+      // Phase 3: 订阅 plan_created / task_updated 事件，将结构化计划同步到消息
+      let currentPlan: AgentPlan | null = null
+      const planUnsub = agentEventBus.on('plan_created', (event: AgentEvent) => {
+        const plan = (event.payload as { plan?: AgentPlan } | undefined)?.plan
+        if (plan) {
+          currentPlan = plan
+          updateMessage(assistantMsg.id, { agentPlan: plan, isStreaming: true })
+        }
+      })
+      const taskUnsub = agentEventBus.on('task_updated', (event: AgentEvent) => {
+        const plan = (event.payload as { plan?: AgentPlan } | undefined)?.plan
+        if (plan) {
+          currentPlan = plan
+          updateMessage(assistantMsg.id, { agentPlan: plan, isStreaming: true })
+        }
+      })
+
+      // Phase 4: 订阅 context_compressed 事件，将压缩信息作为 observation 步骤注入消息流
+      const compressUnsub = agentEventBus.on('context_compressed', (event: AgentEvent) => {
+        const payload = event.payload as {
+          beforeTokens?: number
+          afterTokens?: number
+          compressedTurns?: number
+          strategy?: string
+        } | undefined
+        if (payload) {
+          const reduction = payload.beforeTokens && payload.afterTokens
+            ? Math.round((1 - payload.afterTokens / payload.beforeTokens) * 100)
+            : 0
+          const compressStep: AgentStep = {
+            id: crypto.randomUUID(),
+            type: 'observation',
+            content: `🗜️ 上下文已压缩（${payload.strategy ?? 'fixed'}）：${payload.beforeTokens?.toLocaleString() ?? '?'} → ${payload.afterTokens?.toLocaleString() ?? '?'} tokens（减少 ${reduction}%，压缩 ${payload.compressedTurns ?? 0} 条早期消息）`,
+            stepIndex: -1,
+            timestamp: Date.now(),
+          }
+          agentSteps.push(compressStep)
+          updateMessage(assistantMsg.id, {
+            agentSteps: [...agentSteps],
+            isStreaming: true,
+          })
+        }
+      })
+
       await runAgent(
         agent,
         agentMessage,
@@ -627,6 +755,10 @@ export function useChat() {
         resolveCurrentConfig(convId, agent)!,
         abortControllerRef.current!.signal,
         {
+          onRunId: (runId) => {
+            // Phase 2: 将 agentRunId 写入消息，支持断点恢复
+            updateMessage(assistantMsg.id, { agentRunId: runId })
+          },
           onStep: (step) => {
             agentSteps.push(step)
             // 当中间步骤（思考/行动）产生时，说明之前的流式内容是中间推理
@@ -787,8 +919,16 @@ export function useChat() {
             }
           }
         },
-        wsContext
+        wsContext,
+        convId // Phase 2: conversationId 用于 checkpoint 关联
       )
+
+      // Phase 3: 清理 plan 事件订阅
+      planUnsub()
+      taskUnsub()
+      // Phase 4: 清理压缩事件订阅
+      compressUnsub()
+      void currentPlan
     },
     [resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, buildMessageContent, getCurrentBranchIndex, buildWorkspaceContext]
   )
@@ -849,13 +989,9 @@ export function useChat() {
       // 获取对话历史
       const history = getMessages(convId)
 
-      // 普通模式使用内置工具 + MCP 工具
+      // 普通模式使用内置工具 + MCP 工具（联网工具根据开关过滤）
       const mcpTools = useMCPToolStore.getState().mcpTools
-      const webSearchEnabled = useSettingsStore.getState().webSearchEnabled
-      const webToolNames = new Set(['web_search', 'fetch_webpage'])
-      const normalModeTools = [...BUILT_IN_TOOLS, ...mcpTools].filter(
-        (t) => !webToolNames.has(t.name) || webSearchEnabled
-      )
+      const normalModeTools = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools])
       const toolDefs = toolService.toToolDefinitions(normalModeTools)
 
       // 创建 assistant 消息（流式更新）
@@ -937,7 +1073,7 @@ export function useChat() {
                 }))
               })
               const mcpTools3 = useMCPToolStore.getState().mcpTools
-              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools3], currentBranchIdx)
+              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpTools3]), currentBranchIdx)
             } else {
               const notice = getFinishNotice(finishReason)
               const finalContent = notice ? fullContent + notice : fullContent
@@ -1079,27 +1215,67 @@ export function useChat() {
       )
       if (!currentMsg?.toolCalls) return
 
-      // 并行执行所有工具调用
+      // 过滤掉无效的空白工具调用（AI 有时会调用 name 为空的工具）
+      const validToolCalls = toolCalls.filter((tc) => tc.name && tc.name.trim())
+      const invalidToolCalls = toolCalls.filter((tc) => !tc.name || !tc.name.trim())
+
+      // 先将无效的工具调用标记为 error
       const updatedToolCalls = [...currentMsg.toolCalls]
-      // 先将所有工具调用标记为 running
       for (let i = 0; i < toolCalls.length; i++) {
-        updatedToolCalls[i] = { ...updatedToolCalls[i], status: 'running' }
+        const tc = toolCalls[i]
+        if (!tc.name || !tc.name.trim()) {
+          updatedToolCalls[i] = {
+            ...updatedToolCalls[i],
+            status: 'error',
+            result: '无效的工具调用：工具名为空'
+          }
+          // 将无效工具调用结果添加到对话历史
+          addMessage(conversationId, {
+            conversationId,
+            role: 'tool',
+            content: '无效的工具调用：工具名为空',
+            toolCallId: tc.id,
+            toolName: tc.name || '',
+            branchIndex
+          })
+        } else {
+          updatedToolCalls[i] = { ...updatedToolCalls[i], status: 'running' }
+        }
       }
       updateMessage(assistantMsgId, { toolCalls: updatedToolCalls })
 
-      // 并行执行
+      // 并行执行有效工具调用（带超时保护，防止 IPC 调用挂起导致整个对话卡死）
+      const TOOL_TIMEOUT_MS = 60_000 // 60秒超时
       const results = await Promise.all(
-        toolCalls.map(async (tc) => {
+        validToolCalls.map(async (tc) => {
           let args: Record<string, unknown> = {}
           try {
             args = JSON.parse(tc.arguments)
           } catch {
             // 空参数
           }
-          const result = await toolService.executeTool(tc.name, args, tools)
+          // 为每个工具调用添加超时保护，防止 IPC 调用永远不返回
+          const result = await Promise.race([
+            toolService.executeTool(tc.name, args, tools),
+            new Promise<ToolExecuteResult>((resolve) =>
+              setTimeout(() => resolve({
+                success: false,
+                data: '',
+                error: `工具 "${tc.name}" 执行超时（${TOOL_TIMEOUT_MS / 1000}秒）`
+              }), TOOL_TIMEOUT_MS)
+            )
+          ])
           return { tc, result }
         })
       )
+
+      // 将无效工具调用的结果也加入 results 以统一处理
+      for (const tc of invalidToolCalls) {
+        results.push({
+          tc,
+          result: { success: false, data: '', error: '无效的工具调用：工具名为空' }
+        })
+      }
 
       // 更新所有工具调用状态并添加结果消息
       for (const { tc, result } of results) {
@@ -1124,13 +1300,9 @@ export function useChat() {
       }
       updateMessage(assistantMsgId, { toolCalls: [...updatedToolCalls] })
 
-      // 构建工具定义（保持工具可用，支持后续轮次继续调用）
+      // 构建工具定义（保持工具可用，支持后续轮次继续调用，联网工具根据开关过滤）
       const mcpTools2 = useMCPToolStore.getState().mcpTools
-      const webSearchEnabled2 = useSettingsStore.getState().webSearchEnabled
-      const webToolNames2 = new Set(['web_search', 'fetch_webpage'])
-      const normalModeTools2 = [...BUILT_IN_TOOLS, ...mcpTools2].filter(
-        (t) => !webToolNames2.has(t.name) || webSearchEnabled2
-      )
+      const normalModeTools2 = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools2])
       const toolDefs = toolService.toToolDefinitions(normalModeTools2)
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
 
@@ -1311,6 +1483,10 @@ export function useChat() {
           resolveCurrentConfig(currentConversationId, agent)!,
           abortControllerRef.current.signal,
           {
+            onRunId: (runId) => {
+              // Phase 2: 将 agentRunId 写入消息，支持断点恢复
+              updateMessage(assistantMsg.id, { agentRunId: runId })
+            },
             onStep: (step) => {
               agentSteps.push(step)
               if (step.type === 'thinking' || step.type === 'action') {
@@ -1414,14 +1590,15 @@ export function useChat() {
               }
             }
           },
-          wsContext
+          wsContext,
+          currentConversationId // Phase 2: conversationId 用于 checkpoint 关联
         )
       } else {
         // 普通模式重新生成
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        // 普通模式使用内置工具 + MCP 工具
+        // 普通模式使用内置工具 + MCP 工具（联网工具根据开关过滤）
         const mcpTools4 = useMCPToolStore.getState().mcpTools
-        const normalModeTools4 = [...BUILT_IN_TOOLS, ...mcpTools4]
+        const normalModeTools4 = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools4])
         const toolDefs = toolService.toToolDefinitions(normalModeTools4)
 
         const assistantMsg = addMessage(currentConversationId, {
@@ -1469,7 +1646,7 @@ export function useChat() {
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
                 const mcpTools5 = useMCPToolStore.getState().mcpTools
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools5], currentBranchIdx)
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpTools5]), currentBranchIdx)
               } else {
                 const notice = getFinishNotice(finishReason)
                 updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
@@ -1525,183 +1702,6 @@ export function useChat() {
       }
     }
   }, [currentConversationId, getMessages, updateMessage])
-
-  /**
-   * 继续执行出错的 Agent 任务
-   */
-  const resumeAgentTask = useCallback(
-    async (messageId: string) => {
-      if (!currentConversationId || isStreamingRef.current) return
-
-      const messages = getMessages(currentConversationId)
-      const msgIndex = messages.findIndex((m) => m.id === messageId)
-      if (msgIndex < 0) return
-
-      const errorMsg = messages[msgIndex]
-      if (!errorMsg.isError || !errorMsg.agentId) return
-
-      // 获取关联的 Agent
-      const agent = getAgent(errorMsg.agentId)
-      if (!agent || !agent.enabled) return
-
-      isStreamingRef.current = true
-      abortControllerRef.current = new AbortController()
-
-      // 更新原消息为恢复中状态
-      updateMessage(messageId, {
-        isStreaming: true,
-        isError: false
-      })
-
-      // 获取对话历史（包含之前的所有消息，让 resumeAgent 从中恢复上下文）
-      const history = getMessages(currentConversationId)
-
-      // 获取所有工具
-      const allTools = getAvailableTools()
-
-      // Agent 步骤收集（追加到已有步骤）
-      const existingSteps = errorMsg.agentSteps ?? []
-      const agentSteps: AgentStep[] = [...existingSteps]
-      let finalContent = ''
-      let reasoningContent = errorMsg.reasoningContent ?? ''
-
-      const wsContext = buildWorkspaceContext(currentConversationId)
-      await resumeAgent(
-        agent,
-        history,
-        allTools,
-        resolveCurrentConfig(currentConversationId, agent)!,
-        abortControllerRef.current.signal,
-        {
-          onStep: (step) => {
-            agentSteps.push(step)
-            if (step.type === 'thinking' || step.type === 'action') {
-              finalContent = ''
-              reasoningContent = ''
-            }
-            // 步骤变更需要立即刷新（低频事件）
-            streamingBufferRef.current.flush()
-            updateMessage(messageId, {
-              content: finalContent,
-              agentSteps: [...agentSteps],
-              isStreaming: true
-            })
-          },
-          onToken: (token) => {
-            finalContent += token
-            // ⚡ 性能优化：onToken 高频回调不再展开 agentSteps
-            streamingBufferRef.current.push(messageId, {
-              content: finalContent,
-              isStreaming: true
-            })
-          },
-          onReasoningToken: (token) => {
-            reasoningContent += token
-            // ⚡ 同上：不再展开 agentSteps
-            streamingBufferRef.current.push(messageId, {
-              content: finalContent,
-              reasoningContent,
-              isStreaming: true
-            })
-          },
-          onStatusChange: (status) => {
-            // 完成时强制刷新缓冲
-            streamingBufferRef.current.flush()
-            if (status === 'completed' || status === 'error' || status === 'stopped') {
-              updateMessage(messageId, {
-                content: finalContent || (status === 'error' ? 'Agent 执行出错' : ''),
-                isStreaming: false,
-                isError: status === 'error',
-                reasoningContent: reasoningContent || undefined,
-                agentSteps: [...agentSteps],
-                finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
-              })
-              isStreamingRef.current = false
-              if (status === 'completed') {
-                notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
-              }
-            }
-          },
-          onError: (error) => {
-            streamingBufferRef.current.flush()
-            updateMessage(messageId, {
-              content: finalContent || error,
-              isStreaming: false,
-              isError: true,
-              agentSteps: [...agentSteps]
-            })
-            isStreamingRef.current = false
-          },
-          onDone: (doneContent) => {
-            streamingBufferRef.current.flush()
-            updateMessage(messageId, {
-              content: doneContent || finalContent || '',
-              isStreaming: false,
-              agentSteps: [...agentSteps],
-              reasoningContent: reasoningContent || undefined,
-              finishReason: 'stop'
-            })
-            isStreamingRef.current = false
-          },
-          onHumanInput: async (step) => {
-            return new Promise<string | string[]>((resolve, reject) => {
-              humanInputResolversRef.current.set(step.id, resolve)
-              const timeoutId = setTimeout(() => {
-                if (humanInputResolversRef.current.has(step.id)) {
-                  humanInputResolversRef.current.delete(step.id)
-                  const firstOption = step.humanChoice?.options[0]?.value ?? ''
-                  const defaultValue = step.humanChoice?.allowMultiple
-                        ? [firstOption]
-                        : firstOption
-                  resolve(defaultValue)
-                }
-              }, 60_000)
-              // 监听中止信号，abort 时立即 reject
-              const signal = abortControllerRef.current?.signal
-              if (signal?.aborted) {
-                clearTimeout(timeoutId)
-                humanInputResolversRef.current.delete(step.id)
-                reject(new Error('aborted'))
-                return
-              }
-              const onAbort = () => {
-                clearTimeout(timeoutId)
-                humanInputResolversRef.current.delete(step.id)
-                reject(new Error('aborted'))
-              }
-              signal?.addEventListener('abort', onAbort, { once: true })
-            })
-          },
-          onSiteAnalyzerProgress: (progress) => {
-            if (progress.type === 'started') {
-              siteAnalyzerStartTimeRef.current = Date.now()
-            }
-            const phase = mapProgressTypeToPhase(progress.type)
-            updateMessage(messageId, {
-              siteAnalyzerProgress: {
-                phase,
-                message: progress.message,
-                pagesCrawled: progress.pagesCrawled,
-                totalPages: progress.totalPages,
-                apisFound: progress.apisFound,
-                pagesAnalyzed: progress.pagesAnalyzed,
-                currentUrl: progress.currentUrl,
-                startTime: siteAnalyzerStartTimeRef.current,
-                error: progress.error
-              }
-            })
-            if (phase === 'completed' || phase === 'error') {
-              setTimeout(() => {
-                updateMessage(messageId, { siteAnalyzerProgress: undefined })
-              }, 3000)
-            }
-          }
-        },
-        wsContext
-      )
-    },
-    [currentConversationId, resolveCurrentConfig, resolveCurrentRequestConfig, addMessage, updateMessage, getMessages, getAvailableTools, getAgent, buildWorkspaceContext]
-  )
 
   /**
    * 编辑用户消息并重新发送（创建对话分支）
@@ -1806,6 +1806,10 @@ export function useChat() {
           resolveCurrentConfig(currentConversationId, agent)!,
           abortControllerRef.current.signal,
           {
+            onRunId: (runId) => {
+              // Phase 2: 将 agentRunId 写入消息，支持断点恢复
+              updateMessage(assistantMsg.id, { agentRunId: runId })
+            },
             onStep: (step) => {
               agentSteps.push(step)
               if (step.type === 'thinking' || step.type === 'action') {
@@ -1909,14 +1913,15 @@ export function useChat() {
               }
             }
           },
-          wsContext
+          wsContext,
+          currentConversationId // Phase 2: conversationId 用于 checkpoint 关联
         )
       } else {
         // 普通模式
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        // 普通模式使用内置工具 + MCP 工具
+        // 普通模式使用内置工具 + MCP 工具（联网工具根据开关过滤）
         const mcpTools6 = useMCPToolStore.getState().mcpTools
-        const normalModeTools6 = [...BUILT_IN_TOOLS, ...mcpTools6]
+        const normalModeTools6 = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools6])
         const toolDefs = toolService.toToolDefinitions(normalModeTools6)
 
         const assistantMsg = addMessage(currentConversationId, {
@@ -1964,7 +1969,7 @@ export function useChat() {
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
                 const mcpTools7 = useMCPToolStore.getState().mcpTools
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpTools7], newBranchIndex)
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpTools7]), newBranchIndex)
               } else {
                 const notice = getFinishNotice(finishReason)
                 updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
@@ -2002,7 +2007,12 @@ export function useChat() {
   )
 
   /**
-   * 继续生成：在已有 assistant 消息内容基础上，让 AI 从断点继续输出
+   * 统一的继续生成机制：覆盖所有中断/错误/截断场景
+   * - 用户手动中断（finishReason='abort'）
+   * - 达到 max_tokens 截断（finishReason='length'）
+   * - 应用关闭后中断（wasInterrupted=true）
+   * - Agent 执行出错（isError=true）
+   *
    * 不删除任何消息，而是将已有内容包含在上下文中，追加请求让模型继续
    */
   const continueGeneration = useCallback(
@@ -2034,6 +2044,9 @@ export function useChat() {
       const targetMsg = visibleMessages[msgIndex]
       if (targetMsg.role !== 'assistant') return
 
+      // 如果没有内容且无 agentSteps，说明没有可继续的内容，跳过
+      if (!targetMsg.content && !(targetMsg.agentSteps && targetMsg.agentSteps.length > 0)) return
+
       const currentBranchIdx = getCurrentBranchIndex(targetConversationId)
 
       // 检查是否为 Agent 模式
@@ -2046,14 +2059,20 @@ export function useChat() {
       isStreamingRef.current = true
       abortControllerRef.current = new AbortController()
 
+      // 清除所有中断/错误标记
+      updateMessage(messageId, {
+        isStreaming: true,
+        isError: false,
+        finishReason: undefined,
+        wasInterrupted: undefined,
+      })
+
       if (agent && agent.enabled) {
         // Agent 模式：使用 resumeAgent 从已有步骤继续
         const existingSteps = targetMsg.agentSteps ?? []
         const agentSteps: AgentStep[] = [...existingSteps]
         let finalContent = targetMsg.content ?? ''
         let reasoningContent = targetMsg.reasoningContent ?? ''
-
-        updateMessage(messageId, { isStreaming: true, isError: false, finishReason: undefined })
 
         const history = getMessages(targetConversationId)
         const allTools = getAvailableTools()
@@ -2066,6 +2085,10 @@ export function useChat() {
           resolveCurrentConfig(targetConversationId, agent)!,
           abortControllerRef.current.signal,
           {
+            onRunId: (runId) => {
+              // Phase 2: 将 agentRunId 写入消息，支持断点恢复
+              updateMessage(messageId, { agentRunId: runId })
+            },
             onStep: (step) => {
               agentSteps.push(step)
               if (step.type === 'thinking' || step.type === 'action') {
@@ -2192,7 +2215,9 @@ export function useChat() {
               }
             }
           },
-          wsContext
+          wsContext,
+          targetConversationId, // Phase 2: conversationId 用于 checkpoint 关联
+          targetMsg.agentRunId  // Phase 2: originalRunId 用于恢复上次 checkpoint
         )
       } else {
         // 普通模式：参考 ai-service.ts 自动续写逻辑
@@ -2200,7 +2225,7 @@ export function useChat() {
         // 而是追加空的 assistant 消息作为续写标记 + "继续" 用户消息
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
         const mcpTools = useMCPToolStore.getState().mcpTools
-        const normalModeTools = [...BUILT_IN_TOOLS, ...mcpTools]
+        const normalModeTools = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools])
         const toolDefs = toolService.toToolDefinitions(normalModeTools)
 
         // 构建续写上下文：包含 targetMsg 之前的所有消息（不包含 targetMsg 本身）
@@ -2267,7 +2292,7 @@ export function useChat() {
                   finishReason
                 })
                 const mcpToolsNext = useMCPToolStore.getState().mcpTools
-                await handleToolCalls(targetConversationId, messageId, pendingToolCalls, [...BUILT_IN_TOOLS, ...mcpToolsNext], currentBranchIdx)
+                await handleToolCalls(targetConversationId, messageId, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpToolsNext]), currentBranchIdx)
               } else {
                 const notice = getFinishNotice(finishReason)
                 updateMessage(messageId, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
@@ -2301,53 +2326,6 @@ export function useChat() {
     ]
   )
 
-  /**
-   * 继续被中断的任务
-   * 保留已有的 assistant 内容，从中断点继续生成而非重新生成
-   */
-  const continueInterruptedTask = useCallback(
-    async (messageId: string) => {
-      if (!currentConversationId || isStreamingRef.current) return
-
-      const messages = getMessages(currentConversationId)
-      const msgIndex = messages.findIndex((m) => m.id === messageId)
-      if (msgIndex < 0) return
-
-      const interruptedMsg = messages[msgIndex]
-      if (!interruptedMsg.wasInterrupted) return
-
-      // 如果已有内容，直接走继续生成逻辑
-      if (interruptedMsg.content) {
-        // 清除中断标记，然后继续生成
-        updateMessage(messageId, { wasInterrupted: undefined, finishReason: 'abort' })
-        await continueGeneration(messageId)
-      } else {
-        // 没有已生成内容，需要重新开始
-        // 清除中断标记
-        updateMessage(messageId, { wasInterrupted: undefined })
-
-        // 删除中断的 assistant 消息及之后的所有消息（保留用户消息）
-        for (let i = messages.length - 1; i >= msgIndex; i--) {
-          useConversationStore.getState().deleteMessage(currentConversationId, messages[i].id)
-        }
-
-        // 找到中断消息之前的用户消息，重新发送
-        let userMsgIndex = -1
-        for (let i = msgIndex - 1; i >= 0; i--) {
-          if (messages[i].role === 'user') {
-            userMsgIndex = i
-            break
-          }
-        }
-        if (userMsgIndex >= 0) {
-          const userMsg = messages[userMsgIndex]
-          await sendMessage(userMsg.content, currentConversationId, userMsg.attachments)
-        }
-      }
-    },
-    [currentConversationId, getMessages, updateMessage, sendMessage, continueGeneration]
-  )
-
   return {
     sendMessage,
     stopGeneration,
@@ -2356,7 +2334,5 @@ export function useChat() {
     editAndResend,
     isStreaming: isStreamingRef.current,
     handleHumanInput,
-    resumeAgentTask,
-    continueInterruptedTask
   }
 }

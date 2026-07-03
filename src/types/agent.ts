@@ -1,5 +1,8 @@
 // ==================== Agent 相关类型 ====================
 
+import type { PromptSection, PromptVariable } from './prompt'
+import type { AgentWorkflow } from './agent-workflow'
+
 /**
  * 规划策略
  */
@@ -86,8 +89,50 @@ export interface AgentProfile {
   tags?: string[]
   /** 是否启用 */
   enabled: boolean
+
+  // ===== Phase 4 扩展字段（全部可选，向后兼容） =====
+
+  /** 复用提示词系统的段落（与 systemPrompt 组合或替代） */
+  promptSections?: PromptSection[]
+  /** 引用已有 Prompt 模板 id（Prompt 系统） */
+  promptTemplateId?: string
+  /** 变量定义（同 Prompt 系统） */
+  variables?: PromptVariable[]
+  /** 行为编排（状态机定义，Phase 4 §5.2） */
+  workflow?: AgentWorkflow
+  /** 上下文管理策略（Phase 4 §4.3） */
+  contextPolicy?: ContextPolicy
+  /** 工具审批门槛覆盖 */
+  approvalPolicy?: ApprovalPolicy
+  /** 并行度上限 */
+  maxParallelSubtasks?: number
+
   createdAt: number
   updatedAt: number
+}
+
+/**
+ * 上下文管理策略（Phase 4 §4.3）
+ */
+export interface ContextPolicy {
+  /** 策略：fixed=固定截断（丢弃早期），compress=摘要压缩 */
+  strategy: 'fixed' | 'compress'
+  /** 触发压缩/截断的 token 阈值（字符数近似） */
+  maxTokens?: number
+  /** 保留的原始最近轮数 */
+  keepRecentTurns?: number
+}
+
+/**
+ * 工具审批策略
+ */
+export interface ApprovalPolicy {
+  /** 需要审批的工具名列表 */
+  requireApprovalFor?: string[]
+  /** 自动批准只读类工具 */
+  autoApproveRead?: boolean
+  /** 自动批准写类工具 */
+  autoApproveWrite?: boolean
 }
 
 export type AgentProfileCreateInput = Omit<AgentProfile, 'id' | 'createdAt' | 'updatedAt'>

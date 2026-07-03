@@ -469,6 +469,16 @@ export const useAgentStore = create<AgentStore>()(
               : agent
           )
         }
+        if (version < 3) {
+          // v3 (Phase 4): 为旧 AgentProfile 补充 Phase 4 新增字段的默认值
+          // 新增可选字段：promptSections / promptTemplateId / variables / workflow
+          //              contextPolicy / approvalPolicy / maxParallelSubtasks
+          // 这些均为可选字段，引擎在缺失时使用默认逻辑；此处仅防御性填充数值类字段
+          state.agents = state.agents.map((agent) => ({
+            ...agent,
+            maxParallelSubtasks: agent.maxParallelSubtasks ?? 3,
+          }))
+        }
         return state
       },
       onRehydrateStorage: () => {

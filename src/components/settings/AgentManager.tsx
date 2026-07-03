@@ -33,8 +33,13 @@ import { SYSTEM_AGENT_TAGS } from '../../types'
 import type {
   AgentProfile,
   AgentProfileCreateInput,
-  PlanningStrategy
+  PlanningStrategy,
+  AgentWorkflow,
+  ContextPolicy,
+  ApprovalPolicy,
+  PromptSection,
 } from '../../types'
+import { AgentWorkflowEditor } from '../chat/AgentWorkflowEditor'
 
 const AVATAR_OPTIONS = ['🤖', '🧠', '💻', '📝', '🔍', '🎨', '📊', '🔧', '🌐', '📚', '🎯', '⚡', '🛡️', '🧪', '🎮', '🎵']
 
@@ -67,7 +72,13 @@ const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
   modelConfig: {},
   knowledgeBaseIds: [],
   enabledSkillIds: [],
-  enabled: true
+  enabled: true,
+  // Phase 4 新增字段默认值
+  promptSections: [],
+  maxParallelSubtasks: 3,
+  contextPolicy: undefined,
+  approvalPolicy: undefined,
+  workflow: undefined,
 }
 
 export interface AgentManagerProps {
@@ -143,7 +154,13 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
       termination: { ...agent.termination },
       modelConfig: { ...agent.modelConfig },
       knowledgeBaseIds: agent.knowledgeBaseIds ? [...agent.knowledgeBaseIds] : [],
-      enabled: agent.enabled
+      enabled: agent.enabled,
+      // Phase 4 字段
+      promptSections: agent.promptSections ? agent.promptSections.map((s) => ({ ...s })) : [],
+      maxParallelSubtasks: agent.maxParallelSubtasks ?? 3,
+      contextPolicy: agent.contextPolicy ? { ...agent.contextPolicy } : undefined,
+      approvalPolicy: agent.approvalPolicy ? { ...agent.approvalPolicy } : undefined,
+      workflow: agent.workflow ? (JSON.parse(JSON.stringify(agent.workflow)) as AgentWorkflow) : undefined,
     })
     setEditingAgent(agent)
     setIsCreating(true)
@@ -686,6 +703,148 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
           </div>
         </div>
 
+        {/* ========== 高级策略 ========== */}
+        <div className="space-y-4 p-4 bg-surface-50/50 dark:bg-surface-900/30 rounded-xl border border-surface-200/80 dark:border-surface-700/60">
+          <div className="flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-200">
+            <Zap size={16} className="text-accent-500" />
+            高级策略
+          </div>
+
+          {/* 上下文压缩策略 */}
+          <div className="space-y-2">
+            <label className="block text-xs text-muted">上下文压缩策略</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={agentForm.contextPolicy?.strategy ?? 'fixed'}
+                onChange={(e) => {
+                  const strategy = e.target.value as ContextPolicy['strategy']
+                  setAgentForm({
+                    ...agentForm,
+                    contextPolicy: { ...(agentForm.contextPolicy ?? { maxTokens: 128000, keepRecentTurns: 6 }), strategy },
+                  })
+                }}
+                className="text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1"
+              >
+                <option value="fixed">fixed（丢弃早期消息）</option>
+                <option value="compress">compress（LLM 摘要压缩）</option>
+              </select>
+              <label className="flex items-center gap-1 text-xs text-muted">
+                最大 tokens：
+                <input
+                  type="number"
+                  min="1000"
+                  step="1000"
+                  value={agentForm.contextPolicy?.maxTokens ?? 128000}
+                  onChange={(e) =>
+                    setAgentForm({
+                      ...agentForm,
+                      contextPolicy: {
+                        ...(agentForm.contextPolicy ?? { strategy: 'fixed', keepRecentTurns: 6 }),
+                        maxTokens: parseInt(e.target.value) || 128000,
+                      },
+                    })
+                  }
+                  className="w-20 text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-1.5 py-1"
+                />
+              </label>
+              <label className="flex items-center gap-1 text-xs text-muted">
+                保留最近：
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={agentForm.contextPolicy?.keepRecentTurns ?? 6}
+                  onChange={(e) =>
+                    setAgentForm({
+                      ...agentForm,
+                      contextPolicy: {
+                        ...(agentForm.contextPolicy ?? { strategy: 'fixed', maxTokens: 128000 }),
+                        keepRecentTurns: parseInt(e.target.value) || 6,
+                      },
+                    })
+                  }
+                  className="w-14 text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-1.5 py-1"
+                />
+                条
+              </label>
+            </div>
+          </div>
+
+          {/* 审批策略 */}
+          <div className="space-y-2">
+            <label className="block text-xs text-muted">文件操作审批策略</label>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={agentForm.approvalPolicy?.autoApproveRead ?? false}
+                  onChange={(e) =>
+                    setAgentForm({
+                      ...agentForm,
+                      approvalPolicy: {
+                        ...(agentForm.approvalPolicy ?? { requireApprovalFor: [] }),
+                        autoApproveRead: e.target.checked,
+                      },
+                    })
+                  }
+                  className="accent-accent-500"
+                />
+                自动批准读操作
+              </label>
+              <label className="flex items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox"
+                  checked={agentForm.approvalPolicy?.autoApproveWrite ?? false}
+                  onChange={(e) =>
+                    setAgentForm({
+                      ...agentForm,
+                      approvalPolicy: {
+                        ...(agentForm.approvalPolicy ?? { requireApprovalFor: [] }),
+                        autoApproveWrite: e.target.checked,
+                      },
+                    })
+                  }
+                  className="accent-accent-500"
+                />
+                自动批准写操作
+              </label>
+            </div>
+          </div>
+
+          {/* 并行子任务上限 */}
+          <div className="space-y-1">
+            <label className="block text-xs text-muted">
+              并行子任务上限：{agentForm.maxParallelSubtasks ?? 3}
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={agentForm.maxParallelSubtasks ?? 3}
+              onChange={(e) =>
+                setAgentForm({ ...agentForm, maxParallelSubtasks: parseInt(e.target.value) })
+              }
+              className="w-full accent-accent-500"
+            />
+          </div>
+
+          {/* 工作流状态机编辑器 */}
+          <div className="space-y-2">
+            <label className="block text-xs text-muted">工作流状态机</label>
+            <AgentWorkflowEditor
+              workflow={agentForm.workflow}
+              onChange={(wf) => setAgentForm({ ...agentForm, workflow: wf })}
+              availableTools={[...VISIBLE_BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => ({ id: t.id, name: t.name }))}
+            />
+          </div>
+
+          {/* Prompt 段落（promptSections）简易编辑器 */}
+          <PromptSectionsEditor
+            sections={agentForm.promptSections ?? []}
+            onChange={(sections) => setAgentForm({ ...agentForm, promptSections: sections })}
+          />
+        </div>
+
         {/* 底部按钮 */}
         <div className="flex items-center gap-3">
           <button
@@ -845,6 +1004,126 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ==================== PromptSectionsEditor 子组件（Phase 4） ====================
+
+interface PromptSectionsEditorProps {
+  sections: PromptSection[]
+  onChange: (sections: PromptSection[]) => void
+}
+
+function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps) {
+  const handleAdd = () => {
+    const newSection: PromptSection = {
+      id: crypto.randomUUID(),
+      type: 'custom',
+      title: `段落 ${sections.length + 1}`,
+      content: '',
+      enabled: true,
+      order: sections.length,
+    }
+    onChange([...sections, newSection])
+  }
+
+  const handleUpdate = (idx: number, patch: Partial<PromptSection>) => {
+    onChange(sections.map((s, i) => (i === idx ? { ...s, ...patch } : s)))
+  }
+
+  const handleDelete = (idx: number) => {
+    onChange(sections.filter((_, i) => i !== idx))
+  }
+
+  const handleMove = (idx: number, dir: -1 | 1) => {
+    const target = idx + dir
+    if (target < 0 || target >= sections.length) return
+    const next = [...sections]
+    ;[next[idx], next[target]] = [next[target], next[idx]]
+    // 重新分配 order
+    next.forEach((s, i) => { s.order = i })
+    onChange(next)
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="block text-xs text-muted">提示词段落（按 order 拼接到系统提示词）</label>
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="inline-flex items-center gap-1 text-xs text-accent-600 hover:text-accent-700"
+        >
+          <Plus size={12} /> 添加段落
+        </button>
+      </div>
+      {sections.length === 0 && (
+        <p className="text-[11px] text-surface-400 italic">暂无段落</p>
+      )}
+      <div className="space-y-1.5">
+        {sections.map((section, idx) => (
+          <div
+            key={section.id}
+            className={`rounded border border-surface-200 dark:border-surface-700 p-2 space-y-1.5 ${
+              section.enabled ? 'bg-white dark:bg-surface-800/60' : 'bg-surface-50 dark:bg-surface-900/40 opacity-60'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleUpdate(idx, { enabled: !section.enabled })}
+                className={section.enabled ? 'text-accent-500' : 'text-surface-400'}
+                title={section.enabled ? '禁用' : '启用'}
+              >
+                {section.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+              </button>
+              <input
+                type="text"
+                value={section.title ?? ''}
+                onChange={(e) => handleUpdate(idx, { title: e.target.value })}
+                placeholder="段落标题"
+                className="flex-1 text-xs font-medium rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-2 py-0.5"
+              />
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleMove(idx, -1)}
+                  disabled={idx === 0}
+                  className="text-surface-400 hover:text-surface-600 disabled:opacity-30 text-xs px-1"
+                  title="上移"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMove(idx, 1)}
+                  disabled={idx === sections.length - 1}
+                  className="text-surface-400 hover:text-surface-600 disabled:opacity-30 text-xs px-1"
+                  title="下移"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(idx)}
+                  className="text-surface-400 hover:text-red-500"
+                  title="删除"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={section.content}
+              onChange={(e) => handleUpdate(idx, { content: e.target.value })}
+              rows={2}
+              placeholder="段落内容…"
+              className="w-full text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-2 py-1 font-mono resize-y"
+            />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

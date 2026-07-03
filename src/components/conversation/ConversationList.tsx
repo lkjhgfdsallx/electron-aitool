@@ -122,11 +122,12 @@ const ConversationItem = memo(function ConversationItem({
     <div
       onClick={() => onSelect(conv.id)}
       className={`relative group flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+        contextMenuId === conv.id ? 'z-50' : ''
+      } ${
         isActive
           ? 'bg-accent-50 dark:bg-accent-950/30 shadow-sm'
           : 'hover:bg-surface-100 dark:hover:bg-surface-800/60'
       }`}
-      style={{ contain: 'content' }}
     >
       {/* 图标 */}
       <div className={`flex-shrink-0 mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center text-xs ${
@@ -192,23 +193,24 @@ const ConversationItem = memo(function ConversationItem({
         <Pin size={10} className="flex-shrink-0 mt-1 text-accent-400 fill-accent-400" />
       )}
 
-      {/* 操作按钮 */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation()
-          onContextMenu(conv.id)
-        }}
-        className="flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-all"
-      >
-        <MoreHorizontal size={14} className="text-gray-400" />
-      </button>
-
-      {/* 上下文菜单 */}
-      {contextMenuId === conv.id && (
-        <div
-          className="absolute right-0 top-full z-50 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-elevated py-1.5 min-w-[140px] animate-scale-in origin-top-right"
-          onClick={(e) => e.stopPropagation()}
+      {/* 操作按钮 & 上下文菜单 */}
+      <div className="relative flex-shrink-0 mt-0.5" data-context-trigger>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onContextMenu(conv.id)
+          }}
+          className={`${contextMenuId === conv.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} p-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-all`}
         >
+          <MoreHorizontal size={14} className="text-gray-400" />
+        </button>
+
+        {contextMenuId === conv.id && (
+          <div
+            className="absolute right-0 top-full z-50 mt-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-elevated py-1.5 min-w-[160px] animate-scale-in origin-top-right"
+            onClick={(e) => e.stopPropagation()}
+            data-context-menu
+          >
           <button
             onClick={() => {
               setEditingId(conv.id)
@@ -256,8 +258,9 @@ const ConversationItem = memo(function ConversationItem({
           >
             <Trash2 size={14} /> 删除
           </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   )
 })
@@ -283,6 +286,19 @@ export function ConversationList() {
   } = useConversationStore()
 
   const { getAgent } = useAgentStore()
+
+  // 点击外部关闭上下文菜单
+  useEffect(() => {
+    if (!contextMenuId) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // 点击在菜单内部或触发按钮上时不关闭
+      if (target.closest('[data-context-menu]') || target.closest('[data-context-trigger]')) return
+      setContextMenuId(null)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [contextMenuId])
 
   // 模拟初始加载
   useEffect(() => {
@@ -394,11 +410,12 @@ export function ConversationList() {
     return { startIndex: bufferedStart, endIndex: bufferedEnd }
   }, [scrollTop, containerHeight, virtualRows, rowOffsets])
 
-  // 滚动事件处理
+  // 滚动事件处理（滚动时关闭上下文菜单）
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current
     if (container) {
       setScrollTop(container.scrollTop)
+      setContextMenuId(null)
     }
   }, [])
 

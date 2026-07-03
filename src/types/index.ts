@@ -10,9 +10,40 @@ export type {
   MemoryConfig,
   TerminationConfig,
   AgentModelConfig,
-  SystemAgentTag
+  SystemAgentTag,
+  ContextPolicy,
+  ApprovalPolicy
 } from './agent'
 export { SYSTEM_AGENT_TAGS } from './agent'
+
+// Phase 4: Agent 工作流状态机
+export type {
+  AgentWorkflow,
+  WorkflowState,
+  WorkflowTransition,
+  TransitionCondition,
+  TransitionConditionType,
+  WorkflowRuntimeState,
+} from './agent-workflow'
+export { isTerminalState, validateWorkflow } from './agent-workflow'
+
+// Phase 3: 结构化任务规划
+export type {
+  AgentTaskStatus,
+  AgentPlanStatus,
+  AgentTask,
+  AgentPlan,
+  CreatePlanTaskInput,
+  CreatePlanInput,
+  UpdateTaskInput,
+} from './agent-plan'
+export {
+  getPlanProgress,
+  isPlanDone,
+  hasPlanFailed,
+  getReadyTasks,
+  topologicalSort,
+} from './agent-plan'
 export type {
   Prompt,
   PromptCreateInput,

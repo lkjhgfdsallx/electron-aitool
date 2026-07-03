@@ -15,6 +15,8 @@ import {
   Users
 } from 'lucide-react'
 import type { AgentStep } from '../../types'
+import type { AgentPlan } from '../../types/agent-plan'
+import { AgentTodoPanel } from './AgentTodoPanel'
 
 /** 用户选择超时时间（毫秒） */
 const HUMAN_INPUT_TIMEOUT_MS = 60_000
@@ -25,10 +27,14 @@ interface AgentStepDisplayProps {
   isRunning?: boolean
   /** 用户选择回调（ask_human 工具），单选传字符串，多选传字符串数组 */
   onHumanInput?: (stepId: string, value: string | string[]) => void
-  /** 继续任务回调（Agent 出错后恢复执行） */
-  onResumeAgentTask?: () => void
   /** 消息是否处于错误状态 */
   isError?: boolean
+  /** Phase 3: 结构化执行计划（plan-and-execute 策略产出） */
+  plan?: AgentPlan
+  /** Phase 3: 用户确认计划回调（接受后开始执行） */
+  onApprovePlan?: (plan: AgentPlan) => void
+  /** Phase 3: 用户拒绝计划回调（要求重新规划） */
+  onRejectPlan?: (plan: AgentPlan, reason?: string) => void
 }
 
 const stepTypeConfig = {
@@ -83,7 +89,7 @@ const stepTypeConfig = {
   }
 }
 
-export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgentTask, isError }: AgentStepDisplayProps) {
+export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan, onApprovePlan, onRejectPlan }: AgentStepDisplayProps) {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const [isAllExpanded, setIsAllExpanded] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -271,6 +277,15 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
         </button>
       </div>
 
+      {/* Phase 3: 结构化执行计划面板（plan-and-execute 策略） */}
+      {plan && (
+        <AgentTodoPanel
+          plan={plan}
+          onApprove={onApprovePlan}
+          onReject={onRejectPlan}
+        />
+      )}
+
       {/* 步骤列表（timeline 风格） */}
       <div className="relative">
         {processSteps.map((step, index) => {
@@ -389,22 +404,10 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, onResumeAgent
 
                         {/* 错误 */}
                         {step.type === 'error' && (
-                          <div className="mt-2 space-y-2">
+                          <div className="mt-2">
                             <div className="text-xs text-danger-600 dark:text-danger-400">
                               {step.content}
                             </div>
-                            {isError && !isRunning && onResumeAgentTask && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  onResumeAgentTask()
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
-                              >
-                                <RotateCcw size={12} />
-                                继续任务
-                              </button>
-                            )}
                           </div>
                         )}
 

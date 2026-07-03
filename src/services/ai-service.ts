@@ -337,14 +337,16 @@ export const aiService = {
           const data = trimmed.slice(6)
           if (data === '[DONE]') {
             receivedDone = true
-            // 处理累积的工具调用
+            // 处理累积的工具调用（过滤稀疏数组空洞，防止 undefined 元素传播到渲染层）
             if (currentToolCalls.length > 0) {
               callbacks?.onToolCalls?.(
-                currentToolCalls.map((tc) => ({
-                  id: tc.id,
-                  name: tc.name,
-                  arguments: tc.arguments
-                }))
+                currentToolCalls
+                  .filter(Boolean)
+                  .map((tc) => ({
+                    id: tc.id,
+                    name: tc.name,
+                    arguments: tc.arguments
+                  }))
               )
             }
             callbacks?.onDone(lastFinishReason || 'stop')

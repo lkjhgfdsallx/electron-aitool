@@ -4,6 +4,10 @@ import App from './App'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import './styles/globals.css'
+import { registerAllExecutors } from './services/agent'
+
+// 注册所有工具执行器（必须在 Agent 运行之前完成）
+registerAllExecutors()
 
 // 初始化主题
 const savedTheme = localStorage.getItem('ui-preferences')

@@ -1,7 +1,5 @@
 import type { Tool, ToolDefinition, ToolExecuteResult } from '../types'
 import { mcpService } from './mcp-service'
-import { memoryService } from './memory-service'
-import { executeMathTool } from './math-tools'
 import { knowledgeBaseService } from './knowledge-base-service'
 import { useToolStatsStore } from '../stores/tool-stats-store'
 import { useSkillStore } from '../stores/skill-store'
@@ -411,37 +409,22 @@ export const toolService = {
         }
       }
 
-      case 'remember': {
-        const key = String(args.key ?? '')
-        const value = String(args.value ?? '')
-        if (!key || !value) {
-          return { success: false, data: '', error: 'remember 工具需要 key 和 value 参数' }
-        }
-        // 使用固定 agentId 'default'，实际调用时由 agent-engine 覆盖
-        memoryService.remember('default', key, value)
-        return { success: true, data: `已记住: ${key} = ${value}` }
-      }
-
-      case 'recall': {
-        const key = String(args.key ?? '')
-        if (!key) {
-          return { success: false, data: '', error: 'recall 工具需要 key 参数' }
-        }
-        const value = memoryService.recall('default', key)
-        if (value === null || value === undefined) {
-          return { success: true, data: `没有找到关于 "${key}" 的记忆` }
-        }
-        return { success: true, data: `${key} = ${value}` }
-      }
-
+      // P3: remember / recall / math_* 已由 MemoryToolExecutor / MathToolExecutor
+      // 通过 toolExecutorRegistry 分发处理，此处不再重复实现。
+      // 非 Agent 模式（直接调用 toolService.executeTool）走到这里时给出明确提示。
+      case 'remember':
+      case 'recall':
       case 'math_analyze':
       case 'math_algebra':
       case 'math_geometry':
       case 'math_number':
       case 'math_symbolic':
-      case 'math_verify': {
-        return executeMathTool(toolName, args)
-      }
+      case 'math_verify':
+        return {
+          success: false,
+          data: '',
+          error: `工具 "${toolName}" 仅在 Agent 模式下可用，请通过 Agent 引擎调用。`,
+        }
 
       case 'list_skills': {
         try {

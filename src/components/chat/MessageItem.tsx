@@ -20,7 +20,6 @@ import {
   X,
   Maximize2,
   Minimize2,
-  PlayCircle,
   AlertTriangle,
   Forward
 } from 'lucide-react'
@@ -53,10 +52,6 @@ interface MessageItemProps {
   /** 编辑并重新发送（创建对话分支） */
   onEditAndResend?: (messageId: string, content: string) => void
   onHumanInput?: (stepId: string, value: string | string[]) => void
-  /** 继续执行出错的 Agent 任务 */
-  onResumeAgentTask?: (messageId: string) => void
-  /** 继续被中断的任务（应用重启后检测到残留的 isStreaming 标记） */
-  onContinueInterruptedTask?: (messageId: string) => void
   /** 当前激活的分支索引（仅分支点消息有效） */
   activeBranchIndex?: number
   /** 切换分支回调 */
@@ -81,8 +76,6 @@ export const MessageItem = memo(function MessageItem({
   onEdit,
   onEditAndResend,
   onHumanInput,
-  onResumeAgentTask,
-  onContinueInterruptedTask,
   activeBranchIndex = 0,
   onSwitchBranch
 }: MessageItemProps) {
@@ -288,8 +281,8 @@ export const MessageItem = memo(function MessageItem({
               steps={message.agentSteps!}
               isRunning={message.isStreaming}
               onHumanInput={onHumanInput}
-              onResumeAgentTask={onResumeAgentTask ? () => onResumeAgentTask(message.id) : undefined}
               isError={message.isError}
+              plan={message.agentPlan}
             />
           </SelectionBoundary>
         )}
@@ -340,51 +333,21 @@ export const MessageItem = memo(function MessageItem({
           )}
         </SelectionBoundary>
 
-        {/* 中断任务提示 + 继续按钮 */}
-        {message.wasInterrupted && (
-          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40">
-            <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
-            <span className="text-xs text-amber-700 dark:text-amber-300 flex-1">
-              此任务在应用关闭时被中断
-            </span>
-            {onContinueInterruptedTask && (
-              <button
-                onClick={() => onContinueInterruptedTask(message.id)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors shadow-sm"
-                title="继续执行此任务"
-              >
-                <PlayCircle size={12} />
-                继续任务
-              </button>
-            )}
-            {onResumeAgentTask && message.agentId && (
-              <button
-                onClick={() => onResumeAgentTask(message.id)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-accent-500 hover:bg-accent-600 rounded-md transition-colors shadow-sm"
-                title="恢复 Agent 任务"
-              >
-                <RotateCcw size={12} />
-                恢复Agent
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* 截断消息提示 + 继续生成按钮 */}
-        {(message.finishReason === 'abort' || message.finishReason === 'length') && !message.isStreaming && !message.wasInterrupted && message.content && (
-          <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/40">
-            <AlertTriangle size={14} className="text-blue-500 flex-shrink-0" />
-            <span className="text-xs text-blue-700 dark:text-blue-300 flex-1">
-              {message.finishReason === 'length' ? '回复已达到最大长度限制，可以续写' : '回复被中断，可以继续生成'}
+        {/* 中断/错误/截断消息提示 + 统一继续生成按钮 */}
+        {(message.wasInterrupted || message.isError || message.finishReason === 'abort' || message.finishReason === 'length') && !message.isStreaming && (message.content || (message.agentSteps && message.agentSteps.length > 0)) && (
+          <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-lg ${message.wasInterrupted ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40' : message.isError ? 'bg-red-50 dark:bg-red-900/20 border border-red-200/60 dark:border-red-800/40' : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/40'}`}>
+            <AlertTriangle size={14} className={`${message.wasInterrupted ? 'text-amber-500' : message.isError ? 'text-red-500' : 'text-blue-500'} flex-shrink-0`} />
+            <span className={`text-xs ${message.wasInterrupted ? 'text-amber-700 dark:text-amber-300' : message.isError ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'} flex-1`}>
+              {message.wasInterrupted ? '此任务在应用关闭时被中断，可以继续执行' : message.isError ? '任务执行出错，可以重试' : message.finishReason === 'length' ? '回复已达到最大长度限制，可以续写' : '回复被中断，可以继续生成'}
             </span>
             {onContinueGeneration && (
               <button
                 onClick={() => onContinueGeneration(message.id)}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors shadow-sm"
+                className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white ${message.wasInterrupted ? 'bg-amber-500 hover:bg-amber-600' : message.isError ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'} rounded-md transition-colors shadow-sm`}
                 title="继续生成"
               >
                 <Forward size={12} />
-                继续生成
+                {message.isError ? '重试' : '继续'}
               </button>
             )}
           </div>
@@ -508,8 +471,6 @@ export const MessageItem = memo(function MessageItem({
     prevProps.onContinueGeneration === nextProps.onContinueGeneration &&
     prevProps.onEditAndResend === nextProps.onEditAndResend &&
     prevProps.onHumanInput === nextProps.onHumanInput &&
-    prevProps.onResumeAgentTask === nextProps.onResumeAgentTask &&
-    prevProps.onContinueInterruptedTask === nextProps.onContinueInterruptedTask &&
     prevProps.onSwitchBranch === nextProps.onSwitchBranch
   )
 })
