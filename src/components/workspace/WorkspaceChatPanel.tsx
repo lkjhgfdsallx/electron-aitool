@@ -16,6 +16,7 @@ import { CompressionIndicator } from './CompressionIndicator'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useChat } from '../../hooks/use-chat'
 import { useWorkspaceCompression } from '../../hooks/use-workspace-compression'
 import type { Workspace, Message, MessageAttachment, PromptRuntimeContext, Conversation } from '../../types'
@@ -99,6 +100,7 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     getConversationsByWorkspaceId, loadConversationMessages } = useConversationStore()
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
+  const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
 
   // 复用现有 useChat hook（支持全部功能：流式/工具调用/Agent/分支/重生成等）
   const {
@@ -222,9 +224,9 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
   const currentConversation = conversationId ? getConversation(conversationId) : undefined
   const activeBranches = currentConversation?.activeBranches ?? {}
 
-  // 获取当前对话关联的 Agent
+  // 获取当前对话关联的 Agent，优先使用工作区专属 leader
   const currentAgent = currentConversation?.agentId ? getAgent(currentConversation.agentId) : undefined
-  const leaderAgent = workspace.leaderAgentId ? getAgent(workspace.leaderAgentId) : currentAgent
+  const leaderAgent = getLeaderAgent() ?? (workspace.leaderAgentId ? getAgent(workspace.leaderAgentId) : currentAgent)
 
   // 构建 Prompt 运行时上下文
   const runtimeContext: PromptRuntimeContext = useMemo(() => ({

@@ -72,7 +72,8 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
 
   // Leader 提示词编辑
   const getAgent = useAgentStore((s) => s.getAgent)
-  const leaderAgent = workspace.leaderAgentId ? getAgent(workspace.leaderAgentId) : getAgent(WORKSPACE_LEADER_AGENT_ID)
+  const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
+  const leaderAgent = getLeaderAgent() ?? (workspace.leaderAgentId ? getAgent(workspace.leaderAgentId) : getAgent(WORKSPACE_LEADER_AGENT_ID))
   const [showPromptEditor, setShowPromptEditor] = useState(false)
   const currentPrompt = leaderAgent?.systemPrompt ?? ''
   const isCustomPrompt = currentPrompt !== WORKSPACE_LEADER_PROMPT
@@ -515,6 +516,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
       <LeaderPromptEditorModal
         open={showPromptEditor}
         onClose={() => setShowPromptEditor(false)}
+        folderPath={workspace.folderPath}
       />
 
       {/* 底部：跳转完整设置 */}

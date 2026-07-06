@@ -57,6 +57,8 @@ export interface AgentModelConfig {
 export const SYSTEM_AGENT_TAGS = {
   /** 标识为工作区独立 Agent */
   WORKSPACE: 'workspace',
+  /** 标识为工作区 AI 领导 Agent（隐含 WORKSPACE 标签） */
+  LEADER: 'leader',
 } as const
 
 export type SystemAgentTag = typeof SYSTEM_AGENT_TAGS[keyof typeof SYSTEM_AGENT_TAGS]

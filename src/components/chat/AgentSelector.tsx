@@ -25,7 +25,11 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
     [workspaceAgents]
   )
   const enabledGlobalAgents = useMemo(
-    () => globalAgents.filter((a) => a.enabled && !a.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE)),
+    () => globalAgents.filter(
+      (a) => a.enabled
+        && !a.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE)
+        && !a.tags?.includes(SYSTEM_AGENT_TAGS.LEADER)
+    ),
     [globalAgents]
   )
 

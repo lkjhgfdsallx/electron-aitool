@@ -231,8 +231,8 @@ function buildAgentSystemPrompt(
 ): string {
   let prompt = agent.systemPrompt
 
-  // 判断是否为 Leader Agent（纯指挥者模式）
-  const isLeader = agent.id === WORKSPACE_LEADER_AGENT_ID
+  // 判断是否为 Leader Agent（纯指挥者模式）：通过标签判断，不再依赖固定 ID
+  const isLeader = agent.tags?.includes('leader') ?? false
 
   // 注入工作区上下文（文件夹路径 + 团队成员信息 + 工作流程指引）
   if (workspaceContext) {
@@ -448,7 +448,8 @@ function resolveAgentTools(
     (t) => agent.enabledToolIds.includes(t.id) && t.enabled
   )
   if (workspaceContext) {
-    if (agent.id === WORKSPACE_LEADER_AGENT_ID) {
+    const isLeaderAgent = agent.tags?.includes('leader') ?? false
+    if (isLeaderAgent) {
       const leaderAllowedToolIds = [
         'workspace:list_files',
         'workspace:dispatch_task',

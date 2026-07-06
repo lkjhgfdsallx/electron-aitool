@@ -101,7 +101,10 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
   } = useWorkspaceAgentStore()
 
   // 根据模式选择 Agent 列表和操作函数
-  const agents = isWorkspaceMode ? workspaceAgents : globalAgents
+  // 全局模式下过滤掉 leader 标签 Agent（防御性：迁移后全局不应再有 leader）
+  const agents = isWorkspaceMode
+    ? workspaceAgents
+    : globalAgents.filter((a) => !a.tags?.includes(SYSTEM_AGENT_TAGS.LEADER))
   const createAgent = isWorkspaceMode
     ? (input: AgentProfileCreateInput) => { if (folderPath) createWorkspaceAgent(input, folderPath) }
     : createGlobalAgent

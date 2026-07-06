@@ -113,6 +113,7 @@ function makeAgent(overrides: Partial<AgentProfile> = {}): AgentProfile {
     enabled: true,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    tags: ['leader'],
     ...overrides,
   }
 }

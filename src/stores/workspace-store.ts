@@ -265,8 +265,18 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           watcherActive: false,
         }))
 
-        // 异步加载工作区 Agent
-        useWorkspaceAgentStore.getState().loadWorkspaceAgents(workspace.folderPath)
+        // 异步加载工作区 Agent（内部会执行静默迁移，创建 leader 实例）
+        useWorkspaceAgentStore.getState().loadWorkspaceAgents(workspace.folderPath).then(() => {
+          // 加载完成后，同步 leaderAgentId
+          const ws = get().workspaces.find((w) => w.id === id)
+          if (!ws) return
+          const wsAgentStore = useWorkspaceAgentStore.getState()
+          const leader = wsAgentStore.getLeaderAgent()
+          // 如果工作区的 leaderAgentId 未指向有效的 leader，自动纠正
+          if (leader && (ws.leaderAgentId !== leader.id || !ws.leaderAgentId)) {
+            get().updateWorkspace({ id, leaderAgentId: leader.id })
+          }
+        })
       },
 
       deactivateWorkspace: () => {

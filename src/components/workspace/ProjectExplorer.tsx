@@ -18,8 +18,10 @@ import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useSkillStore } from '../../stores/skill-store'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import { FileTree } from './FileTree'
+import { AgentDetailDialog } from './AgentDetailDialog'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
 import type { Workspace, CheckpointIndex } from '../../types'
+import type { AgentProfile } from '../../types'
 
 interface ProjectExplorerProps {
   workspace: Workspace
@@ -323,6 +325,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   }, [workspace.id, workspace.leaderAgentId, leaderAgent, updateWorkspace])
 
   const [showPicker, setShowPicker] = useState(false)
+  const [detailAgent, setDetailAgent] = useState<AgentProfile | null>(null)
   const [pickerPos, setPickerPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
   const pickerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -413,7 +416,8 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
           {teamAgents.map((agent) => (
             <div
               key={agent!.id}
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors group"
+              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors group cursor-pointer"
+              onClick={() => setDetailAgent(agent!)}
             >
               <div className="w-7 h-7 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center text-xs flex-shrink-0">
                 {agent!.avatar || '🤖'}
@@ -430,7 +434,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
               </div>
               {/* 移除按钮 */}
               <button
-                onClick={() => handleRemoveAgent(agent!.id)}
+                onClick={(e) => { e.stopPropagation(); handleRemoveAgent(agent!.id) }}
                 className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
                 title="移除"
               >
@@ -511,6 +515,13 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
           </div>
         </div>
       </div>
+
+      {/* 团队成员只读详情弹窗 */}
+      <AgentDetailDialog
+        agent={detailAgent}
+        open={!!detailAgent}
+        onClose={() => setDetailAgent(null)}
+      />
     </div>
   )
 }

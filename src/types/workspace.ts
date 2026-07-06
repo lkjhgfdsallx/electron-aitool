@@ -296,7 +296,8 @@ export const DEFAULT_AUTO_APPROVAL_CONFIG: AutoApprovalConfig = {
 export const DEFAULT_WORKSPACE_INPUT: Omit<WorkspaceCreateInput, 'folderPath'> = {
   name: '',
   description: '',
-  leaderAgentId: 'default-workspace-leader',
+  // leaderAgentId 不再硬编码：工作区激活时由 workspace-agent-store 自动创建 leader 实例并回填
+  leaderAgentId: undefined,
   allowDynamicAgents: true,
   teamAgentIds: [],
   checkpointPolicy: 'auto-before-modify',

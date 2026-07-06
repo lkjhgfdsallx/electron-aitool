@@ -462,12 +462,7 @@ export const useAgentStore = create<AgentStore>()(
           }
         }
         if (version < 2) {
-          // v2: 强制同步 Leader Agent 的系统提示词为最新版本
-          state.agents = state.agents.map((agent) =>
-            agent.id === WORKSPACE_LEADER_AGENT_ID
-              ? { ...agent, systemPrompt: WORKSPACE_LEADER_PROMPT, updatedAt: Date.now() }
-              : agent
-          )
+          // v2: 已废弃 —— Leader Agent 不再存于全局 agent-store，迁移由 workspace-agent-store 负责
         }
         if (version < 3) {
           // v3 (Phase 4): 为旧 AgentProfile 补充 Phase 4 新增字段的默认值
@@ -494,18 +489,8 @@ export const useAgentStore = create<AgentStore>()(
               const websiteAnalyzer = createDefaultWebsiteAnalyzer()
               state.agents = [...state.agents, websiteAnalyzer]
             }
-            // 确保工作区 AI 领导 Agent 存在，并同步最新的系统提示词
-            if (!state.agents.some((a) => a.id === WORKSPACE_LEADER_AGENT_ID)) {
-              const leader = createDefaultWorkspaceLeader()
-              state.agents = [...state.agents, leader]
-            } else {
-              // 强制同步最新提示词（使用不可变更新确保 Zustand 正确检测变更）
-              state.agents = state.agents.map((a) =>
-                a.id === WORKSPACE_LEADER_AGENT_ID
-                  ? { ...a, systemPrompt: WORKSPACE_LEADER_PROMPT, updatedAt: Date.now() }
-                  : a
-              )
-            }
+            // ★ 已废弃：AI 领导现已完全工作区化，不再存于全局 agent-store
+            //    迁移逻辑在 workspace-agent-store.loadWorkspaceAgents 中处理
           }
         }
       }

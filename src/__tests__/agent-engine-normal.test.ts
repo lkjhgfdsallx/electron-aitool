@@ -601,6 +601,7 @@ describe('runAgent - 正常模式', () => {
       const leaderAgent = createMockAgent({
         id: 'workspace-leader',
         enabledToolIds: [],
+        tags: ['workspace', 'leader'],
       })
       const callbacks = createMockCallbacks()
       const signal = new AbortController().signal

@@ -3,12 +3,16 @@
  *
  * 提供全屏模态框查看和编辑 Leader Agent 的系统提示词，
  * 支持还原为默认提示词。
+ *
+ * 当 folderPath 提供时，优先保存到工作区专属 leader（workspace-agent-store）；
+ * 否则回退到全局 agent-store（兼容遗留数据）。
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, RotateCcw, Save, Crown, FileText } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { WORKSPACE_LEADER_PROMPT, WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
 
 interface LeaderPromptEditorModalProps {
@@ -16,13 +20,18 @@ interface LeaderPromptEditorModalProps {
   open: boolean
   /** 关闭回调 */
   onClose: () => void
+  /** 工作区路径（可选），提供后提示词保存到工作区专属 leader */
+  folderPath?: string
 }
 
-export function LeaderPromptEditorModal({ open, onClose }: LeaderPromptEditorModalProps) {
+export function LeaderPromptEditorModal({ open, onClose, folderPath }: LeaderPromptEditorModalProps) {
   const getAgent = useAgentStore((s) => s.getAgent)
   const updateAgent = useAgentStore((s) => s.updateAgent)
+  const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
+  const updateLeaderAgent = useWorkspaceAgentStore((s) => s.updateLeaderAgent)
 
-  const leaderAgent = getAgent(WORKSPACE_LEADER_AGENT_ID)
+  // 优先使用工作区专属 leader，其次全局
+  const leaderAgent = (folderPath ? getLeaderAgent() : null) ?? getAgent(WORKSPACE_LEADER_AGENT_ID)
   const defaultPrompt = WORKSPACE_LEADER_PROMPT
 
   const [editingPrompt, setEditingPrompt] = useState('')
@@ -46,7 +55,6 @@ export function LeaderPromptEditorModal({ open, onClose }: LeaderPromptEditorMod
       if (e.key === 'Escape') {
         if (isDirty) {
           setShowConfirmReset(false)
-          // 有未保存修改时需要确认，这里直接关闭（用户可以自行判断）
         }
         onClose()
       }
@@ -62,13 +70,22 @@ export function LeaderPromptEditorModal({ open, onClose }: LeaderPromptEditorMod
 
   const handleSave = useCallback(() => {
     if (!leaderAgent) return
-    updateAgent({
-      id: WORKSPACE_LEADER_AGENT_ID,
-      systemPrompt: editingPrompt,
-    })
+    if (folderPath) {
+      // 保存到工作区专属 leader
+      updateLeaderAgent({
+        id: leaderAgent.id,
+        systemPrompt: editingPrompt,
+      }, folderPath)
+    } else {
+      // 回退到全局（兼容旧数据）
+      updateAgent({
+        id: WORKSPACE_LEADER_AGENT_ID,
+        systemPrompt: editingPrompt,
+      })
+    }
     setIsDirty(false)
     onClose()
-  }, [leaderAgent, updateAgent, editingPrompt, onClose])
+  }, [leaderAgent, updateAgent, updateLeaderAgent, editingPrompt, onClose, folderPath])
 
   const handleResetToDefault = useCallback(() => {
     setEditingPrompt(defaultPrompt)
