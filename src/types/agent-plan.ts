@@ -6,7 +6,7 @@
 // - 引擎根据 plan-and-execute 策略强制走 plan-accept 流程
 // - 支持任务依赖（dependsOn）用于并行拓扑调度
 //
-// Plan 数据为纯 JSON，可安全序列化到 CheckpointStore 用于断点恢复。
+// Plan 数据为纯 JSON，可安全序列化。
 
 /**
  * 任务状态

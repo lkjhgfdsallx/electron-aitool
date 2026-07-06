@@ -177,87 +177,36 @@ export const aiService = {
       Object.assign(headers, requestConfig.customHeaders)
     }
 
-    // 自动续写：当模型达到 max_tokens 截断时，自动追加请求让模型继续生成
-    const MAX_AUTO_CONTINUE = 10  // 最大自动续写次数，防止无限循环
-    let continueCount = 0
+    // 单次请求（带重试）
     let lastError: string = ''
     const maxRetries = requestConfig?.maxRetries || 0
 
-    // 包装回调：拦截 onDone 以检测是否需要续写
-    let streamFinishReason: string | undefined
-    const wrappedCallbacks: StreamCallbacks = {
-      onToken: callbacks.onToken,
-      onReasoningToken: callbacks.onReasoningToken,
-      onToolCalls: callbacks.onToolCalls,
-      onUsage: callbacks.onUsage,
-      onDone: (finishReason) => {
-        streamFinishReason = finishReason
-      },
-      onError: callbacks.onError
-    }
-
-    while (true) {
-      streamFinishReason = undefined
-      lastError = ''
-
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          await this._doStreamRequest(
-            `${baseUrl}/chat/completions`,
-            headers,
-            body,
-            signal,
-            requestConfig?.timeout,
-            wrappedCallbacks
-          )
-          break // 请求成功
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            callbacks.onDone('abort')
-            return
-          }
-          lastError = error instanceof Error ? error.message : '未知错误'
-          if (attempt < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
-          }
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await this._doStreamRequest(
+          `${baseUrl}/chat/completions`,
+          headers,
+          body,
+          signal,
+          requestConfig?.timeout,
+          callbacks
+        )
+        return // 请求成功，_doStreamRequest 内部已调用 onDone
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          callbacks.onDone('abort')
+          return
+        }
+        lastError = error instanceof Error ? error.message : '未知错误'
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000))
         }
       }
+    }
 
-      // 如果重试全部失败
-      if (lastError) {
-        callbacks.onError(lastError)
-        return
-      }
-
-      // 检查是否需要自动续写
-      if (streamFinishReason === 'length' && continueCount < MAX_AUTO_CONTINUE) {
-        continueCount++
-        console.log(`[ai-service] 模型达到 max_tokens 截断，自动续写 (${continueCount}/${MAX_AUTO_CONTINUE})`)
-
-        // 将已生成的 assistant 内容追加到请求消息中
-        // 使用空的 assistant content 标记续写点（模型会从上下文继续）
-        requestMessages.push({
-          role: 'assistant',
-          content: ''
-        })
-        requestMessages.push({
-          role: 'user',
-          content: '继续'
-        })
-        body.messages = requestMessages
-
-        // 继续循环，发送续写请求
-        continue
-      }
-
-      // 正常结束或达到续写上限
-      if (streamFinishReason === 'length' && continueCount >= MAX_AUTO_CONTINUE) {
-        console.warn(`[ai-service] 已达到最大自动续写次数 (${MAX_AUTO_CONTINUE})，停止续写`)
-        callbacks.onDone('stop')
-      } else {
-        callbacks.onDone(streamFinishReason || 'stop')
-      }
-      return
+    // 如果重试全部失败
+    if (lastError) {
+      callbacks.onError(lastError)
     }
   },
 

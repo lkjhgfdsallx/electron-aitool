@@ -105,15 +105,10 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     sendMessage,
     stopGeneration,
     regenerateMessage,
-    continueGeneration,
     editAndResend,
+    continueGeneration,
     handleHumanInput,
   } = useChat()
-
-  // 应用启动时清理残留的 isStreaming 标记（防止意外关闭后 UI 状态异常）
-  useEffect(() => {
-    useConversationStore.getState().cleanupStaleStreaming()
-  }, [])
 
   // 压缩检查
   const { prepareCompression, getContextConfig } = useWorkspaceCompression()
@@ -527,8 +522,8 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
                   showAvatar={showAvatar}
                   messageAlignment={messageAlignment}
                   onRegenerate={regenerateMessage}
-                  onContinueGeneration={continueGeneration}
                   onEditAndResend={editAndResend}
+                  onContinueGeneration={continueGeneration}
                   onHumanInput={handleHumanInput}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={handleSwitchBranch}

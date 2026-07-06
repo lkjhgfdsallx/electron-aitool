@@ -154,10 +154,6 @@ interface ConversationStore {
   // Message Index
   /** 通过消息 ID 获取其所属的对话 ID（用于不依赖 currentConversationId 的场景） */
   getConversationIdByMessageId: (messageId: string) => string | undefined
-
-  // Stale Streaming Cleanup
-  /** 清理残留的 isStreaming 标记（应用重启后调用），返回被中断的消息 ID 列表 */
-  cleanupStaleStreaming: () => string[]
 }
 
 export const useConversationStore = create<ConversationStore>()(
@@ -613,79 +609,6 @@ export const useConversationStore = create<ConversationStore>()(
         // ⚡ 新增：如果内存中没有，尝试从 IndexedDB 查找（异步但此接口需同步返回）
         // 这种场景极少（索引丢失 + 内存未加载），返回 undefined 让调用方处理
         return undefined
-      },
-
-      // ==================== Stale Streaming Cleanup ====================
-
-      cleanupStaleStreaming: () => {
-        const interruptedIds: string[] = []
-        const newMessages: Record<string, Message[]> = {}
-
-        for (const [convId, msgs] of Object.entries(get().messages)) {
-          let changed = false
-          const updated = msgs.map((m) => {
-            if (m.isStreaming) {
-              changed = true
-              interruptedIds.push(m.id)
-              return {
-                ...m,
-                isStreaming: false,
-                wasInterrupted: true,
-                content: m.content || '',
-                // 为没有内容的中断消息添加提示
-                ...(m.content ? {} : { content: '' }),
-              }
-            }
-            return m
-          })
-          newMessages[convId] = updated
-
-          // 如果有中断的消息，在对话末尾添加一条系统提示
-          if (changed) {
-            const lastMsg = updated[updated.length - 1]
-            if (lastMsg?.role === 'assistant' && lastMsg.wasInterrupted) {
-              // 检查是否已有中断提示
-              const hasInterruptNotice = updated.some(
-                (m) => m.role === 'system' && m.content?.includes('任务中断') && m.timestamp > (lastMsg.timestamp ?? 0) - 5000
-              )
-              if (!hasInterruptNotice) {
-                const noticeMsg: Message = {
-                  id: uuidv4(),
-                  conversationId: convId,
-                  role: 'system' as const,
-                  content: '⚠️ 检测到任务中断：上次 AI 回复在应用关闭时尚未完成，已被自动标记为中断。您可以通过消息上的「继续任务」按钮恢复执行。',
-                  timestamp: Date.now(),
-                  branchIndex: lastMsg.branchIndex,
-                }
-                newMessages[convId] = [...updated, noticeMsg]
-                indexMessage(noticeMsg.id, convId)
-                // ⚡ 异步写入 IDB
-                conversationDb.saveMessage(noticeMsg).catch((e) =>
-                  console.warn('[conversation-store] IDB 保存中断提示消息失败:', e)
-                )
-              }
-            }
-          }
-        }
-
-        if (interruptedIds.length > 0) {
-          set({ messages: newMessages })
-          // ⚡ 批量更新 IDB 中被中断的消息
-          for (const id of interruptedIds) {
-            const convId = messageIndexMap.get(id)
-            if (convId) {
-              const msg = newMessages[convId]?.find((m) => m.id === id)
-              if (msg) {
-                conversationDb.saveMessage(msg).catch((e) =>
-                  console.warn('[conversation-store] IDB 更新中断消息失败:', e)
-                )
-              }
-            }
-          }
-          console.log(`[ConversationStore] 已清理 ${interruptedIds.length} 条残留的 isStreaming 消息`)
-        }
-
-        return interruptedIds
       },
 
       // ==================== Search ====================

@@ -29,9 +29,6 @@ export interface ToolExecutorSessionBundle {
 
   /** 运行结束时清理所有执行器的资源 */
   destroyAll: () => void
-
-  /** 序列化所有已创建的 ToolSessionContext（用于 checkpoint 快照） */
-  serializeAll(): Record<string, unknown>
 }
 
 class ToolExecutorRegistryImpl {
@@ -118,20 +115,6 @@ class ToolExecutorRegistryImpl {
           }
         }
         sessionCtxMap.clear()
-      },
-      serializeAll: () => {
-        const state: Record<string, unknown> = {}
-        for (const [executor, ctx] of sessionCtxMap) {
-          if ('serialize' in executor && typeof executor.serialize === 'function') {
-            try {
-              const key = executor.toolNames[0] ?? 'unknown'
-              state[key] = executor.serialize(ctx)
-            } catch (e) {
-              console.error('[ToolExecutorRegistry] serialize 异常:', e)
-            }
-          }
-        }
-        return state
       },
     }
   }

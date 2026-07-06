@@ -32,8 +32,8 @@ import { knowledgeBaseService } from './knowledge-base-service'
 import { WORKSPACE_TOOLS } from './built-in-tools'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
 import { useSkillStore } from '../stores/skill-store'
-import { toolExecutorRegistry, agentEventBus, checkpointStore } from './agent'
-import type { AgentSessionContext, AgentCheckpoint, ToolExecutorSessionBundle } from './agent'
+import { toolExecutorRegistry, agentEventBus } from './agent'
+import type { AgentSessionContext, ToolExecutorSessionBundle } from './agent'
 import { contextManager } from './agent/context-manager'
 import type { CompressibleMessage } from './agent/context-manager'
 import {
@@ -65,8 +65,17 @@ export interface AgentEngineCallbacks {
   onReportReady?: (reportHtml: string) => void
   /** 网站分析实时进度回调 */
   onSiteAnalyzerProgress?: (progress: { taskId: string; type: string; message: string; pagesCrawled?: number; totalPages?: number; apisFound?: number; pagesAnalyzed?: number; currentUrl?: string; error?: string }) => void
-  /** Phase 2: 运行开始时回调 runId（用于写入 agentRunId 到消息，支持 checkpoint 恢复） */
-  onRunId?: (runId: string) => void
+}
+
+/**
+ * 继续生成时的恢复选项（resume 模式）。
+ * 传入给 runAgent，使其跳过用户消息追加、从已有步骤重建历史。
+ */
+export interface ResumeOptions {
+  /** 标记为恢复模式 */
+  resume: true
+  /** 已有的 AgentStep 列表（从消息的 agentSteps 字段恢复） */
+  existingSteps?: AgentStep[]
 }
 
 /** 子任务结构化结果（Boomerang 模式回流，参考 ROO CODE new_task 结果） */
@@ -426,10 +435,9 @@ function renderPromptSections(sections: AgentProfile['promptSections']): string 
 }
 
 /**
- * 过滤出 Agent 启用的工具（runAgent 和 resumeAgent 共用）
+ * 过滤出 Agent 启用的工具
  *
  * 统一过滤逻辑：enabledToolIds 控制 + 工作区工具注入。
- * 取消 resumeAgent 中额外的 agent-builtin: 前缀放行（P2 修复）。
  */
 function resolveAgentTools(
   agent: AgentProfile,
@@ -515,7 +523,7 @@ async function executeContextCompression(
 }
 
 /**
- * 推进工作流状态（runAgent 和 resumeAgent 共用，增强2：补充 planStatus）
+ * 推进工作流状态（增强2：补充 planStatus）
  *
  * 返回更新后的 workflowRuntime（可能未变化）。
  */
@@ -611,7 +619,7 @@ function toMessages(agentMessages: AgentMessage[]): Message[] {
 }
 
 /**
- * Agent 主循环体（runAgent 和 resumeAgent 共用）
+ * Agent 主循环体
  *
  * 包含完整的 ReAct 循环：LLM 调用 → 工具执行 → checkpoint 保存 → 工作流推进。
  * 所有提前退出路径（中止、错误、最终回复）均在此函数内完成回调。
@@ -633,7 +641,8 @@ async function agentLoopBody(
     callbacks: AgentEngineCallbacks
     workspaceContext?: WorkspaceContext
     runId: string
-    saveCheckpoint: () => Promise<void>
+    /** P1-2 修复：从 checkpoint 恢复的工作流运行时状态 */
+    initialWorkflowRuntime?: WorkflowRuntimeState | null
   },
   loopLimit: number,
   tcIdPrefix: string,
@@ -641,14 +650,17 @@ async function agentLoopBody(
   const {
     agent, messages, agentSessionCtx, sessionBundle,
     contextString, resolvedConfig, signal, callbacks,
-    workspaceContext, runId, saveCheckpoint,
+    workspaceContext, runId, initialWorkflowRuntime,
   } = ctx
   const steps = agentSessionCtx.steps
   const agentTools = agentSessionCtx.agentTools
 
-  // Phase 4: 工作流状态机运行时（仅当 Agent 配置了 workflow 时启用）
+  // Phase 4: 工作流状态机运行时（优先从 checkpoint 恢复，否则创建新的）
   let workflowRuntime: WorkflowRuntimeState | null = null
-  if (agent.workflow && agent.workflow.initial && agent.workflow.states[agent.workflow.initial]) {
+  if (initialWorkflowRuntime) {
+    // 从 checkpoint 恢复工作流状态
+    workflowRuntime = initialWorkflowRuntime
+  } else if (agent.workflow && agent.workflow.initial && agent.workflow.states[agent.workflow.initial]) {
     workflowRuntime = createWorkflowRuntimeState(agent.workflow)
   }
 
@@ -888,9 +900,6 @@ async function agentLoopBody(
         })
       }
 
-      // Phase 2: 保存 checkpoint 以支持断点恢复
-      await saveCheckpoint()
-
       // Phase 4: 工作流状态推进（使用共享函数，增强2：补充 planStatus）
       if (workflowRuntime && agent.workflow) {
         const lastTool = nativeToolCalls[nativeToolCalls.length - 1]
@@ -919,13 +928,14 @@ async function agentLoopBody(
       steps.push(finalStep)
       callbacks.onStep(finalStep)
       // 注意：token 已在 LLM 调用过程中实时转发，此处无需再次调用 callbacks.onToken
-      callbacks.onStatusChange('completed')
-      // 如果流因中断结束（非正常 stop），附加提示（'length' 已由自动续写机制处理）
-      if (streamFinishReason && streamFinishReason !== 'stop' && streamFinishReason !== 'length') {
-        if (streamFinishReason === 'abort') {
-          finalText += '\n\n> ⚠️ **回复中断**：流连接异常断开，输出可能不完整。'
-        }
+      // 如果流被中止，报告为 'stopped' 以便 finishReason 设为 'abort'
+      if (streamFinishReason === 'abort') {
+        callbacks.onStatusChange('stopped')
+      } else {
+        callbacks.onStatusChange('completed')
       }
+      // 注意：中断提示统一由 use-chat.ts 的 onDone 回调根据 finishReason 追加，
+      // agent-engine 不在此处追加提示，以保持单一职责和文本一致性。
       callbacks.onDone(finalText)
       return
     }
@@ -1005,9 +1015,6 @@ async function agentLoopBody(
       )
     }
 
-    // Phase 2: 保存 checkpoint 以支持断点恢复
-    await saveCheckpoint()
-
     // Phase 4: 工作流状态推进（使用共享函数，增强2：补充 planStatus）
     if (workflowRuntime && agent.workflow && toolCalls.length > 0) {
       const lastTool = toolCalls[toolCalls.length - 1]
@@ -1058,15 +1065,14 @@ export async function runAgent(
   signal: AbortSignal,
   callbacks: AgentEngineCallbacks,
   workspaceContext?: WorkspaceContext,
-  conversationId?: string
+  conversationId?: string,
+  resumeOptions?: ResumeOptions
 ): Promise<void> {
   const runId = crypto.randomUUID()
   callbacks.onStatusChange('running')
 
   // Phase 2: 启动 EventBus 运行
   agentEventBus.startRun(runId, agent.id)
-  // Phase 2: 回调 runId，让 UI 层可以写入 agentRunId 到消息
-  callbacks.onRunId?.(runId)
 
   const startTime = Date.now()
   let stepIndex = 0
@@ -1109,47 +1115,138 @@ export async function runAgent(
   // 构建初始消息列表
   const messages: AgentMessage[] = []
 
-  // 添加历史消息
-  for (const msg of recentHistory) {
-    if (msg.role === 'user' || msg.role === 'assistant') {
-      // Agent 步骤的最终回答作为 assistant 消息
-      if (msg.role === 'assistant' && msg.agentSteps && msg.agentSteps.length > 0) {
-        const finalStep = msg.agentSteps.find((s) => s.type === 'final_answer')
-        if (finalStep) {
-          messages.push({ role: 'assistant', content: finalStep.content })
+  if (resumeOptions?.resume) {
+    // resume 模式：从对话历史重建，跳过最后一条未完成的 assistant 消息
+    // 排除最后一条 assistant 消息（它就是要继续的那条）
+    const historyForResume = recentHistory.filter((msg, idx) => {
+      // 跳过最后一条 assistant 消息（未完成的）
+      if (idx === recentHistory.length - 1 && msg.role === 'assistant') {
+        return false
+      }
+      return true
+    })
+    for (const msg of historyForResume) {
+      if (msg.role === 'user' || msg.role === 'assistant') {
+        if (msg.role === 'assistant' && msg.agentSteps && msg.agentSteps.length > 0) {
+          const finalStep = msg.agentSteps.find((s) => s.type === 'final_answer')
+          if (finalStep) {
+            messages.push({ role: 'assistant', content: finalStep.content })
+            continue
+          }
+        }
+        if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+          messages.push({
+            role: 'assistant',
+            content: msg.content,
+            toolCalls: msg.toolCalls.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              arguments: tc.arguments
+            }))
+          })
           continue
         }
+        messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content })
       }
-      // 如果 assistant 消息有原生工具调用，也携带过去
-      if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+      if (msg.role === 'tool' && msg.toolCallId) {
         messages.push({
-          role: 'assistant',
+          role: 'tool',
           content: msg.content,
-          toolCalls: msg.toolCalls.map((tc) => ({
-            id: tc.id,
-            name: tc.name,
-            arguments: tc.arguments
-          }))
+          toolCallId: msg.toolCallId,
+          toolName: msg.toolName
         })
-        continue
       }
-      messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content })
     }
-    // 工具结果消息
-    if (msg.role === 'tool' && msg.toolCallId) {
-      messages.push({
-        role: 'tool',
-        content: msg.content,
-        toolCallId: msg.toolCallId,
-        toolName: msg.toolName
-      })
+    // resume 模式：从 existingSteps 重建已有的工具调用和结果到 messages 中
+    // 这样 LLM 能看到已有的上下文，避免重复执行相同的工具调用
+    if (resumeOptions?.existingSteps && resumeOptions.existingSteps.length > 0) {
+      const existingSteps = resumeOptions.existingSteps
+      for (let i = 0; i < existingSteps.length; i++) {
+        const step = existingSteps[i]
+        if (step.type === 'thinking' && step.content) {
+          // thinking 步骤作为 assistant 消息
+          messages.push({ role: 'assistant', content: step.content })
+        } else if (step.type === 'action' && step.toolCall) {
+          // action 步骤作为带 tool_calls 的 assistant 消息
+          messages.push({
+            role: 'assistant',
+            content: step.content || '',
+            toolCalls: [{
+              id: step.id,
+              name: step.toolCall.name,
+              arguments: JSON.stringify(step.toolCall.arguments)
+            }]
+          })
+        } else if (step.type === 'observation' && step.toolResult) {
+          // observation 步骤作为 tool 结果消息
+          messages.push({
+            role: 'tool',
+            content: step.toolResult.data || step.toolResult.error || '',
+            toolCallId: step.id,
+            toolName: existingSteps[i - 1]?.toolCall?.name || 'unknown'
+          })
+        } else if (step.type === 'human_input') {
+          // human_input 步骤：问题作为 assistant 消息，用户回复作为 user 消息
+          if (step.humanChoice) {
+            messages.push({ role: 'assistant', content: step.humanChoice.question })
+          }
+          if (step.humanResponse) {
+            const responseText = Array.isArray(step.humanResponse)
+              ? step.humanResponse.join(', ')
+              : step.humanResponse
+            messages.push({ role: 'user', content: responseText })
+          }
+        }
+        // final_answer 和 error 步骤不需要重建（final_answer 已在历史消息中处理）
+      }
     }
+    // resume 模式不追加 user 消息，直接从上次中断处继续
+  } else {
+    // 正常模式：添加历史消息
+    for (const msg of recentHistory) {
+      if (msg.role === 'user' || msg.role === 'assistant') {
+        // Agent 步骤的最终回答作为 assistant 消息
+        if (msg.role === 'assistant' && msg.agentSteps && msg.agentSteps.length > 0) {
+          const finalStep = msg.agentSteps.find((s) => s.type === 'final_answer')
+          if (finalStep) {
+            messages.push({ role: 'assistant', content: finalStep.content })
+            continue
+          }
+        }
+        // 如果 assistant 消息有原生工具调用，也携带过去
+        if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+          messages.push({
+            role: 'assistant',
+            content: msg.content,
+            toolCalls: msg.toolCalls.map((tc) => ({
+              id: tc.id,
+              name: tc.name,
+              arguments: tc.arguments
+            }))
+          })
+          continue
+        }
+        messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content })
+      }
+      // 工具结果消息
+      if (msg.role === 'tool' && msg.toolCallId) {
+        messages.push({
+          role: 'tool',
+          content: msg.content,
+          toolCallId: msg.toolCallId,
+          toolName: msg.toolName
+        })
+      }
+    }
+
+    // 添加当前用户消息
+    messages.push({ role: 'user', content: userMessage })
   }
 
-  // 添加当前用户消息
-  messages.push({ role: 'user', content: userMessage })
-
-  const steps: AgentStep[] = []
+  // resume 模式从已有步骤恢复，正常模式从空数组开始
+  const steps: AgentStep[] = resumeOptions?.resume
+    ? (resumeOptions.existingSteps ? [...resumeOptions.existingSteps] : [])
+    : []
 
   // 创建 Agent 会话上下文和工具执行器 session bundle（Phase 1 新增）
   const agentSessionCtx: AgentSessionContext = {
@@ -1168,25 +1265,10 @@ export async function runAgent(
   }
   const sessionBundle = toolExecutorRegistry.createSessionBundle(agentSessionCtx)
 
-  // Phase 2 辅助：保存 checkpoint（在关键节点调用）
-  const saveCheckpoint = async (): Promise<void> => {
-    try {
-      await checkpointStore.save({
-        runId,
-        conversationId: conversationId ?? '',
-        agentId: agent.id,
-        eventSeq: agentEventBus.currentSeq,
-        snapshot: {
-          messages: [...messages],
-          steps: [...agentSessionCtx.steps],
-          stepIndex: agentSessionCtx.stepCounter.value,
-          toolCtxState: sessionBundle.serializeAll(),
-        },
-        createdAt: Date.now(),
-      })
-    } catch (e) {
-      console.error('[AgentEngine] checkpoint save 失败:', e)
-    }
+  // Phase 4: 在外部创建工作流运行时状态，以便 agentLoopBody 可以访问
+  let workflowRuntime: WorkflowRuntimeState | null = null
+  if (agent.workflow && agent.workflow.initial && agent.workflow.states[agent.workflow.initial]) {
+    workflowRuntime = createWorkflowRuntimeState(agent.workflow)
   }
 
   // Agent 循环（maxSteps 为 0 表示无限制）— 委托给共享 agentLoopBody
@@ -1197,7 +1279,8 @@ export async function runAgent(
         agent, messages, agentSessionCtx, sessionBundle,
         contextString: combinedContext,
         resolvedConfig, signal, callbacks,
-        workspaceContext, runId, saveCheckpoint,
+        workspaceContext, runId,
+        initialWorkflowRuntime: workflowRuntime,  // P1-2: 传入初始工作流状态
       },
       loopLimit,
       'text-tc-',
@@ -1211,10 +1294,6 @@ export async function runAgent(
     throw error
   } finally {
     sessionBundle.destroyAll()
-    // Phase 2: 运行结束后清理 checkpoint（不再需要恢复）
-    if (runId) {
-      checkpointStore.delete(runId).catch(() => {})
-    }
   }
 }
 
@@ -1227,282 +1306,6 @@ export function createDefaultRunContext(agentId: string): AgentRunContext {
     status: 'idle',
     steps: [],
     currentStep: 0
-  }
-}
-
-/**
- * 从错误状态恢复 Agent 执行
- *
- * 与 runAgent 不同，此函数从已有的对话历史中恢复：
- * 1. 从历史消息中重建消息列表（包括工具调用和工具结果）
- * 2. 从已有的 agentSteps 中恢复步骤计数
- * 3. 继续执行 Agent 循环
- */
-export async function resumeAgent(
-  agent: AgentProfile,
-  conversationHistory: Message[],
-  allTools: Tool[],
-  resolvedConfig: ResolvedAIConfig,
-  signal: AbortSignal,
-  callbacks: AgentEngineCallbacks,
-  workspaceContext?: WorkspaceContext,
-  conversationId?: string,
-  originalRunId?: string
-): Promise<void> {
-  const runId = crypto.randomUUID()
-  callbacks.onStatusChange('running')
-
-  // Phase 2: 启动 EventBus 运行
-  agentEventBus.startRun(runId, agent.id)
-  // Phase 2: 回调 runId，让 UI 层可以写入 agentRunId 到消息
-  callbacks.onRunId?.(runId)
-
-  const startTime = Date.now()
-
-  // 过滤出 Agent 启用的工具（P2：使用共享函数统一过滤逻辑，消除 agent-builtin: 前缀放行差异）
-  const agentTools = resolveAgentTools(agent, allTools, workspaceContext)
-
-  // 获取记忆上下文
-  let memoryContext = ''
-  if (agent.memoryConfig.longTermEnabled) {
-    memoryContext = memoryService.formatMemoriesAsContext(agent.id)
-  }
-
-  // Phase 2: 尝试从 checkpoint 恢复消息列表（避免脆弱的消息重建）
-  let messages: AgentMessage[] = []
-  let restoredFromCheckpoint = false
-  let checkpoint: AgentCheckpoint | null = null
-
-  if (originalRunId || conversationId) {
-    checkpoint = originalRunId
-      ? await checkpointStore.getByRunId(originalRunId)
-      : conversationId
-        ? await checkpointStore.getLatest(conversationId)
-        : null
-
-    if (checkpoint && checkpoint.snapshot.messages.length > 0) {
-      // 从 checkpoint 恢复：直接使用已构建好的消息列表
-      messages = checkpoint.snapshot.messages as AgentMessage[]
-      restoredFromCheckpoint = true
-      console.log(`[resumeAgent] 从 checkpoint 恢复成功: runId=${checkpoint.runId}, seq=${checkpoint.eventSeq}, messages=${messages.length}`)
-    }
-  }
-
-  // Fallback: 从对话历史中重建消息列表（应用重启后 checkpoint 丢失时使用）
-  if (!restoredFromCheckpoint) {
-  // 限制历史轮数
-  const maxHistory = agent.memoryConfig.historyTurns * 2
-
-  // 找到所有 assistant 和 tool 消息，重建完整的消息链
-  // 我们需要保留完整的工具调用链（assistant + tool 消息对），否则 API 会报错
-  const recentHistory = conversationHistory.slice(-maxHistory * 3) // 多取一些以确保工具调用链完整
-
-  for (const msg of recentHistory) {
-    if (msg.role === 'user') {
-      messages.push({ role: 'user', content: msg.content })
-    } else if (msg.role === 'assistant') {
-      // 如果有原生工具调用，携带过去
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        messages.push({
-          role: 'assistant',
-          content: msg.content || '',
-          toolCalls: msg.toolCalls.map((tc) => ({
-            id: tc.id,
-            name: tc.name,
-            arguments: tc.arguments
-          }))
-        })
-      } else if (msg.agentSteps && msg.agentSteps.length > 0) {
-        // Agent 模式的 assistant 消息
-        const finalStep = msg.agentSteps.find((s) => s.type === 'final_answer')
-        if (finalStep) {
-          messages.push({ role: 'assistant', content: finalStep.content })
-        } else {
-          // 没有最终回答，从步骤中重建 assistant + tool 消息链
-          for (const step of msg.agentSteps) {
-            if (step.type === 'action' && step.toolCall) {
-              const tcId = `resume-tc-${step.stepIndex}`
-              messages.push({
-                role: 'assistant',
-                content: '',
-                toolCalls: [{ id: tcId, name: step.toolCall.name, arguments: JSON.stringify(step.toolCall.arguments) }]
-              })
-              // 对应的 tool 结果
-              const obsStep = msg.agentSteps.find(
-                (s) => s.type === 'observation' && s.stepIndex === step.stepIndex + 1
-              )
-              const toolResultContent = obsStep
-                ? (obsStep.toolResult?.success ? obsStep.toolResult.data : `错误: ${obsStep.toolResult?.error ?? '执行失败'}`)
-                : '工具执行结果不可用'
-              messages.push({
-                role: 'tool',
-                content: toolResultContent,
-                toolCallId: tcId,
-                toolName: step.toolCall.name
-              })
-            } else if (step.type === 'human_input') {
-              // 用户选择步骤：重建为 ask_human 工具调用 + 用户选择结果
-              const tcId = `resume-tc-human-${step.stepIndex}`
-              const question = step.humanChoice?.question ?? step.content
-              const options = step.humanChoice?.options ?? []
-              const userResponse = step.humanResponse ?? '用户未做选择'
-              const responseText = Array.isArray(userResponse)
-                ? userResponse.join('、')
-                : String(userResponse)
-              messages.push({
-                role: 'assistant',
-                content: '',
-                toolCalls: [{
-                  id: tcId,
-                  name: 'ask_human',
-                  arguments: JSON.stringify({
-                    question,
-                    options: options.map(o => ({ label: o.label, value: o.value, description: o.description })),
-                    allow_multiple: step.humanChoice?.allowMultiple ?? false
-                  })
-                }]
-              })
-              messages.push({
-                role: 'tool',
-                content: `用户选择了: ${responseText}`,
-                toolCallId: tcId,
-                toolName: 'ask_human'
-              })
-            } else if (step.type === 'thinking' && step.content) {
-              // 思考步骤可以作为 assistant 消息的一部分
-              // 但不添加独立消息，避免干扰 API 格式
-            }
-          }
-          // 如果消息有 content，也添加
-          if (msg.content) {
-            messages.push({ role: 'assistant', content: msg.content })
-          }
-        }
-      } else {
-        messages.push({ role: 'assistant', content: msg.content })
-      }
-    } else if (msg.role === 'tool' && msg.toolCallId) {
-      messages.push({
-        role: 'tool',
-        content: msg.content,
-        toolCallId: msg.toolCallId,
-        toolName: msg.toolName
-      })
-    }
-  } // end fallback: 从对话历史重建消息
-  } // end if (!restoredFromCheckpoint)
-
-  // 如果消息列表为空或最后一条不是 tool 消息，添加一条提示让模型继续
-  const lastMsg = messages[messages.length - 1]
-  if (lastMsg && lastMsg.role === 'tool') {
-    // 最后一条是工具结果，模型会自然地继续推理
-  } else if (lastMsg && lastMsg.role === 'assistant') {
-    // 最后一条是 assistant 消息，添加用户提示继续
-    messages.push({ role: 'user', content: '请继续执行任务。之前执行过程中出现了错误，请分析错误原因并尝试其他方法继续完成任务。' })
-  } else {
-    // 不应该到这里，但作为保护
-    messages.push({ role: 'user', content: '请继续执行任务。' })
-  }
-
-  // 从已有的 agentSteps 或 checkpoint 中计算起始步骤索引
-  let stepIndex = 0
-  if (restoredFromCheckpoint && checkpoint) {
-    // 从 checkpoint 恢复时，使用 snapshot 中保存的步骤索引
-    stepIndex = checkpoint.snapshot.stepIndex
-  } else {
-    // Fallback: 从对话历史中计算
-    const lastAssistantMsg = [...conversationHistory].reverse().find(m => m.role === 'assistant' && m.agentSteps && m.agentSteps.length > 0)
-    if (lastAssistantMsg?.agentSteps) {
-      stepIndex = Math.max(...lastAssistantMsg.agentSteps.map(s => s.stepIndex)) + 1
-    }
-  }
-  // stepCounter 桥接对象：让 AgentSessionContext.stepCounter 与引擎 stepIndex 保持同步
-  const stepCounter: { value: number } = {
-    get value() { return stepIndex },
-    set value(v: number) { stepIndex = v },
-  }
-
-  const steps: AgentStep[] = restoredFromCheckpoint && checkpoint
-    ? [...(checkpoint.snapshot.steps as AgentStep[])]
-    : []
-
-  // 添加恢复提示步骤
-  const resumeStep: AgentStep = {
-    id: crypto.randomUUID(),
-    type: 'thinking',
-    content: '从错误中恢复，继续执行任务...',
-    stepIndex: stepIndex++,
-    timestamp: Date.now()
-  }
-  steps.push(resumeStep)
-  callbacks.onStep(resumeStep)
-
-  // 创建 Agent 会话上下文和工具执行器 session bundle（Phase 1 新增）
-  const agentSessionCtx: AgentSessionContext = {
-    agentId: agent.id,
-    agentName: agent.name,
-    runId,
-    conversationId: conversationId ?? '',
-    agentTools,
-    resolvedConfig,
-    signal,
-    workspace: workspaceContext,
-    callbacks,
-    stepCounter,
-    steps,
-    artifacts: [],
-  }
-  const sessionBundle = toolExecutorRegistry.createSessionBundle(agentSessionCtx)
-
-  // Phase 2 辅助：保存 checkpoint（在关键节点调用）
-  const saveCheckpoint = async (): Promise<void> => {
-    try {
-      await checkpointStore.save({
-        runId,
-        conversationId: conversationId ?? '',
-        agentId: agent.id,
-        eventSeq: agentEventBus.currentSeq,
-        snapshot: {
-          messages: [...messages],
-          steps: [...agentSessionCtx.steps],
-          stepIndex: agentSessionCtx.stepCounter.value,
-          toolCtxState: sessionBundle.serializeAll(),
-        },
-        createdAt: Date.now(),
-      })
-    } catch (e) {
-      console.error('[resumeAgent] checkpoint save 失败:', e)
-    }
-  }
-
-  // Agent 循环 - 计算已执行的步数，从剩余步数开始（maxSteps 为 0 表示无限制）
-  // 委托给共享 agentLoopBody
-  const completedSteps = stepIndex
-  const isUnlimited = agent.termination.maxSteps === 0
-  const remainingSteps = isUnlimited ? Infinity : Math.max(1, agent.termination.maxSteps - completedSteps)
-
-  try {
-    await agentLoopBody(
-      {
-        agent, messages, agentSessionCtx, sessionBundle,
-        contextString: memoryContext,
-        resolvedConfig, signal, callbacks,
-        workspaceContext, runId, saveCheckpoint,
-      },
-      remainingSteps,
-      'resume-text-tc-',
-    )
-  } catch (error) {
-    if (signal.aborted) {
-      callbacks.onStatusChange('stopped')
-      callbacks.onDone('')
-      return
-    }
-    throw error
-  } finally {
-    sessionBundle.destroyAll()
-    // Phase 2: 运行结束后清理 checkpoint（不再需要恢复）
-    checkpointStore.delete(runId).catch(() => {})
   }
 }
 

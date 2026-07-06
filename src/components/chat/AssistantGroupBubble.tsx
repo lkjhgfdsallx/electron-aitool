@@ -4,8 +4,7 @@ import {
   RotateCcw,
   Check,
   Bot,
-  Forward,
-  AlertTriangle
+  Forward
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { SelectionBoundary } from '../ui/SelectionBoundary'
@@ -21,7 +20,7 @@ interface AssistantGroupBubbleProps {
   showAvatar?: boolean
   messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
-  /** 继续生成：在已有内容基础上让 AI 从断点继续输出 */
+  /** 继续生成（普通对话续写 / Agent 继续执行） */
   onContinueGeneration?: (messageId: string) => void
 }
 
@@ -102,6 +101,12 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
 
   // 用于重新生成的消息 ID：取第一条 assistant 消息
   const regenerateTargetId = assistantMsgs[0]?.id
+
+  // 用于继续生成的消息 ID：取最后一条可继续的 assistant 消息
+  const continuableTarget = useMemo(
+    () => [...assistantMsgs].reverse().find((m: Message) => m.continuable),
+    [assistantMsgs]
+  )
 
   // 复制全部内容
   const handleCopy = useCallback(async () => {
@@ -186,30 +191,6 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
           </SelectionBoundary>
         )}
 
-        {/* 截断消息提示 + 继续生成按钮 */}
-        {(() => {
-          const truncatedMsg = assistantMsgs.find(m => m.finishReason === 'abort' || m.finishReason === 'length')
-          if (!truncatedMsg || isStreaming) return null
-          return (
-            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/40">
-              <AlertTriangle size={14} className="text-blue-500 flex-shrink-0" />
-              <span className="text-xs text-blue-700 dark:text-blue-300 flex-1">
-                {truncatedMsg.finishReason === 'length' ? '回复已达到最大长度限制，可以续写' : '回复被中断，可以继续生成'}
-              </span>
-              {onContinueGeneration && (
-                <button
-                  onClick={() => onContinueGeneration(truncatedMsg.id)}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-md transition-colors shadow-sm"
-                  title="继续生成"
-                >
-                  <Forward size={12} />
-                  继续生成
-                </button>
-              )}
-            </div>
-          )
-        })()}
-
         {/* 操作按钮 */}
         {!isStreaming && (
           <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -231,6 +212,16 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
                 重新生成
               </button>
             )}
+            {onContinueGeneration && continuableTarget && (
+              <button
+                onClick={() => onContinueGeneration(continuableTarget.id)}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300 rounded-md hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-all"
+                title={continuableTarget.continuable === 'agent' ? '继续执行' : '继续生成'}
+              >
+                <Forward size={12} />
+                {continuableTarget.continuable === 'agent' ? '继续执行' : '继续生成'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -250,7 +241,8 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
       prev.isError !== next.isError ||
       prev.reasoningContent !== next.reasoningContent ||
       prev.tokenUsage !== next.tokenUsage ||
-      prev.toolCalls !== next.toolCalls
+      prev.toolCalls !== next.toolCalls ||
+      prev.continuable !== next.continuable
     ) {
       return false
     }

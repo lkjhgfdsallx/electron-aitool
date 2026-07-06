@@ -10,7 +10,7 @@
 // 2. 拼接状态提示词到 systemPrompt
 // 3. 执行完一轮后匹配转移条件推进状态
 //
-// 配置为纯 JSON，可序列化到 AgentProfile / CheckpointStore。
+// 配置为纯 JSON，可序列化到 AgentProfile。
 
 /**
  * 转移条件类型

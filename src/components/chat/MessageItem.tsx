@@ -20,7 +20,6 @@ import {
   X,
   Maximize2,
   Minimize2,
-  AlertTriangle,
   Forward
 } from 'lucide-react'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
@@ -46,11 +45,11 @@ interface MessageItemProps {
   showAvatar?: boolean
   messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
-  /** 继续生成：在已有内容基础上让 AI 从断点继续输出 */
-  onContinueGeneration?: (messageId: string) => void
   onEdit?: (messageId: string, content: string) => void
   /** 编辑并重新发送（创建对话分支） */
   onEditAndResend?: (messageId: string, content: string) => void
+  /** 继续生成（普通对话续写 / Agent 继续执行） */
+  onContinueGeneration?: (messageId: string) => void
   onHumanInput?: (stepId: string, value: string | string[]) => void
   /** 当前激活的分支索引（仅分支点消息有效） */
   activeBranchIndex?: number
@@ -72,9 +71,9 @@ export const MessageItem = memo(function MessageItem({
   showAvatar = true,
   messageAlignment = 'left-right',
   onRegenerate,
-  onContinueGeneration,
   onEdit,
   onEditAndResend,
+  onContinueGeneration,
   onHumanInput,
   activeBranchIndex = 0,
   onSwitchBranch
@@ -333,26 +332,6 @@ export const MessageItem = memo(function MessageItem({
           )}
         </SelectionBoundary>
 
-        {/* 中断/错误/截断消息提示 + 统一继续生成按钮 */}
-        {(message.wasInterrupted || message.isError || message.finishReason === 'abort' || message.finishReason === 'length') && !message.isStreaming && (message.content || (message.agentSteps && message.agentSteps.length > 0)) && (
-          <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-lg ${message.wasInterrupted ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-800/40' : message.isError ? 'bg-red-50 dark:bg-red-900/20 border border-red-200/60 dark:border-red-800/40' : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/40'}`}>
-            <AlertTriangle size={14} className={`${message.wasInterrupted ? 'text-amber-500' : message.isError ? 'text-red-500' : 'text-blue-500'} flex-shrink-0`} />
-            <span className={`text-xs ${message.wasInterrupted ? 'text-amber-700 dark:text-amber-300' : message.isError ? 'text-red-700 dark:text-red-300' : 'text-blue-700 dark:text-blue-300'} flex-1`}>
-              {message.wasInterrupted ? '此任务在应用关闭时被中断，可以继续执行' : message.isError ? '任务执行出错，可以重试' : message.finishReason === 'length' ? '回复已达到最大长度限制，可以续写' : '回复被中断，可以继续生成'}
-            </span>
-            {onContinueGeneration && (
-              <button
-                onClick={() => onContinueGeneration(message.id)}
-                className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white ${message.wasInterrupted ? 'bg-amber-500 hover:bg-amber-600' : message.isError ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'} rounded-md transition-colors shadow-sm`}
-                title="继续生成"
-              >
-                <Forward size={12} />
-                {message.isError ? '重试' : '继续'}
-              </button>
-            )}
-          </div>
-        )}
-
         {/* 附件显示 - 使用懒加载减少初始渲染 */}
         {message.attachments && message.attachments.length > 0 && (
           <AttachmentList attachments={message.attachments} />
@@ -431,6 +410,16 @@ export const MessageItem = memo(function MessageItem({
                 重新生成
               </button>
             )}
+            {message.role === 'assistant' && message.continuable && onContinueGeneration && (
+              <button
+                onClick={() => onContinueGeneration(message.id)}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300 rounded-md hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-all"
+                title={message.continuable === 'agent' ? '继续执行' : '继续生成'}
+              >
+                <Forward size={12} />
+                {message.continuable === 'agent' ? '继续执行' : '继续生成'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -461,6 +450,7 @@ export const MessageItem = memo(function MessageItem({
     prevProps.message.hasReport === nextProps.message.hasReport &&
     prevProps.message.toolCalls === nextProps.message.toolCalls &&
     prevProps.message.agentSteps === nextProps.message.agentSteps &&
+    prevProps.message.continuable === nextProps.message.continuable &&
     prevProps.message.attachments === nextProps.message.attachments &&
     prevProps.showTimestamp === nextProps.showTimestamp &&
     prevProps.showTokenUsage === nextProps.showTokenUsage &&
@@ -468,7 +458,6 @@ export const MessageItem = memo(function MessageItem({
     prevProps.messageAlignment === nextProps.messageAlignment &&
     prevProps.activeBranchIndex === nextProps.activeBranchIndex &&
     prevProps.onRegenerate === nextProps.onRegenerate &&
-    prevProps.onContinueGeneration === nextProps.onContinueGeneration &&
     prevProps.onEditAndResend === nextProps.onEditAndResend &&
     prevProps.onHumanInput === nextProps.onHumanInput &&
     prevProps.onSwitchBranch === nextProps.onSwitchBranch

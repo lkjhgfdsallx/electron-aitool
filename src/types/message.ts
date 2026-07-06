@@ -60,8 +60,6 @@ export interface Message {
   toolName?: string     // 工具返回结果时的工具名称
   isStreaming?: boolean
   isError?: boolean
-  /** 任务是否被中断（应用重启后检测到残留的 isStreaming 标记） */
-  wasInterrupted?: boolean
   /** 流式完成的 finish_reason：'stop' 正常结束、'length' 达到 max_tokens 截断、'abort' 中断 */
   finishReason?: string
   isEdited?: boolean
@@ -77,14 +75,19 @@ export interface Message {
   agentPlan?: AgentPlan
   /** 关联的 Agent ID */
   agentId?: string
-  /** Agent 运行的唯一 ID（用于 checkpoint 恢复） */
-  agentRunId?: string
   /** 分支索引（对话分支功能，0 为主分支） */
   branchIndex?: number
   /** 分支总数（仅在分支点用户消息上设置，表示该处分叉的数量） */
   branchCount?: number
   /** 扩展元数据（压缩标记、自定义数据等） */
   metadata?: Record<string, unknown>
+  /**
+   * 标记该消息是否可被"继续生成"。
+   * - 'normal': 普通对话中断/截断，可调用 ai-service.streamChat 继续
+   * - 'agent':  Agent 循环未产生 final_answer，可调用 runAgent(resume) 继续
+   * - null / undefined: 不可继续
+   */
+  continuable?: 'normal' | 'agent' | null
 }
 
 export type MessageCreateInput = Omit<Message, 'id' | 'timestamp'>

@@ -74,7 +74,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { sendMessage, stopGeneration, regenerateMessage, continueGeneration, editAndResend, handleHumanInput } = useChat()
+  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, continueGeneration, handleHumanInput } = useChat()
 
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
   const kbDropdownRef = useRef<HTMLDivElement>(null)
@@ -82,11 +82,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   useEffect(() => {
     loadCollections()
   }, [loadCollections])
-
-  // 应用启动时清理残留的 isStreaming 标记（防止意外关闭后 UI 状态异常）
-  useEffect(() => {
-    useConversationStore.getState().cleanupStaleStreaming()
-  }, [])
 
   // ⚡ 切换对话时从 IDB 懒加载消息到内存（不在内存中的对话才触发 IDB 读取）
   useEffect(() => {
@@ -136,10 +131,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     regenerateMessage(messageId)
   }, [regenerateMessage])
 
-  const memoizedOnContinueGeneration = useCallback((messageId: string) => {
-    continueGeneration(messageId)
-  }, [continueGeneration])
-
   const memoizedOnEditAndResend = useCallback((messageId: string, content: string) => {
     editAndResend(messageId, content)
   }, [editAndResend])
@@ -147,6 +138,10 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   const memoizedOnHumanInput = useCallback((stepId: string, value: string | string[]) => {
     handleHumanInput(stepId, value)
   }, [handleHumanInput])
+
+  const memoizedOnContinueGeneration = useCallback((messageId: string) => {
+    continueGeneration(messageId)
+  }, [continueGeneration])
 
   const memoizedOnSwitchBranch = useCallback((forkMessageId: string, branchIndex: number) => {
     handleSwitchBranch(forkMessageId, branchIndex)
@@ -527,8 +522,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                   showAvatar={showAvatar}
                   messageAlignment={messageAlignment}
                   onRegenerate={memoizedOnRegenerate}
-                  onContinueGeneration={memoizedOnContinueGeneration}
                   onEditAndResend={memoizedOnEditAndResend}
+                  onContinueGeneration={memoizedOnContinueGeneration}
                   onHumanInput={memoizedOnHumanInput}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={memoizedOnSwitchBranch}

@@ -66,7 +66,7 @@ export interface EventBus {
 /**
  * 事件总线实现
  *
- * 每次 runAgent/resumeAgent 调用 startRun(runId) 初始化，
+ * 每次 runAgent 调用 startRun(runId) 初始化，
  * 循环中 emit 事件，UI 层 on/subscribe 处理。
  */
 class EventBusImpl implements EventBus {

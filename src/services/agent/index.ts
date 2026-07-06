@@ -12,14 +12,13 @@ import type {
   ToolExecutor,
   AgentSessionContext,
   ToolSessionContext,
-  SerializableToolExecutor,
 } from './tool-executor'
 
 import { toolExecutorRegistry } from './tool-executor-registry'
 
 import type { ToolExecutorSessionBundle } from './tool-executor-registry'
 
-// ---- Phase 2 Event Bus + Checkpoint ----
+// ---- Phase 2 Event Bus ----
 import type {
   AgentEventType,
   AgentEvent,
@@ -30,15 +29,6 @@ import type {
 import {
   agentEventBus,
 } from './event-bus'
-
-import type {
-  AgentCheckpoint,
-  CheckpointStore,
-} from './checkpoint-store'
-
-import {
-  checkpointStore,
-} from './checkpoint-store'
 
 // ---- 执行器类 ----
 import { MemoryToolExecutor } from './executors/memory-executor'
@@ -55,14 +45,11 @@ export type {
   ToolExecutor,
   AgentSessionContext,
   ToolSessionContext,
-  SerializableToolExecutor,
 }
 export { toolExecutorRegistry }
 export type { ToolExecutorSessionBundle }
 export type { AgentEventType, AgentEvent, AgentEventHandler, EventBus }
 export { agentEventBus }
-export type { AgentCheckpoint, CheckpointStore }
-export { checkpointStore }
 export {
   MemoryToolExecutor,
   RequirementToolExecutor,

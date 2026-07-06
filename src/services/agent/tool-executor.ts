@@ -16,7 +16,7 @@ import type { WorkspaceContext, AgentEngineCallbacks } from '../agent-engine'
 /**
  * 单次 Agent 运行共享的会话上下文
  *
- * 一次 runAgent/resumeAgent 调用对应一个 AgentSessionContext，
+ * 一次 runAgent 调用对应一个 AgentSessionContext，
  * 所有 ToolExecutor 在同一次运行中共享此上下文。
  */
 export interface AgentSessionContext {
@@ -96,15 +96,3 @@ export interface ToolExecutor {
   destroy?(sessionCtx: ToolSessionContext, agentSessionCtx: AgentSessionContext): void
 }
 
-/**
- * Phase 2 预留：执行器状态可序列化接口
- *
- * 让 ToolExecutor 的会话状态可被持久化，用于真正的断点恢复（Phase 2）。
- * Phase 1 不强制实现，默认行为为"状态不持久化"。
- */
-export interface SerializableToolExecutor extends ToolExecutor {
-  /** 序列化会话状态（写入 checkpoint 时调用） */
-  serialize?(sessionCtx: ToolSessionContext): unknown
-  /** 从快照恢复会话状态（resume 时调用） */
-  hydrate?(snapshot: unknown, sessionCtx: AgentSessionContext): ToolSessionContext
-}

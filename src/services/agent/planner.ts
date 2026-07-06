@@ -8,8 +8,6 @@
  *
  * Plan 数据存储在 ToolSessionContext 中（同一次 Agent 运行共享），
  * 并通过 AgentSessionContext.bus 发布事件供 UI 订阅。
- *
- * 可序列化：实现 SerializableToolExecutor，支持 checkpoint 断点恢复。
  */
 
 import { v4 as uuidv4 } from 'uuid'
@@ -17,7 +15,6 @@ import type {
   ToolExecutor,
   AgentSessionContext,
   ToolSessionContext,
-  SerializableToolExecutor,
 } from './tool-executor'
 import type { ToolExecuteResult } from '../../types'
 import type {
@@ -42,7 +39,7 @@ interface PlannerSessionContext extends ToolSessionContext {
   currentPlan: AgentPlan | null
 }
 
-export class PlannerToolExecutor implements SerializableToolExecutor {
+export class PlannerToolExecutor implements ToolExecutor {
   readonly toolNames = ['create_plan', 'update_task', 'get_plan']
 
   createContext(_sessionCtx: AgentSessionContext): ToolSessionContext {
@@ -291,40 +288,4 @@ export class PlannerToolExecutor implements SerializableToolExecutor {
     }
     return map[status] ?? '⬜'
   }
-
-  // ---- SerializableToolExecutor: 支持 checkpoint 恢复 ----
-
-  serialize(sessionCtx: ToolSessionContext): unknown {
-    const ctx = sessionCtx as PlannerSessionContext
-    return { currentPlan: ctx.currentPlan }
-  }
-
-  hydrate(snapshot: unknown, _sessionCtx: AgentSessionContext): ToolSessionContext {
-    const snap = snapshot as { currentPlan?: AgentPlan } | null
-    return {
-      currentPlan: snap?.currentPlan ?? null,
-    } as PlannerSessionContext
-  }
-}
-
-// ==================== 模块级 Plan 访问器 ====================
-//
-// 引擎层（agent-engine.ts）需要访问当前 Plan 状态以实现 plan-accept 流程。
-// 由于 Plan 存储在 ToolSessionContext 中，引擎无法直接访问。
-// 提供 getPlanFromSessionBundle 辅助函数，从 SessionBundle 的序列化结果中提取 Plan。
-
-/**
- * 从 SessionBundle 的序列化结果中提取当前 Plan
- *
- * @param serialized Bundle.serializeAll() 的返回值
- * @returns 当前 Plan 或 null
- */
-export function extractPlanFromSerialized(serialized: Record<string, unknown>): AgentPlan | null {
-  for (const key of Object.keys(serialized)) {
-    const val = serialized[key] as { currentPlan?: AgentPlan } | null
-    if (val && typeof val === 'object' && 'currentPlan' in val && val.currentPlan) {
-      return val.currentPlan
-    }
-  }
-  return null
 }
