@@ -37,10 +37,16 @@ module.exports = {
   ],
   coverageThreshold: {
     'src/services/agent-engine.ts': {
-      branches: 50,
-      functions: 60,
-      lines: 60,
-      statements: 60,
+      branches: 70,
+      functions: 78,
+      lines: 80,
+      statements: 78,
+    },
+    'src/hooks/use-chat.ts': {
+      branches: 70,
+      functions: 75,
+      lines: 80,
+      statements: 80,
     },
   },
 };

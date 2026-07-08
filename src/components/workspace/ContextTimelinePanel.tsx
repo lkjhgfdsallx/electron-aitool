@@ -103,9 +103,11 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
   }, [expandedId, workspace.folderPath])
 
   return (
-    <div className="absolute inset-0 z-20 bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm flex flex-col overflow-hidden">
+    <div className="fixed inset-x-0 top-[43px] bottom-0 z-[80] bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm flex flex-col overflow-hidden"
+      style={{ webkitAppRegion: 'no-drag' } as React.CSSProperties}>
       {/* 头部 */}
-      <div className="flex items-center justify-between px-4 h-10 border-b border-surface-200 dark:border-surface-700/60 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 h-10 border-b border-surface-200 dark:border-surface-700/60 flex-shrink-0"
+        style={{ webkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-purple-500" />
           <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">上下文时间线</span>
@@ -114,8 +116,12 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
           </span>
         </div>
         <button
-          onClick={onClose}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClose()
+          }}
           className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          style={{ webkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <X size={14} />
         </button>

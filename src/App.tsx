@@ -98,6 +98,7 @@ export default function App() {
         settingsSection={settingsSection}
         onOpenSettings={openSettings}
         onCloseSettings={closeSettings}
+        onOpenWorkspace={openWorkspace}
       />
       </div>
 

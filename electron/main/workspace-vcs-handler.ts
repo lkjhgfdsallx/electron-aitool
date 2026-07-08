@@ -51,6 +51,8 @@ interface CheckpointFileChange {
   changeType: 'added' | 'modified' | 'deleted'
   linesAdded: number
   linesRemoved: number
+  /** 统一格式的 diff 内容（每行格式：+ 新增, - 删除, 空格 不变） */
+  unifiedDiff?: string
 }
 
 interface CheckpointMetadata {
@@ -125,6 +127,103 @@ async function getFileStats(filePath: string): Promise<{ lines: number }> {
   }
 }
 
+/**
+ * 计算两个字符串的 unified diff
+ * 返回格式化的 diff 字符串，每行前缀：+ 新增, - 删除, 空格 不变
+ */
+function computeUnifiedDiff(oldContent: string, newContent: string): string {
+  const oldLines = oldContent.split('\n')
+  const newLines = newContent.split('\n')
+  
+  // 使用 LCS（最长公共子序列）算法计算 diff
+  const m = oldLines.length
+  const n = newLines.length
+  
+  // 构建 LCS 表格
+  const dp: number[][] = Array(m + 1)
+    .fill(0)
+    .map(() => Array(n + 1).fill(0))
+  
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (oldLines[i - 1] === newLines[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+      }
+    }
+  }
+  
+  // 回溯生成 diff
+  const diffLines: string[] = []
+  let i = m
+  let j = n
+  
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+      diffLines.unshift(' ' + oldLines[i - 1])
+      i--
+      j--
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      diffLines.unshift('+' + newLines[j - 1])
+      j--
+    } else if (i > 0) {
+      diffLines.unshift('-' + oldLines[i - 1])
+      i--
+    }
+  }
+  
+  return diffLines.join('\n')
+}
+
+/** 读取文件内容，失败时返回空字符串 */
+async function readFileSafe(filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, 'utf-8')
+  } catch {
+    return ''
+  }
+}
+
+/** 获取前一个存档点的文件状态 */
+async function getPreviousFileChanges(
+  vcsDir: string,
+  checkpointId: string
+): Promise<Map<string, { content: string; changeType: string }>> {
+  const index = await readJson<CheckpointIndexEntry[]>(join(vcsDir, INDEX_FILE), [])
+  
+  // 按时间正序排列（索引文件中可能是正序）
+  const sortedIndex = [...index].sort((a, b) => a.createdAt - b.createdAt)
+  const cpIndex = sortedIndex.findIndex((cp) => cp.id === checkpointId)
+  
+  if (cpIndex <= 0) {
+    return new Map()
+  }
+  
+  // 找到前一个存档点（按时间顺序的前一个）
+  const prevCp = sortedIndex[cpIndex - 1]
+  if (!prevCp) {
+    return new Map()
+  }
+  
+  const prevCpDir = join(vcsDir, CHECKPOINTS_DIR, prevCp.id)
+  const metadataPath = join(prevCpDir, 'metadata.json')
+  const metadata = await readJson<CheckpointMetadata | null>(metadataPath, null)
+  
+  if (!metadata || !metadata.fileChanges) {
+    return new Map()
+  }
+  
+  const result = new Map<string, { content: string; changeType: string }>()
+  for (const change of metadata.fileChanges) {
+    const snapshotPath = join(vcsDir, CHECKPOINTS_DIR, prevCp.id, 'snapshot', change.filePath)
+    const content = await readFileSafe(snapshotPath)
+    result.set(change.filePath, { content, changeType: change.changeType })
+  }
+  
+  return result
+}
+
 /** 忽略的目录列表 */
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -195,6 +294,9 @@ async function createCheckpoint(
     let totalLinesRemoved = 0
     const changedPaths: string[] = []
 
+    // 获取前一个存档点的文件状态（用于计算 diff）
+    const previousFileMap = await getPreviousFileChanges(vcsDir, checkpointId)
+
     if (filePaths && filePaths.length > 0) {
       // 指定文件快照模式：只复制指定的文件
       await ensureDir(snapshotDir)
@@ -204,14 +306,47 @@ async function createCheckpoint(
         try {
           await ensureDir(dirname(destPath))
           await copyFile(absPath, destPath)
+          
+          const newContent = await readFileSafe(absPath)
           const stats = await getFileStats(absPath)
+          
+          // 计算 diff
+          const oldEntry = previousFileMap.get(fp)
+          let changeType: 'added' | 'modified' | 'deleted' = 'modified'
+          let unifiedDiff = ''
+          let linesAdded = 0
+          let linesRemoved = 0
+          
+          if (!oldEntry || oldEntry.changeType === 'deleted') {
+            // 新文件
+            changeType = 'added'
+            unifiedDiff = newContent.split('\n').map(line => '+' + line).join('\n')
+            linesAdded = newContent.split('\n').length
+          } else {
+            // 修改的文件，计算 diff
+            const oldContent = oldEntry.content
+            if (oldContent !== newContent) {
+              changeType = 'modified'
+              unifiedDiff = computeUnifiedDiff(oldContent, newContent)
+              // 计算增减行数
+              const diffLines = unifiedDiff.split('\n')
+              linesAdded = diffLines.filter(line => line.startsWith('+') && !line.startsWith('+++')).length
+              linesRemoved = diffLines.filter(line => line.startsWith('-') && !line.startsWith('---')).length
+            } else {
+              // 内容相同，但仍然是修改类型的存档（如手动存档）
+              linesAdded = stats.lines
+            }
+          }
+          
           fileChanges.push({
             filePath: fp,
-            changeType: 'modified',
-            linesAdded: stats.lines,
-            linesRemoved: 0,
+            changeType,
+            linesAdded,
+            linesRemoved,
+            unifiedDiff: unifiedDiff || undefined,
           })
-          totalLinesAdded += stats.lines
+          totalLinesAdded += linesAdded
+          totalLinesRemoved += linesRemoved
           totalFilesChanged++
           changedPaths.push(fp)
         } catch {
@@ -221,10 +356,11 @@ async function createCheckpoint(
     } else {
       // 全量快照模式：扫描工作区目录
       await ensureDir(snapshotDir)
-      const scanned = await scanAndCopyFolder(folderPath, snapshotDir)
+      const scanned = await scanAndCopyFolder(folderPath, snapshotDir, previousFileMap)
       fileChanges = scanned.fileChanges
       totalFilesChanged = scanned.totalFiles
-      totalLinesAdded = scanned.totalLines
+      totalLinesAdded = scanned.totalLinesAdded
+      totalLinesRemoved = scanned.totalLinesRemoved
       changedPaths.push(...scanned.allPaths)
     }
 
@@ -269,12 +405,15 @@ async function createCheckpoint(
  */
 async function scanAndCopyFolder(
   src: string,
-  dest: string
-): Promise<{ fileChanges: CheckpointFileChange[]; totalFiles: number; totalLines: number; allPaths: string[] }> {
+  dest: string,
+  previousFileMap?: Map<string, { content: string; changeType: string }>
+): Promise<{ fileChanges: CheckpointFileChange[]; totalFiles: number; totalLines: number; totalLinesAdded: number; totalLinesRemoved: number; allPaths: string[] }> {
   const fileChanges: CheckpointFileChange[] = []
   const allPaths: string[] = []
   let totalFiles = 0
   let totalLines = 0
+  let totalLinesAdded = 0
+  let totalLinesRemoved = 0
 
   const entries = await readdir(src, { withFileTypes: true })
   for (const entry of entries) {
@@ -293,20 +432,53 @@ async function scanAndCopyFolder(
       allPaths.push(...subFiles.paths)
     } else {
       await copyFile(srcPath, destPath)
+      const newContent = await readFileSafe(srcPath)
       const stats = await getFileStats(srcPath)
       totalLines += stats.lines
       totalFiles++
       allPaths.push(relPath)
+      
+      // 计算 diff
+      let changeType: 'added' | 'modified' | 'deleted' = 'modified'
+      let unifiedDiff = ''
+      let linesAdded = stats.lines
+      let linesRemoved = 0
+      
+      if (previousFileMap) {
+        const oldEntry = previousFileMap.get(relPath)
+        if (!oldEntry || oldEntry.changeType === 'deleted') {
+          changeType = 'added'
+          unifiedDiff = newContent.split('\n').map(line => '+' + line).join('\n')
+          linesRemoved = 0
+        } else {
+          const oldContent = oldEntry.content
+          if (oldContent !== newContent) {
+            changeType = 'modified'
+            unifiedDiff = computeUnifiedDiff(oldContent, newContent)
+            const diffLines = unifiedDiff.split('\n')
+            linesAdded = diffLines.filter(line => line.startsWith('+') && !line.startsWith('+++')).length
+            linesRemoved = diffLines.filter(line => line.startsWith('-') && !line.startsWith('---')).length
+          } else {
+            changeType = 'modified'
+            linesAdded = stats.lines
+            linesRemoved = 0
+          }
+        }
+      }
+      
       fileChanges.push({
         filePath: relPath,
-        changeType: 'modified',
-        linesAdded: stats.lines,
-        linesRemoved: 0,
+        changeType,
+        linesAdded,
+        linesRemoved,
+        unifiedDiff: unifiedDiff || undefined,
       })
+      totalLinesAdded += linesAdded
+      totalLinesRemoved += linesRemoved
     }
   }
 
-  return { fileChanges, totalFiles, totalLines, allPaths }
+  return { fileChanges, totalFiles, totalLines, totalLinesAdded, totalLinesRemoved, allPaths }
 }
 
 /** 递归统计文件数量和行数 */

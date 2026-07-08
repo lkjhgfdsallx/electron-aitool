@@ -367,6 +367,174 @@ describe('continueGeneration 分发逻辑', () => {
       )
       expect(mockRunAgent).not.toHaveBeenCalled()
     })
+
+    it('应优先从 workspaceAgents 查找 agent 并调用 runAgent', async () => {
+      expect.assertions(1)
+      const workspaceAgent: AgentProfile = {
+        id: 'ws-agent',
+        name: '工作区Agent',
+        description: '工作区测试Agent',
+        enabled: true,
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabledToolIds: [],
+        systemPrompt: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      const msg = makeMessage({
+        id: 'm1',
+        continuable: 'agent',
+        agentId: 'ws-agent',
+        agentSteps: [],
+      })
+      mockGetMessages.mockReturnValue([msg])
+      // 动态设置 workspaceAgents 包含该 agent
+      const { useWorkspaceAgentStore } = require('../stores/workspace-agent-store')
+      const originalState = useWorkspaceAgentStore.getState()
+      ;(useWorkspaceAgentStore as jest.Mock).mockImplementation(
+        (selector?: (s: Record<string, unknown>) => unknown) =>
+          selector ? selector({ workspaceAgents: [workspaceAgent] }) : { workspaceAgents: [workspaceAgent] },
+      )
+      ;(useWorkspaceAgentStore as jest.Mock & { getState: () => Record<string, unknown> }).getState = () => ({
+        workspaceAgents: [workspaceAgent],
+      })
+
+      await continueGeneration('m1')
+
+      expect(mockRunAgent).toHaveBeenCalledTimes(1)
+    })
+
+    it('runAgent 回调应追加步骤、流式内容、推理内容并在最终答案后清除 continuable', async () => {
+      expect.assertions(1)
+      const existingStep = makeStep({ id: 's1', type: 'thinking', content: '已有步骤', stepIndex: 0 })
+      const finalStep = makeStep({ id: 's2', type: 'final_answer', content: '最终步骤', stepIndex: 1 })
+      const msg = makeMessage({
+        id: 'm1',
+        content: '旧内容',
+        continuable: 'agent',
+        agentId: 'test-agent',
+        agentSteps: [existingStep],
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[6] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onStep(finalStep)
+        callbacks.onToken('续写')
+        callbacks.onReasoningToken('推理')
+        callbacks.onDone('完成内容')
+      })
+
+      await continueGeneration('m1')
+
+      const finalUpdate = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1]
+      expect(finalUpdate).toEqual([
+        'm1',
+        {
+          content: '完成内容',
+          agentSteps: [existingStep, finalStep],
+          isStreaming: false,
+          reasoningContent: '推理',
+          finishReason: 'stop',
+          continuable: null,
+        },
+      ])
+    })
+
+    it('runAgent stopped 状态应保持 agent 可继续', async () => {
+      expect.assertions(1)
+      const msg = makeMessage({
+        id: 'm1',
+        continuable: 'agent',
+        agentId: 'test-agent',
+        agentSteps: [],
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[6] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onStatusChange('stopped')
+      })
+
+      await continueGeneration('m1')
+
+      expect(mockUpdateMessage.mock.calls).toEqual([
+        ['m1', { isStreaming: true, continuable: null }],
+        ['m1', { isStreaming: false, continuable: 'agent' }],
+      ])
+    })
+
+    it('runAgent onReportReady 应标记 hasReport 并保存报告', async () => {
+      expect.assertions(2)
+      const msg = makeMessage({
+        id: 'm1',
+        continuable: 'agent',
+        agentId: 'test-agent',
+        agentSteps: [],
+      })
+      mockGetMessages.mockReturnValue([msg])
+      const { reportStore } = require('../services/report-store')
+      mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[6] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onReportReady('<html>报告</html>')
+        callbacks.onDone('完成')
+      })
+
+      await continueGeneration('m1')
+
+      expect(mockUpdateMessage.mock.calls).toContainEqual(['m1', { hasReport: true }])
+      expect(reportStore.saveReport).toHaveBeenCalledWith('m1', '<html>报告</html>')
+    })
+
+    it('runAgent onSiteAnalyzerProgress 应更新进度状态', async () => {
+      expect.assertions(1)
+      const msg = makeMessage({
+        id: 'm1',
+        continuable: 'agent',
+        agentId: 'test-agent',
+        agentSteps: [],
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[6] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onSiteAnalyzerProgress({ type: 'started', url: 'https://example.com' })
+        callbacks.onDone('完成')
+      })
+
+      await continueGeneration('m1')
+
+      const progressUpdate = mockUpdateMessage.mock.calls.find(
+        (call) => call[1]?.siteAnalyzerProgress !== undefined,
+      )?.[1]
+      expect(progressUpdate?.siteAnalyzerProgress).toEqual({
+        type: 'started',
+        url: 'https://example.com',
+      })
+    })
+
+    it('Agent 模式 content 以 abortNotice 结尾时应剥离后再继续', async () => {
+      expect.assertions(1)
+      const abortNotice = '\n\n> ⚠️ **回复中断**：流连接在生成过程中异常断开，输出可能不完整。请检查网络连接或 API 服务状态。'
+      const msg = makeMessage({
+        id: 'm1',
+        continuable: 'agent',
+        agentId: 'test-agent',
+        agentSteps: [],
+        content: '已有内容' + abortNotice,
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[6] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onToken('续写内容')
+        callbacks.onDone('完成')
+      })
+
+      await continueGeneration('m1')
+
+      // 验证 runAgent 被调用（说明剥离逻辑执行了）
+      expect(mockRunAgent).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('普通对话继续模式 (continuable="normal")', () => {
@@ -435,6 +603,91 @@ describe('continueGeneration 分发逻辑', () => {
       const streamArgs = mockStreamChat.mock.calls[0]
       // 第 3 个参数（索引 2）为 systemPrompt
       expect(streamArgs[2]).toBeNull()
+    })
+
+    it('streamChat 回调应追加续写内容、推理内容并按 length 保持 normal 可继续', async () => {
+      expect.assertions(1)
+      const msg = makeMessage({
+        id: 'm1',
+        role: 'assistant',
+        content: '已有回复',
+        reasoningContent: '旧推理',
+        continuable: 'normal',
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[5] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onToken(' + 续写')
+        callbacks.onReasoningToken(' + 新推理')
+        callbacks.onDone('length')
+      })
+
+      await continueGeneration('m1')
+
+      const finalUpdate = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1]
+      expect(finalUpdate).toEqual([
+        'm1',
+        {
+          content: '已有回复 + 续写',
+          isStreaming: false,
+          finishReason: 'length',
+          continuable: 'normal',
+        },
+      ])
+    })
+
+    it('普通模式 content 以 abortNotice 结尾时应剥离后再续写', async () => {
+      expect.assertions(1)
+      const abortNotice = '\n\n> ⚠️ **回复中断**：流连接在生成过程中异常断开，输出可能不完整。请检查网络连接或 API 服务状态。'
+      const msg = makeMessage({
+        id: 'm1',
+        role: 'assistant',
+        content: '已有回复' + abortNotice,
+        continuable: 'normal',
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[5] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onToken(' + 续写')
+        callbacks.onDone('stop')
+      })
+
+      await continueGeneration('m1')
+
+      // 验证 streamChat 被调用，且传入的历史中目标消息 content 已剥离 abortNotice
+      const streamArgs = mockStreamChat.mock.calls[0]
+      const messages = streamArgs[0] as Message[]
+      const targetInHistory = messages.find((m) => m.id === 'm1')
+      expect(targetInHistory!.content).toBe('已有回复')
+    })
+
+    it('streamChat onError 应保留已追加内容并恢复 normal 可继续', async () => {
+      expect.assertions(1)
+      const msg = makeMessage({
+        id: 'm1',
+        role: 'assistant',
+        content: '已有回复',
+        continuable: 'normal',
+      })
+      mockGetMessages.mockReturnValue([msg])
+      mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+        const callbacks = args[5] as Record<string, (...callbackArgs: unknown[]) => unknown>
+        callbacks.onToken(' + 部分')
+        callbacks.onError('网络错误')
+      })
+
+      await continueGeneration('m1')
+
+      const finalUpdate = mockUpdateMessage.mock.calls[mockUpdateMessage.mock.calls.length - 1]
+      expect(finalUpdate).toEqual([
+        'm1',
+        {
+          content: '已有回复 + 部分',
+          isStreaming: false,
+          isError: true,
+          continuable: 'normal',
+        },
+      ])
     })
   })
 

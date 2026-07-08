@@ -11,6 +11,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   FileText, Clock, Users, Plus, RotateCcw, ChevronRight, X,
   Loader2, CheckCircle2, AlertCircle, Zap, ToggleLeft, ToggleRight,
+  FileText as FileTextIcon, ArrowLeft, Eye,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
@@ -18,10 +19,9 @@ import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useSkillStore } from '../../stores/skill-store'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import { FileTree } from './FileTree'
-import { AgentDetailDialog } from './AgentDetailDialog'
+import { AgentManager } from '../settings/AgentManager'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
-import type { Workspace, CheckpointIndex } from '../../types'
-import type { AgentProfile } from '../../types'
+import type { Workspace, CheckpointIndex, CheckpointDetail, CheckpointFileChange } from '../../types'
 
 interface ProjectExplorerProps {
   workspace: Workspace
@@ -60,24 +60,25 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
   return (
     <div className="flex flex-col h-full">
       {/* 标签切换 */}
-      <div className="flex items-center border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0">
+      <div className="flex items-center border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0 w-full">
         {tabs.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
+          const hasCount = tab.count !== undefined && tab.count > 0
           return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-medium transition-all relative ${
+              className={`flex items-center justify-between gap-1 px-2 py-2 text-xs font-medium transition-all relative min-w-0 w-full ${
                 isActive
                   ? 'text-teal-600 dark:text-teal-400'
                   : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
               }`}
             >
-              <Icon size={14} />
-              <span>{tab.label}</span>
-              {tab.count !== undefined && tab.count > 0 && (
-                <span className={`text-[10px] px-1 rounded-full ${
+              <Icon size={14} className="flex-shrink-0" />
+              <span className="truncate flex-1 text-center">{tab.label}</span>
+              {hasCount && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
                   isActive
                     ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
                     : 'bg-surface-200 dark:bg-surface-700 text-gray-500 dark:text-gray-400'
@@ -155,6 +156,12 @@ interface CheckpointTimelineProps {
 function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTimelineProps) {
   const [restoring, setRestoring] = useState<string | null>(null)
   const [restoreError, setRestoreError] = useState<string | null>(null)
+  // 详情展开状态
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detail, setDetail] = useState<CheckpointDetail | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+  // diff 展开状态
+  const [expandedDiff, setExpandedDiff] = useState<number | null>(null)
 
   const handleRestore = useCallback(async (checkpointId: string) => {
     setRestoring(checkpointId)
@@ -163,36 +170,139 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
       const result = await workspaceVCSService.restoreToCheckpoint(
         workspace.folderPath,
         checkpointId,
-        `确认还原到存档点 ${checkpointId.slice(0, 8)}？\n此操作将覆盖当前工作区文件。`
+        workspace.id
       )
       if (!result.success) {
         setRestoreError(result.error || '还原失败')
       } else {
         onRefresh()
+        setSelectedId(null)
+        setDetail(null)
       }
     } catch (err) {
       setRestoreError(String(err))
     } finally {
       setRestoring(null)
     }
-  }, [workspace.folderPath, onRefresh])
+  }, [workspace.folderPath, workspace.id, onRefresh])
+
+  const toggleDiff = useCallback((index: number) => {
+    setExpandedDiff((prev) => prev === index ? null : index)
+  }, [])
+
+  const loadDetail = useCallback(async (checkpointId: string) => {
+    setLoadingDetail(true)
+    try {
+      // 直接调用 IPC，获取原始数据（后端返回 CheckpointMetadata 格式）
+      const rawResult: any = await (window as any).electronAPI.workspace.vcs.getCheckpointDetail(
+        workspace.folderPath,
+        checkpointId
+      )
+      if (rawResult.success && rawResult.detail) {
+        const metadata = rawResult.detail
+        // 转换为前端 CheckpointDetail 格式
+        const checkpointDetail: CheckpointDetail = {
+          id: metadata.id || checkpointId,
+          metadata: {
+            id: metadata.id || checkpointId,
+            workspaceId: metadata.workspaceId || workspace.id,
+            description: metadata.description || '存档详情',
+            type: metadata.type || 'auto',
+            filesChanged: (metadata.fileChanges || []).length,
+            linesAdded: metadata.linesAdded || 0,
+            linesRemoved: metadata.linesRemoved || 0,
+            filePaths: (metadata.fileChanges || []).map((fc: any) => fc.filePath),
+            createdAt: metadata.createdAt || Date.now(),
+          },
+          fileChanges: (metadata.fileChanges || []).map((fc: any) => ({
+            filePath: fc.filePath,
+            changeType: fc.changeType || 'modified',
+            linesAdded: fc.linesAdded || 0,
+            linesRemoved: fc.linesRemoved ?? 0,
+            unifiedDiff: fc.unifiedDiff,
+          })),
+        }
+        setDetail(checkpointDetail)
+        setSelectedId(checkpointId)
+      }
+    } catch (err) {
+      console.warn('[CheckpointTimeline] 加载详情失败:', err)
+    } finally {
+      setLoadingDetail(false)
+    }
+  }, [workspace.folderPath, workspace.id])
+
+  const handleItemClick = useCallback((checkpointId: string) => {
+    if (selectedId === checkpointId) {
+      // 已选中则收起
+      setSelectedId(null)
+      setDetail(null)
+    } else {
+      // 加载详情
+      loadDetail(checkpointId)
+    }
+  }, [selectedId, loadDetail])
+
+  const handleBackToList = useCallback(() => {
+    setSelectedId(null)
+    setDetail(null)
+  }, [])
 
   const sorted = [...checkpoints].sort((a, b) => b.createdAt - a.createdAt)
 
+  // 格式化时间
+  const formatTime = (timestamp: number): string => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const isToday = date.toDateString() === now.toDateString()
+    const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    if (isToday) return `今天 ${time}`
+    const isYesterday = new Date(now.getTime() - 86400000).toDateString() === date.toDateString()
+    if (isYesterday) return `昨天 ${time}`
+    // 显示完整的年月日时间
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+
+  // 格式化文件大小
+  const formatFilePath = (filePath: string): { dir: string; file: string } => {
+    const parts = filePath.split('/')
+    const file = parts.pop() || filePath
+    const dir = parts.join('/')
+    return { dir, file }
+  }
+
   return (
     <div className="p-3">
-      {/* 刷新按钮 */}
+      {/* 标题和刷新按钮 */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-          存档时间线
+          {selectedId ? '存档详情' : '存档时间线'}
         </span>
-        <button
-          onClick={onRefresh}
-          className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-          title="刷新存档列表"
-        >
-          <RotateCcw size={12} />
-        </button>
+        <div className="flex items-center gap-1">
+          {selectedId && (
+            <button
+              onClick={handleBackToList}
+              className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              title="返回列表"
+            >
+              <ArrowLeft size={12} />
+            </button>
+          )}
+          <button
+            onClick={onRefresh}
+            className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            title="刷新存档列表"
+          >
+            <RotateCcw size={12} />
+          </button>
+        </div>
       </div>
 
       {/* 错误提示 */}
@@ -204,7 +314,132 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
         </div>
       )}
 
-      {sorted.length === 0 ? (
+      {/* 详情视图 */}
+      {selectedId && detail ? (
+        <div className="border border-surface-200 dark:border-surface-700 rounded-lg p-3 mt-2">
+          {/* 详情标题 */}
+          <div className="mb-3">
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              {detail.metadata.description}
+            </p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                {new Date(detail.metadata.createdAt).toLocaleString('zh-CN')}
+              </span>
+              <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
+              <span className="text-[10px] text-green-500">+{detail.metadata.linesAdded}</span>
+              {detail.metadata.linesRemoved > 0 && (
+                <>
+                  <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
+                  <span className="text-[10px] text-red-400">-{detail.metadata.linesRemoved}</span>
+                </>
+              )}
+              <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
+              <span className="text-[10px] text-gray-500">{detail.fileChanges.length} 文件</span>
+            </div>
+          </div>
+
+          {/* 文件变更列表 */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">
+              文件变更 ({detail.fileChanges.length})
+            </p>
+            {detail.fileChanges.map((fc, i) => {
+              const { dir, file } = formatFilePath(fc.filePath)
+              const changeTypeColor = fc.changeType === 'added' ? 'text-green-500' :
+                fc.changeType === 'deleted' ? 'text-red-400' : 'text-blue-500'
+              const changeTypeIcon = fc.changeType === 'added' ? '+' :
+                fc.changeType === 'deleted' ? '−' : 'M'
+              
+              return (
+                <div key={i} className="rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden">
+                  {/* 文件头部 */}
+                  <div className="flex items-center gap-2 px-2 py-1.5 bg-surface-50 dark:bg-surface-800/50">
+                    <span className={`${changeTypeColor} flex-shrink-0`}>
+                      {changeTypeIcon}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      {dir && (
+                        <p className="text-[9px] text-gray-400 dark:text-gray-500 truncate">{dir}</p>
+                      )}
+                      <p className="text-[11px] text-gray-700 dark:text-gray-300 truncate">{file}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0 text-[10px]">
+                      <span className="text-green-500">+{fc.linesAdded}</span>
+                      {fc.linesRemoved > 0 && (
+                        <span className="text-red-400">-{fc.linesRemoved}</span>
+                      )}
+                    </div>
+                    {/* 查看 diff 按钮 */}
+                    {fc.unifiedDiff && (
+                      <button
+                        onClick={() => toggleDiff(i)}
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors"
+                        title="查看更改"
+                      >
+                        {expandedDiff === i ? (
+                          <>
+                            <Eye size={10} className="text-gray-500" />
+                            <span className="text-gray-600 dark:text-gray-400">收起</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye size={10} className="text-teal-500" />
+                            <span className="text-teal-600 dark:text-teal-400">查看更改</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Diff 内容 */}
+                  {fc.unifiedDiff && expandedDiff === i && (
+                    <div className="mx-2 mb-2 rounded-md bg-surface-900 dark:bg-surface-950 p-2 overflow-x-auto">
+                      <pre className="text-[10px] leading-4 font-mono text-surface-300">
+                        {fc.unifiedDiff.split('\n').map((line, lineIndex) => {
+                          let lineClass = 'text-surface-500'
+                          let bgClass = ''
+                          if (line.startsWith('+') && !line.startsWith('+++')) {
+                            lineClass = 'text-emerald-400'
+                            bgClass = 'bg-emerald-950/30'
+                          } else if (line.startsWith('-') && !line.startsWith('---')) {
+                            lineClass = 'text-red-400'
+                            bgClass = 'bg-red-950/30'
+                          }
+                          return (
+                            <div key={lineIndex} className={`px-1.5 py-0.5 rounded ${bgClass}`}>
+                              <span className={lineClass}>{line || ' '}</span>
+                            </div>
+                          )
+                        })}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* 还原按钮 */}
+          <button
+            onClick={() => handleRestore(selectedId)}
+            disabled={restoring !== null}
+            className="w-full mt-3 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors text-xs disabled:opacity-50"
+          >
+            {restoring === selectedId ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                <span>还原中...</span>
+              </>
+            ) : (
+              <>
+                <RotateCcw size={12} />
+                <span>还原到此存档点</span>
+              </>
+            )}
+          </button>
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Clock size={24} className="text-gray-300 dark:text-gray-600 mb-2" />
           <p className="text-xs text-gray-400 dark:text-gray-500">暂无存档点</p>
@@ -213,81 +448,98 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
           </p>
         </div>
       ) : (
-        <div className="relative">
-          {/* 时间线竖线 */}
-          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-surface-200 dark:bg-surface-700" />
+        <>
+          {/* 列表视图 - 加载中 */}
+          {loadingDetail && (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 size={16} className="animate-spin text-gray-400" />
+            </div>
+          )}
 
-          <div className="space-y-0.5">
-            {sorted.slice(0, 30).map((cp) => {
-              const typeColors: Record<string, string> = {
-                auto: 'bg-blue-400',
-                manual: 'bg-amber-400',
-                'pre-command': 'bg-purple-400',
-                'pre-restore': 'bg-green-400',
-              }
-              const typeLabels: Record<string, string> = {
-                auto: '自动',
-                manual: '手动',
-                'pre-command': '命令前',
-                'pre-restore': '还原前',
-              }
+          {/* 时间线列表 */}
+          <div className="relative">
+            {/* 时间线竖线 */}
+            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-surface-200 dark:bg-surface-700" />
 
-              return (
-                <div
-                  key={cp.id}
-                  className="relative flex items-start gap-2.5 pl-5 py-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800/50 cursor-pointer transition-colors group"
-                  onClick={() => handleRestore(cp.id)}
-                >
-                  {/* 时间线节点 */}
-                  <div className={`absolute left-[4px] top-[10px] w-[7px] h-[7px] rounded-full border-2 border-white dark:border-surface-900 ${typeColors[cp.type] || 'bg-gray-400'} z-10`} />
+            <div className="space-y-0.5">
+              {sorted.slice(0, 30).map((cp) => {
+                const typeColors: Record<string, string> = {
+                  auto: 'bg-blue-400',
+                  manual: 'bg-amber-400',
+                  'pre-command': 'bg-purple-400',
+                  'pre-restore': 'bg-green-400',
+                }
+                const typeLabels: Record<string, string> = {
+                  auto: '自动',
+                  manual: '手动',
+                  'pre-command': '命令前',
+                  'pre-restore': '还原前',
+                }
+                const isSelected = selectedId === cp.id
 
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate leading-tight">
-                      {cp.description}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span className={`text-[9px] px-1 rounded ${
-                        cp.type === 'auto' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' :
-                        cp.type === 'manual' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-500' :
-                        cp.type === 'pre-command' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-500' :
-                        'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                      }`}>
-                        {typeLabels[cp.type] || cp.type}
-                      </span>
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                        {cp.filesChanged} 文件
-                      </span>
-                      <span className="text-[10px] text-green-500">+{cp.linesAdded}</span>
-                      {cp.linesRemoved > 0 && (
-                        <span className="text-[10px] text-red-400">-{cp.linesRemoved}</span>
-                      )}
-                      <span className="text-[10px] text-gray-300 dark:text-gray-600">
-                        {new Date(cp.createdAt).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 还原按钮 */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleRestore(cp.id)
-                    }}
-                    disabled={restoring !== null}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-all flex-shrink-0"
-                    title="还原到此存档点"
+                return (
+                  <div
+                    key={cp.id}
+                    className={`relative flex items-start gap-2.5 pl-5 py-1.5 rounded-lg transition-colors group ${
+                      isSelected
+                        ? 'bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800/30'
+                        : 'hover:bg-surface-100 dark:hover:bg-surface-800/50'
+                    }`}
+                    onClick={() => handleItemClick(cp.id)}
                   >
-                    {restoring === cp.id ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <RotateCcw size={12} />
-                    )}
-                  </button>
-                </div>
-              )
-            })}
+                    {/* 时间线节点 */}
+                    <div className={`absolute left-[4px] top-[10px] w-[7px] h-[7px] rounded-full border-2 border-white dark:border-surface-900 ${typeColors[cp.type] || 'bg-gray-400'} z-10`} />
+
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs truncate leading-tight ${
+                        isSelected ? 'text-teal-700 dark:text-teal-300 font-medium' : 'text-gray-700 dark:text-gray-300'
+                      }`}>
+                        {cp.description}
+                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className={`text-[9px] px-1 rounded ${
+                          cp.type === 'auto' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' :
+                          cp.type === 'manual' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-500' :
+                          cp.type === 'pre-command' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-500' :
+                          'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                        }`}>
+                          {typeLabels[cp.type] || cp.type}
+                        </span>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                          {cp.filesChanged} 文件
+                        </span>
+                        <span className="text-[10px] text-green-500">+{cp.linesAdded}</span>
+                        {cp.linesRemoved > 0 && (
+                          <span className="text-[10px] text-red-400">-{cp.linesRemoved}</span>
+                        )}
+                        <span className="text-[10px] text-gray-300 dark:text-gray-600">
+                          {formatTime(cp.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 还原按钮 */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleRestore(cp.id)
+                      }}
+                      disabled={restoring !== null}
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-all flex-shrink-0"
+                      title="还原到此存档点"
+                    >
+                      {restoring === cp.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <RotateCcw size={12} />
+                      )}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   )
@@ -325,7 +577,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   }, [workspace.id, workspace.leaderAgentId, leaderAgent, updateWorkspace])
 
   const [showPicker, setShowPicker] = useState(false)
-  const [detailAgent, setDetailAgent] = useState<AgentProfile | null>(null)
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null)
   const [pickerPos, setPickerPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
   const pickerRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -383,7 +635,12 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
     <div className="p-3 space-y-2">
       {/* AI 领导 */}
       {leaderAgent && (
-        <div className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg bg-teal-50/50 dark:bg-teal-900/10 border border-teal-200/50 dark:border-teal-800/30">
+        <button
+          type="button"
+          onClick={() => setEditingAgentId(leaderAgent.id)}
+          className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg bg-teal-50/50 dark:bg-teal-900/10 border border-teal-200/50 dark:border-teal-800/30 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors text-left"
+          title="编辑 AI 领导 Agent"
+        >
           <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-sm flex-shrink-0">
             {leaderAgent.avatar || '👑'}
           </div>
@@ -400,7 +657,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
               {leaderAgent.description || '项目主管，负责任务拆解与协调'}
             </p>
           </div>
-        </div>
+        </button>
       )}
 
       {/* 分隔线 + 添加按钮 */}
@@ -417,7 +674,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
             <div
               key={agent!.id}
               className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors group cursor-pointer"
-              onClick={() => setDetailAgent(agent!)}
+              onClick={() => setEditingAgentId(agent!.id)}
             >
               <div className="w-7 h-7 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center text-xs flex-shrink-0">
                 {agent!.avatar || '🤖'}
@@ -516,12 +773,20 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
         </div>
       </div>
 
-      {/* 团队成员只读详情弹窗 */}
-      <AgentDetailDialog
-        agent={detailAgent}
-        open={!!detailAgent}
-        onClose={() => setDetailAgent(null)}
-      />
+      {/* 复用设置页的完整 Agent 编辑器，避免工作区内只读且避免重复维护表单 */}
+      {editingAgentId && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditingAgentId(null)} />
+          <div className="relative w-full max-w-4xl max-h-[88vh] overflow-y-auto bg-white dark:bg-surface-900 rounded-xl border border-surface-200/80 dark:border-surface-700/60 shadow-2xl p-5 animate-scale-in">
+            <AgentManager
+              isWorkspaceMode
+              folderPath={workspace.folderPath}
+              initialEditingAgentId={editingAgentId}
+              onClose={() => setEditingAgentId(null)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

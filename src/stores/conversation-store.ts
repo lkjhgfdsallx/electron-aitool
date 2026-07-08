@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PersistStorage, StorageValue } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
-import type { Conversation, Message, MessageCreateInput, ConversationAIConfig } from '../types'
+import type { Conversation, Message, MessageCreateInput, ConversationAIConfig, TerminalLog, TerminalLogCreateInput } from '../types'
 import { STORE_VERSIONS } from '../utils/store-migration'
 import { conversationDb } from '../services/conversation-db'
 
@@ -11,6 +11,12 @@ function generatePreview(content: string): string {
   const cleaned = content.replace(/[#*`>\[\]()!]/g, '').replace(/\n+/g, ' ').trim()
   return cleaned.length > 50 ? cleaned.substring(0, 50) + '...' : cleaned || '暂无内容'
 }
+
+// ---- 稳定的空数组引用（避免 Zustand selector 中 [] !== [] 导致无限重渲染） ----
+const EMPTY_TERMINAL_LOGS: TerminalLog[] = []
+
+/** 导出稳定的空数组引用，供组件层直接使用 */
+export { EMPTY_TERMINAL_LOGS }
 
 // ==================== 消息 → 对话 索引映射 ====================
 //
@@ -104,11 +110,13 @@ const visibleMessagesCache = new Map<string, {
   result: Message[]
 }>()
 
-interface ConversationStore {
+export interface ConversationStore {
   conversations: Conversation[]
   currentConversationId: string | null
   /** ⚡ 仅保留活跃对话的消息在内存中（非活跃对话从 IDB 按需加载） */
   messages: Record<string, Message[]> // conversationId -> messages
+  /** workspaceId -> 终端日志 */
+  terminalHistory: Record<string, TerminalLog[]>
 
   // Conversation Actions
   createConversation: (title?: string, promptId?: string, agentId?: string, workspaceId?: string) => Conversation
@@ -133,6 +141,14 @@ interface ConversationStore {
   deleteMessage: (conversationId: string, messageId: string) => void
   getMessages: (conversationId: string) => Message[]
   clearMessages: (conversationId: string) => void
+
+  // Terminal Log Actions
+  /** 添加终端日志 */
+  addTerminalLog: (workspaceId: string, log: TerminalLogCreateInput) => void
+  /** 获取指定工作区的终端日志 */
+  getTerminalHistory: (workspaceId: string) => TerminalLog[]
+  /** 清除终端历史 */
+  clearTerminalHistory: (workspaceId: string) => void
 
   // ⚡ 惰性加载 Actions（新增）
   /** 从 IndexedDB 加载指定对话的消息到内存（切换对话时调用） */
@@ -162,6 +178,7 @@ export const useConversationStore = create<ConversationStore>()(
       conversations: [],
       currentConversationId: null,
       messages: {},
+      terminalHistory: {},
 
       // ==================== Conversation Actions ====================
 
@@ -424,6 +441,33 @@ export const useConversationStore = create<ConversationStore>()(
         )
       },
 
+      // ==================== Terminal Log Actions ====================
+
+      addTerminalLog: (workspaceId, log) => {
+        const fullLog: TerminalLog = {
+          ...log,
+          id: `tl-${uuidv4().slice(0, 8)}`,
+          timestamp: Date.now(),
+        }
+
+        set((state) => ({
+          terminalHistory: {
+            ...state.terminalHistory,
+            [workspaceId]: [...(state.terminalHistory[workspaceId] || []), fullLog],
+          },
+        }))
+      },
+
+      getTerminalHistory: (workspaceId) => {
+        return get().terminalHistory[workspaceId] || EMPTY_TERMINAL_LOGS
+      },
+
+      clearTerminalHistory: (workspaceId) => {
+        set((state) => ({
+          terminalHistory: { ...state.terminalHistory, [workspaceId]: [] },
+        }))
+      },
+
       // ==================== 惰性加载 Actions（新增） ====================
 
       /**
@@ -654,7 +698,8 @@ export const useConversationStore = create<ConversationStore>()(
       partialize: (state) => {
         return {
           conversations: state.conversations,
-          currentConversationId: state.currentConversationId
+          currentConversationId: state.currentConversationId,
+          terminalHistory: state.terminalHistory,
         }
       }
     }

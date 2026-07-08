@@ -1,8 +1,6 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
-import { MessageSquareDashed, Bot, Plug, Globe, FileText, Sparkles, BookOpen, ChevronDown, Check } from 'lucide-react'
-import { MessageItem } from './MessageItem'
-import { AssistantGroupBubble } from './AssistantGroupBubble'
-import { MessageInput } from './MessageInput'
+import { MessageSquareDashed, Bot, Plug, Globe, FileText, BookOpen, ChevronDown, Check } from 'lucide-react'
+import { ChatViewCore } from './ChatViewCore'
 import { AgentSelector } from './AgentSelector'
 import { SiteAnalyzerForm } from './SiteAnalyzerForm'
 import type { SiteAnalyzerFormData } from './SiteAnalyzerForm'
@@ -16,52 +14,8 @@ import type { Message, MessageAttachment, PromptRuntimeContext } from '../../typ
 
 /** ⚡ 稳定的空数组引用，避免每次渲染创建新的 [] 导致 useMemo 失效 */
 const EMPTY_MESSAGES: Message[] = []
-const EMPTY_RENDER_GROUPS: RenderGroup[] = []
 
-/** 消息渲染组：单条消息或多条合并的 assistant 组 */
-type RenderGroup =
-  | { type: 'single'; message: Message }
-  | { type: 'assistant-group'; messages: Message[] }
-
-/**
- * 将消息列表分组：
- * - user / system / Agent 模式的 assistant → 独立渲染
- * - 普通模式下连续的 assistant + tool 消息 → 合并为一组
- */
-function groupMessages(messages: Message[]): RenderGroup[] {
-  const groups: RenderGroup[] = []
-  let pendingGroup: Message[] = []
-
-  const flushGroup = () => {
-    if (pendingGroup.length === 0) return
-    if (pendingGroup.length === 1) {
-      groups.push({ type: 'single', message: pendingGroup[0] })
-    } else {
-      groups.push({ type: 'assistant-group', messages: [...pendingGroup] })
-    }
-    pendingGroup = []
-  }
-
-  for (const msg of messages) {
-    if (msg.role === 'user' || msg.role === 'system') {
-      flushGroup()
-      groups.push({ type: 'single', message: msg })
-    } else if (msg.role === 'tool') {
-      // 工具结果消息归入当前组
-      pendingGroup.push(msg)
-    } else if (msg.role === 'assistant') {
-      // Agent 模式消息（有 agentSteps）独立渲染
-      if (msg.agentSteps && msg.agentSteps.length > 0) {
-        flushGroup()
-        groups.push({ type: 'single', message: msg })
-      } else {
-        pendingGroup.push(msg)
-      }
-    }
-  }
-  flushGroup()
-  return groups
-}
+type MessageAlignment = 'left-right' | 'all-left' | 'all-right' | 'full-width'
 
 interface ChatWindowProps {
   onOpenPromptManager?: () => void
@@ -69,7 +23,6 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases, loadConversationMessages } = useConversationStore()
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
@@ -106,17 +59,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   // ⚡ 使用稳定空数组引用，避免每次渲染创建新 [] 导致 useMemo 失效
   const messages = currentConversationId ? getVisibleMessages(currentConversationId) : EMPTY_MESSAGES
   const currentConversation = currentConversationId ? getConversation(currentConversationId) : undefined
-
-  // ⚡ 消息分组：依赖稳定的 messages 引用（visibleMessagesCache 保证了非流式场景的引用稳定）
-  // 流式场景下 messages 仍会变化，但子组件的 memo+自定义比较器会过滤无效重渲染
-  const renderGroups = useMemo(() => {
-    if (messages.length === 0) return EMPTY_RENDER_GROUPS
-    return groupMessages(messages)
-  }, [messages])
   const activeBranches = currentConversation?.activeBranches ?? {}
 
-  // 性能优化：缓存回调函数引用，避免每次渲染创建新函数
-  // 注意：handleSwitchBranch 需在其他 memoized 回调之前定义，因为 memoizedOnSwitchBranch 依赖它
   /** 切换分支 */
   const handleSwitchBranch = useCallback(
     (forkMessageId: string, branchIndex: number) => {
@@ -127,26 +71,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     [currentConversationId, switchBranch]
   )
 
-  const memoizedOnRegenerate = useCallback((messageId: string) => {
-    regenerateMessage(messageId)
-  }, [regenerateMessage])
-
-  const memoizedOnEditAndResend = useCallback((messageId: string, content: string) => {
-    editAndResend(messageId, content)
-  }, [editAndResend])
-
-  const memoizedOnHumanInput = useCallback((stepId: string, value: string | string[]) => {
-    handleHumanInput(stepId, value)
-  }, [handleHumanInput])
-
-  const memoizedOnContinueGeneration = useCallback((messageId: string) => {
-    continueGeneration(messageId)
-  }, [continueGeneration])
-
-  const memoizedOnSwitchBranch = useCallback((forkMessageId: string, branchIndex: number) => {
-    handleSwitchBranch(forkMessageId, branchIndex)
-  }, [handleSwitchBranch])
-
   // 获取当前对话关联的 Agent
   const currentAgent = currentConversation?.agentId ? getAgent(currentConversation.agentId) : undefined
 
@@ -156,11 +80,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     defaultModel: currentAgent?.modelConfig?.modelId,
   }), [currentAgent?.name, currentAgent?.modelConfig?.modelId])
 
-  // ⚡ 自动滚动到底部：流式输出时用即时滚动（避免每帧平滑滚动造成卡顿），稳定后用平滑滚动
   const isStreaming = messages.some((m) => m.isStreaming)
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' })
-  }, [messages, isStreaming])
 
   // 判断是否为网站分析 Agent 且对话为空（显示表单）
   const isWebsiteAnalyzer = currentConversation?.agentId === WEBSITE_ANALYZER_AGENT_ID
@@ -227,7 +147,6 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     },
     [currentConversationId, setConversationAgent]
   )
-
 
   /** 获取分支点消息的当前激活分支索引 */
   const getActiveBranchIndex = useCallback(
@@ -330,219 +249,189 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
     )
   }
 
-  return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Agent 选择栏 */}
-      <div className="relative z-10 flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
-        <AgentSelector
-          selectedAgentId={currentConversation?.agentId}
-          onSelect={handleAgentSelect}
-          onOpenAgentManager={onOpenAgentManager}
-        />
-        {currentAgent && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-2.5 py-0.5 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full font-medium">
-              Agent 模式
-            </span>
-            <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
-          </div>
-        )}
+  const headerSlot = (
+    <div className="relative z-10 flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
+      <AgentSelector
+        selectedAgentId={currentConversation?.agentId}
+        onSelect={handleAgentSelect}
+        onOpenAgentManager={onOpenAgentManager}
+      />
+      {currentAgent && (
+        <div className="flex items-center gap-2 text-xs">
+          <span className="px-2.5 py-0.5 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full font-medium">
+            Agent 模式
+          </span>
+          <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
+        </div>
+      )}
 
-        {/* 右侧弹性间隔 */}
-        <div className="flex-1" />
+      {/* 右侧弹性间隔 */}
+      <div className="flex-1" />
 
-        {/* 知识库集合快速切换 */}
-        {collections.length > 0 && currentConversationId && (() => {
-          const selectedIds = currentConversation?.activeKnowledgeBaseIds ?? []
-          const selectedNames = collections
-            .filter((c) => selectedIds.includes(c.id))
-            .map((c) => c.icon + c.name)
+      {/* 知识库集合快速切换 */}
+      {collections.length > 0 && currentConversationId && (() => {
+        const selectedIds = currentConversation?.activeKnowledgeBaseIds ?? []
+        const selectedNames = collections
+          .filter((c) => selectedIds.includes(c.id))
+          .map((c) => c.icon + c.name)
 
-          return (
-            <div className="relative flex-shrink-0" ref={kbDropdownRef}>
-              <button
-                onClick={() => setKbDropdownOpen(!kbDropdownOpen)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  selectedIds.length > 0
-                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40'
-                    : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
-                }`}
-                title="选择知识库集合"
-              >
-                <BookOpen size={14} />
-                <span className="hidden sm:inline max-w-[120px] truncate">
-                  {selectedIds.length > 0
-                    ? selectedNames.length > 1
-                      ? `${selectedNames[0]} 等${selectedNames.length}个`
-                      : selectedNames[0]
-                    : '知识库'}
-                </span>
-                <ChevronDown size={12} className={`transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
+        return (
+          <div className="relative flex-shrink-0" ref={kbDropdownRef}>
+            <button
+              onClick={() => setKbDropdownOpen(!kbDropdownOpen)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                selectedIds.length > 0
+                  ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40'
+                  : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
+              }`}
+              title="选择知识库集合"
+            >
+              <BookOpen size={14} />
+              <span className="hidden sm:inline max-w-[120px] truncate">
+                {selectedIds.length > 0
+                  ? selectedNames.length > 1
+                    ? `${selectedNames[0]} 等${selectedNames.length}个`
+                    : selectedNames[0]
+                  : '知识库'}
+              </span>
+              <ChevronDown size={12} className={`transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
 
-              {kbDropdownOpen && (
-                <div className="dropdown-panel absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
-                  <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
-                    <p className="text-xs font-medium text-surface-600 dark:text-surface-400">选择对话使用的知识库</p>
-                    <p className="text-[10px] text-muted mt-0.5">不选择则搜索全部知识库</p>
-                  </div>
-                  <div className="max-h-48 overflow-y-auto py-1">
-                    {collections.map((col) => {
-                      const isSelected = selectedIds.includes(col.id)
-                      return (
-                        <button
-                          key={col.id}
-                          onClick={() => {
-                            const newIds = isSelected
-                              ? selectedIds.filter((id) => id !== col.id)
-                              : [...selectedIds, col.id]
-                            setConversationKnowledgeBases(currentConversationId, newIds.length > 0 ? newIds : undefined)
-                          }}
-                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
-                            isSelected
-                              ? 'bg-accent-50/50 dark:bg-accent-950/20 text-accent-700 dark:text-accent-300'
-                              : 'text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700'
-                          }`}
-                        >
-                          <span className="text-base flex-shrink-0">{col.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium">{col.name}</span>
-                            {col.description && (
-                              <p className="text-xs text-muted truncate">{col.description}</p>
-                            )}
-                          </div>
-                          {isSelected && (
-                            <Check size={14} className="text-accent-500 flex-shrink-0" />
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
+            {kbDropdownOpen && (
+              <div className="dropdown-panel absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+                <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
+                  <p className="text-xs font-medium text-surface-600 dark:text-surface-400">选择对话使用的知识库</p>
+                  <p className="text-[10px] text-muted mt-0.5">不选择则搜索全部知识库</p>
                 </div>
-              )}
-            </div>
-          )
-        })()}
-      </div>
-
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {messages.length === 0 ? (
-          showAnalyzerForm ? (
-            <div className="flex-1 overflow-y-auto p-4">
-              <SiteAnalyzerForm onSubmit={handleAnalyzerFormSubmit} />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full px-6">
-              <div className="max-w-md w-full text-center animate-fade-in-up">
-                {currentAgent ? (
-                  <>
-                    {/* Agent 模式引导 */}
-                    <div className="flex items-center justify-center mb-5">
-                      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500 to-purple-600 shadow-lg shadow-accent-500/20">
-                        <Bot size={24} className="text-white" />
-                      </div>
-                    </div>
-                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
-                      {currentAgent.name}
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-xs mx-auto leading-relaxed">
-                      {currentAgent.description || '发送消息开始与 Agent 对话，它会自主规划并执行多步任务'}
-                    </p>
-                    {/* Agent 能力标签 */}
-                    <div className="flex flex-wrap justify-center gap-2 mb-6">
-                      {(currentAgent.enabledToolIds && currentAgent.enabledToolIds.length > 0 ? currentAgent.enabledToolIds.slice(0, 4) : ['自主规划', '多步执行', '工具调用']).map((tag: string, i: number) => (
-                        <span key={i} className="px-2.5 py-1 text-xs rounded-full bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* 普通模式引导 */}
-                    <div className="flex items-center justify-center mb-5">
-                      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-surface-200 to-surface-300 dark:from-surface-700 dark:to-surface-600">
-                        <MessageSquareDashed size={24} className="text-surface-500 dark:text-surface-400" />
-                      </div>
-                    </div>
-                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
-                      开始新的对话
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                      发送消息或选择下方快捷提示开始
-                    </p>
-                  </>
-                )}
-
-                {/* 快捷提示词 */}
-                <div className="grid grid-cols-1 gap-2 max-w-sm mx-auto">
-                  {quickPrompts.slice(0, 3).map((prompt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        sendMessage(prompt.text)
-                      }}
-                      className="group flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/80 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all text-left"
-                    >
-                      <span className="text-base">{prompt.icon}</span>
-                      <span className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1 group-hover:text-gray-800 dark:group-hover:text-gray-100 transition-colors">
-                        {prompt.text}
-                      </span>
-                    </button>
-                  ))}
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {collections.map((col) => {
+                    const isSelected = selectedIds.includes(col.id)
+                    return (
+                      <button
+                        key={col.id}
+                        onClick={() => {
+                          const newIds = isSelected
+                            ? selectedIds.filter((id) => id !== col.id)
+                            : [...selectedIds, col.id]
+                          setConversationKnowledgeBases(currentConversationId, newIds.length > 0 ? newIds : undefined)
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+                          isSelected
+                            ? 'bg-accent-50/50 dark:bg-accent-950/20 text-accent-700 dark:text-accent-300'
+                            : 'text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700'
+                        }`}
+                      >
+                        <span className="text-base flex-shrink-0">{col.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium">{col.name}</span>
+                          {col.description && (
+                            <p className="text-xs text-muted truncate">{col.description}</p>
+                          )}
+                        </div>
+                        {isSelected && (
+                          <Check size={14} className="text-accent-500 flex-shrink-0" />
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
-            </div>
-          )
-        ) : (
-          <div className="max-w-3xl mx-auto py-4 flex flex-col overflow-hidden">
-            {renderGroups.map((group) => {
-              if (group.type === 'assistant-group') {
-                return (
-                  <AssistantGroupBubble
-                    key={`group-${group.messages[0].id}`}
-                    messages={group.messages}
-                    showTimestamp={showTimestamp}
-                    showTokenUsage={showTokenUsage}
-                    showAvatar={showAvatar}
-                    messageAlignment={messageAlignment}
-                    onRegenerate={memoizedOnRegenerate}
-                    onContinueGeneration={memoizedOnContinueGeneration}
-                  />
-                )
-              }
-              const msg = group.message
-              return (
-                <MessageItem
-                  key={msg.id}
-                  message={msg}
-                  showTimestamp={showTimestamp}
-                  showTokenUsage={showTokenUsage}
-                  showAvatar={showAvatar}
-                  messageAlignment={messageAlignment}
-                  onRegenerate={memoizedOnRegenerate}
-                  onEditAndResend={memoizedOnEditAndResend}
-                  onContinueGeneration={memoizedOnContinueGeneration}
-                  onHumanInput={memoizedOnHumanInput}
-                  activeBranchIndex={getActiveBranchIndex(msg.id)}
-                  onSwitchBranch={memoizedOnSwitchBranch}
-                />
-              )
-            })}
-            <div ref={messagesEndRef} />
+            )}
           </div>
-        )}
-      </div>
-
-      {/* 输入框 */}
-      <MessageInput
-        onSend={handleSend}
-        onStop={stopGeneration}
-        isStreaming={messages.some((m) => m.isStreaming)}
-        onOpenPromptManager={onOpenPromptManager}
-        runtimeContext={runtimeContext}
-      />
+        )
+      })()}
     </div>
+  )
+
+  const emptyStateSlot = showAnalyzerForm ? (
+    <div className="flex-1 overflow-y-auto p-4">
+      <SiteAnalyzerForm onSubmit={handleAnalyzerFormSubmit} />
+    </div>
+  ) : (
+    <div className="flex items-center justify-center h-full px-6">
+      <div className="max-w-md w-full text-center animate-fade-in-up">
+        {currentAgent ? (
+          <>
+            {/* Agent 模式引导 */}
+            <div className="flex items-center justify-center mb-5">
+              <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500 to-purple-600 shadow-lg shadow-accent-500/20">
+                <Bot size={24} className="text-white" />
+              </div>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
+              {currentAgent.name}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-xs mx-auto leading-relaxed">
+              {currentAgent.description || '发送消息开始与 Agent 对话，它会自主规划并执行多步任务'}
+            </p>
+            {/* Agent 能力标签 */}
+            <div className="flex flex-wrap justify-center gap-2 mb-6">
+              {(currentAgent.enabledToolIds && currentAgent.enabledToolIds.length > 0 ? currentAgent.enabledToolIds.slice(0, 4) : ['自主规划', '多步执行', '工具调用']).map((tag: string, i: number) => (
+                <span key={i} className="px-2.5 py-1 text-xs rounded-full bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* 普通模式引导 */}
+            <div className="flex items-center justify-center mb-5">
+              <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-surface-200 to-surface-300 dark:from-surface-700 dark:to-surface-600">
+                <MessageSquareDashed size={24} className="text-surface-500 dark:text-surface-400" />
+              </div>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
+              开始新的对话
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              发送消息或选择下方快捷提示开始
+            </p>
+          </>
+        )}
+
+        {/* 快捷提示词 */}
+        <div className="grid grid-cols-1 gap-2 max-w-sm mx-auto">
+          {quickPrompts.slice(0, 3).map((prompt, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                sendMessage(prompt.text)
+              }}
+              className="group flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/80 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all text-left"
+            >
+              <span className="text-base">{prompt.icon}</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1 group-hover:text-gray-800 dark:group-hover:text-gray-100 transition-colors">
+                {prompt.text}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <ChatViewCore
+      conversationId={currentConversationId}
+      messages={messages}
+      headerSlot={headerSlot}
+      emptyStateSlot={emptyStateSlot}
+      onSwitchBranch={handleSwitchBranch}
+      getActiveBranchIndex={getActiveBranchIndex}
+      onRegenerate={regenerateMessage}
+      onEditAndResend={editAndResend}
+      onContinueGeneration={continueGeneration}
+      onHumanInput={handleHumanInput}
+      onSend={handleSend}
+      onStop={stopGeneration}
+      isStreaming={isStreaming}
+      showTimestamp={showTimestamp}
+      showTokenUsage={showTokenUsage}
+      showAvatar={showAvatar}
+      messageAlignment={messageAlignment as MessageAlignment}
+      runtimeContext={runtimeContext}
+      onOpenPromptManager={onOpenPromptManager}
+    />
   )
 }

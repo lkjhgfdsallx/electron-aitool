@@ -541,6 +541,26 @@ describe('runAgent resume 模式', () => {
       expect(msgs[0].role).toBe('user')
     })
 
+    it('启用长期记忆时应按 agentId 注入记忆上下文', async () => {
+      expect.assertions(1)
+      const { memoryService } = require('../services/memory-service')
+
+      await runAgent(
+        makeAgent({ memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: false } }),
+        '',
+        [makeMessage({ id: 'a1', role: 'assistant', content: '未完成' })],
+        [],
+        makeResolvedConfig(),
+        new AbortController().signal,
+        makeCallbacks(),
+        undefined,
+        'conv-test',
+        { resume: true, existingSteps: [] },
+      )
+
+      expect(memoryService.formatMemoriesAsContext).toHaveBeenCalledWith('test-agent')
+    })
+
     it('resume 模式应调用 onStatusChange("running")', async () => {
       const callbacks = makeCallbacks()
       await runAgent(
@@ -560,6 +580,88 @@ describe('runAgent resume 模式', () => {
       )
 
       expect(callbacks.onStatusChange).toHaveBeenCalledWith('running')
+    })
+
+    it('resume 模式应从 existingSteps 重建 action、observation 与 human_input 消息', async () => {
+      expect.assertions(1)
+      const existingSteps: AgentStep[] = [
+        makeStep({
+          id: 'action-1',
+          type: 'action',
+          content: '准备查询',
+          stepIndex: 0,
+          toolCall: { name: 'search_docs', arguments: { query: '覆盖率' } },
+        }),
+        makeStep({
+          id: 'observation-1',
+          type: 'observation',
+          content: '查询完成',
+          stepIndex: 1,
+          toolResult: { success: true, data: '覆盖率报告', error: undefined },
+        }),
+        makeStep({
+          id: 'human-1',
+          type: 'human_input',
+          content: '等待用户确认',
+          stepIndex: 2,
+          humanChoice: {
+            question: '请选择测试范围',
+            options: [{ label: 'Agent', value: 'agent' }],
+            allowMultiple: true,
+          },
+          humanResponse: ['agent-engine', 'use-chat'],
+        }),
+      ]
+
+      await runAgent(
+        makeAgent(),
+        '',
+        [makeMessage({ id: 'a1', role: 'assistant', content: '未完成' })],
+        [],
+        makeResolvedConfig(),
+        new AbortController().signal,
+        makeCallbacks(),
+        undefined,
+        'conv-test',
+        { resume: true, existingSteps },
+      )
+
+      expect(capturedStreamMessages?.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+        toolCallId: msg.toolCallId,
+        toolName: msg.toolName,
+        toolCalls: msg.toolCalls,
+      }))).toEqual([
+        {
+          role: 'assistant',
+          content: '准备查询',
+          toolCallId: undefined,
+          toolName: undefined,
+          toolCalls: [{ id: 'action-1', name: 'search_docs', arguments: '{"query":"覆盖率"}', status: 'completed' }],
+        },
+        {
+          role: 'tool',
+          content: '覆盖率报告',
+          toolCallId: 'observation-1',
+          toolName: 'search_docs',
+          toolCalls: undefined,
+        },
+        {
+          role: 'assistant',
+          content: '请选择测试范围',
+          toolCallId: undefined,
+          toolName: undefined,
+          toolCalls: undefined,
+        },
+        {
+          role: 'user',
+          content: 'agent-engine, use-chat',
+          toolCallId: undefined,
+          toolName: undefined,
+          toolCalls: undefined,
+        },
+      ])
     })
   })
 })

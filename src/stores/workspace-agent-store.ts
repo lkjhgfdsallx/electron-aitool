@@ -12,7 +12,8 @@ import type { AgentProfile, AgentProfileCreateInput, AgentProfileUpdateInput } f
 import { SYSTEM_AGENT_TAGS } from '../types'
 import { workspaceVCSService } from '../services/workspace-vcs-service'
 import { useAgentStore } from './agent-store'
-import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
+import { WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT } from '../constants/default-agents'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 
 // 确保 Agent 标签中包含 workspace 系统标签
 function ensureWorkspaceTag(tags?: string[]): string[] {
@@ -42,6 +43,22 @@ function ensureLeaderTag(tags?: string[]): string[] {
 // 是否为 leader Agent
 function isLeaderAgent(agent: { tags?: string[] }): boolean {
   return !!agent.tags?.includes(SYSTEM_AGENT_TAGS.LEADER)
+}
+
+function scopeWorkspaceAgent(agent: AgentProfile, folderPath: string): AgentProfile {
+  return {
+    ...agent,
+    scope: 'workspace',
+    workspaceFolderPath: folderPath,
+    tags: ensureWorkspaceTag(agent.tags),
+  }
+}
+
+function getUnifiedWorkspaceAgents(folderPath?: string | null): AgentProfile[] {
+  if (folderPath) {
+    return useAgentStore.getState().getWorkspaceScopedAgents(folderPath)
+  }
+  return useAgentStore.getState().getWorkspaceScopedAgents()
 }
 
 interface WorkspaceAgentStore {
@@ -100,11 +117,8 @@ export const useWorkspaceAgentStore = create<WorkspaceAgentStore>()((set, get) =
     try {
       const agents = await workspaceVCSService.loadAgents(folderPath)
 
-      // 确保所有加载的 Agent 都有 workspace 标签
-      const taggedAgents = agents.map((a) => ({
-        ...a,
-        tags: ensureWorkspaceTag(a.tags),
-      }))
+      // 确保所有加载的 Agent 都有 workspace 标签和 workspace 作用域
+      const taggedAgents = agents.map((a) => scopeWorkspaceAgent(a, folderPath))
 
       // ===== 静默迁移：检查是否有 leader Agent =====
       const hasLeader = taggedAgents.some(isLeaderAgent)
@@ -119,25 +133,28 @@ export const useWorkspaceAgentStore = create<WorkspaceAgentStore>()((set, get) =
         const globalLeader = agentStore.agents.find((a) => a.id === WORKSPACE_LEADER_AGENT_ID)
 
         // 创建新 leader 实例
-          const leaderTemplate = globalLeader ?? {
-            name: 'AI 领导',
-            description: '工作区的 AI 项目领导，负责协调任务、规划执行并交付高质量成果',
-            avatar: '👑',
-            systemPrompt: '',
-            enabledToolIds: [] as string[],
-            planningStrategy: 'react' as const,
-            memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: true },
-            termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
-            modelConfig: {},
-            enabled: true,
-          }
-          const leaderInstance: AgentProfile = {
+        // 计算默认的 Workspace 工具列表（与 agent-store.ts 中的逻辑一致）
+        const DEFAULT_ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS].map((t) => t.id)
+
+        const leaderTemplate = globalLeader ?? {
+          name: 'AI 领导',
+          description: '工作区的 AI 项目领导，负责协调任务、规划执行并交付高质量成果',
+          avatar: '👑',
+          systemPrompt: WORKSPACE_LEADER_PROMPT,
+          enabledToolIds: DEFAULT_ALL_TOOL_IDS as string[],
+          planningStrategy: 'react' as const,
+          memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: true },
+          termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
+          modelConfig: {},
+          enabled: true,
+        }
+          const leaderInstance: AgentProfile = scopeWorkspaceAgent({
             ...leaderTemplate,
             id: uuidv4(),
             tags: ensureLeaderTag(globalLeader?.tags),
             createdAt: Date.now(),
             updatedAt: Date.now(),
-          }
+          }, folderPath)
 
         // 写入工作区 agents.json
         const addResult = await workspaceVCSService.addAgent(folderPath, leaderInstance)
@@ -158,8 +175,11 @@ export const useWorkspaceAgentStore = create<WorkspaceAgentStore>()((set, get) =
         }
       }
 
+      useAgentStore.getState().replaceWorkspaceScopedAgents(folderPath, migratedAgents)
+      const unifiedAgents = getUnifiedWorkspaceAgents(folderPath)
+
       set({
-        workspaceAgents: migratedAgents,
+        workspaceAgents: unifiedAgents,
         loadedFolderPath: folderPath,
         isLoading: false,
       })
@@ -174,58 +194,64 @@ export const useWorkspaceAgentStore = create<WorkspaceAgentStore>()((set, get) =
       }
     } catch (err) {
       console.error('[workspace-agent-store] 加载工作区 Agent 失败:', err)
+      useAgentStore.getState().removeWorkspaceScopedAgents(folderPath)
       set({ workspaceAgents: [], isLoading: false })
     }
   },
 
   clearWorkspaceAgents: () => {
+    const folderPath = get().loadedFolderPath
+    useAgentStore.getState().removeWorkspaceScopedAgents(folderPath ?? undefined)
     set({ workspaceAgents: [], loadedFolderPath: null })
   },
 
   createWorkspaceAgent: async (input, folderPath) => {
-    const agent: AgentProfile = {
+    const agent: AgentProfile = scopeWorkspaceAgent({
       ...input,
       id: uuidv4(),
       tags: ensureWorkspaceTag(input.tags),
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    }
+    }, folderPath)
 
     const result = await workspaceVCSService.addAgent(folderPath, agent)
     if (!result.success) {
       throw new Error(result.error ?? '创建工作区 Agent 失败')
     }
 
-    set((state) => ({
-      workspaceAgents: [...state.workspaceAgents, agent],
-    }))
+    const nextAgents = [...getUnifiedWorkspaceAgents(folderPath), agent]
+    useAgentStore.getState().replaceWorkspaceScopedAgents(folderPath, nextAgents)
+    set({
+      workspaceAgents: getUnifiedWorkspaceAgents(folderPath),
+      loadedFolderPath: folderPath,
+    })
 
     return agent
   },
 
   updateWorkspaceAgent: async (input, folderPath) => {
-    const existing = get().workspaceAgents.find((a) => a.id === input.id)
+    const existing = getUnifiedWorkspaceAgents(folderPath).find((a) => a.id === input.id)
     if (!existing) {
       throw new Error(`工作区 Agent ${input.id} 不存在`)
     }
 
-    const updated: AgentProfile = {
+    const updated: AgentProfile = scopeWorkspaceAgent({
       ...existing,
       ...input,
       tags: ensureWorkspaceTag(input.tags ?? existing.tags),
       updatedAt: Date.now(),
-    }
+    }, folderPath)
 
     const result = await workspaceVCSService.updateAgent(folderPath, updated)
     if (!result.success) {
       throw new Error(result.error ?? '更新工作区 Agent 失败')
     }
 
-    set((state) => ({
-      workspaceAgents: state.workspaceAgents.map((a) =>
-        a.id === input.id ? updated : a
-      ),
-    }))
+    const nextAgents = getUnifiedWorkspaceAgents(folderPath).map((a) =>
+      a.id === input.id ? updated : a
+    )
+    useAgentStore.getState().replaceWorkspaceScopedAgents(folderPath, nextAgents)
+    set({ workspaceAgents: getUnifiedWorkspaceAgents(folderPath) })
   },
 
   deleteWorkspaceAgent: async (id, folderPath) => {
@@ -234,19 +260,21 @@ export const useWorkspaceAgentStore = create<WorkspaceAgentStore>()((set, get) =
       throw new Error(result.error ?? '删除工作区 Agent 失败')
     }
 
-    set((state) => ({
-      workspaceAgents: state.workspaceAgents.filter((a) => a.id !== id),
-    }))
+    const nextAgents = getUnifiedWorkspaceAgents(folderPath).filter((a) => a.id !== id)
+    useAgentStore.getState().replaceWorkspaceScopedAgents(folderPath, nextAgents)
+    set({ workspaceAgents: getUnifiedWorkspaceAgents(folderPath) })
   },
 
   promoteToGlobal: (id: string) => {
-    const agent = get().workspaceAgents.find((a) => a.id === id)
+    const agent = getUnifiedWorkspaceAgents(get().loadedFolderPath).find((a) => a.id === id)
     if (!agent) return undefined
 
     // 复制到全局 agent-store：新 ID，移除 workspace 标签
     const globalAgent: AgentProfile = {
       ...agent,
       id: uuidv4(),
+      scope: 'global',
+      workspaceFolderPath: undefined,
       tags: removeWorkspaceTag(agent.tags),
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -259,40 +287,41 @@ export const useWorkspaceAgentStore = create<WorkspaceAgentStore>()((set, get) =
   },
 
   getWorkspaceAgent: (id: string) => {
-    return get().workspaceAgents.find((a) => a.id === id)
+    const folderPath = get().loadedFolderPath
+    return getUnifiedWorkspaceAgents(folderPath).find((a) => a.id === id)
   },
 
   getWorkspaceAgents: () => {
-    return get().workspaceAgents
+    return getUnifiedWorkspaceAgents(get().loadedFolderPath)
   },
 
   getLeaderAgent: () => {
-    return get().workspaceAgents.find(isLeaderAgent)
+    return getUnifiedWorkspaceAgents(get().loadedFolderPath).find(isLeaderAgent)
   },
 
   updateLeaderAgent: async (input, folderPath) => {
-    const existing = get().workspaceAgents.find(isLeaderAgent)
+    const existing = getUnifiedWorkspaceAgents(folderPath).find(isLeaderAgent)
     if (!existing) {
       throw new Error(`工作区 AI 领导 Agent 不存在`)
     }
 
     // 确保 leader 标签不被覆盖
-    const updated: AgentProfile = {
+    const updated: AgentProfile = scopeWorkspaceAgent({
       ...existing,
       ...input,
       tags: ensureLeaderTag(input.tags ?? existing.tags),
       updatedAt: Date.now(),
-    }
+    }, folderPath)
 
     const result = await workspaceVCSService.updateAgent(folderPath, updated)
     if (!result.success) {
       throw new Error(result.error ?? '更新 AI 领导 Agent 失败')
     }
 
-    set((state) => ({
-      workspaceAgents: state.workspaceAgents.map((a) =>
-        a.id === existing.id ? updated : a
-      ),
-    }))
+    const nextAgents = getUnifiedWorkspaceAgents(folderPath).map((a) =>
+      a.id === existing.id ? updated : a
+    )
+    useAgentStore.getState().replaceWorkspaceScopedAgents(folderPath, nextAgents)
+    set({ workspaceAgents: getUnifiedWorkspaceAgents(folderPath) })
   },
 }))

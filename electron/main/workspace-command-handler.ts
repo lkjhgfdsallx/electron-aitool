@@ -38,13 +38,35 @@ const MAX_OUTPUT_BUFFER = 10 * 1024 * 1024
 const isWindows = platform() === 'win32'
 
 /**
- * 获取适合当前平台的 shell 配置
+ * 将命令编码为 PowerShell 可接受的 Base64 字符串
+ * PowerShell -EncodedCommand 要求使用 UTF-16LE 编码
  */
-function getShellConfig(): { shell: string; shellArgs: string[] } {
+function encodePowerShellCommand(command: string): string {
+  // 使用 UTF-16LE 编码（PowerShell 要求）
+  const bytes = Buffer.from(command, 'utf-16le')
+  return bytes.toString('base64')
+}
+
+/**
+ * 获取适合当前平台的 shell 配置
+ *
+ * @returns { shell, args } - shell 是 shell 可执行文件路径，args 包含 shell 参数和命令
+ */
+function getShellConfig(command: string): { shell: string; args: string[] } {
   if (isWindows) {
-    return { shell: 'powershell.exe', shellArgs: ['-NoProfile', '-Command'] }
+    // Windows 上使用 powershell.exe
+    // 使用 -NoProfile 快速启动，-EncodedCommand 执行 Base64 编码的命令
+    const encodedCmd = encodePowerShellCommand(command)
+    return {
+      shell: 'powershell.exe',
+      args: ['-NoProfile', '-EncodedCommand', encodedCmd],
+    }
   }
-  return { shell: '/bin/sh', shellArgs: ['-c'] }
+  // Unix 上使用 /bin/sh -c "command"
+  return {
+    shell: '/bin/sh',
+    args: ['-c', command],
+  }
 }
 
 // ---- IPC Handlers ----
@@ -71,7 +93,7 @@ async function executeCommand(
 }> {
   return new Promise((resolve) => {
     const startTime = Date.now()
-    const { shell, shellArgs } = getShellConfig()
+    const { shell, args } = getShellConfig(command)
 
     // 合并环境变量
     const processEnv = { ...process.env, ...env }
@@ -82,9 +104,8 @@ async function executeCommand(
     let killed = false
 
     try {
-      const childProcess = spawn(command, shellArgs, {
+      const childProcess = spawn(shell, args, {
         cwd: workingDir,
-        shell,
         env: processEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         // Windows: 使用 CREATE_NO_WINDOW 隐藏控制台窗口

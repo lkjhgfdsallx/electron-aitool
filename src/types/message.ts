@@ -47,6 +47,16 @@ export interface MessageAttachment {
   size: number
 }
 
+export interface TerminalLog {
+  id: string
+  type: 'stdout' | 'stderr' | 'command' | 'system'
+  content: string
+  timestamp: number
+  approvalRequestId?: string
+}
+
+export type TerminalLogCreateInput = Omit<TerminalLog, 'id' | 'timestamp'>
+
 export interface Message {
   id: string
   conversationId: string

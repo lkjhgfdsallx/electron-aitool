@@ -277,6 +277,18 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             get().updateWorkspace({ id, leaderAgentId: leader.id })
           }
         })
+
+        // 异步加载存档索引（直接通过 IPC，避免循环依赖）
+        ;(async () => {
+          try {
+            const result = await (window as any).electronAPI.workspace.vcs.listCheckpoints(workspace.folderPath)
+            if (result.success && result.checkpoints) {
+              get().setCheckpointIndex(result.checkpoints as any[])
+            }
+          } catch (err) {
+            console.warn('[workspace-store] 加载存档索引失败:', err)
+          }
+        })()
       },
 
       deactivateWorkspace: () => {

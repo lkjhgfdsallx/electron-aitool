@@ -29,6 +29,8 @@ import { useConversationStore } from '../../stores/conversation-store'
 import { Settings, ChevronLeft, ChevronDown, ChevronUp, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { workspaceFileWatcher } from '../../services/workspace-file-watcher'
+import { formatRelativeTime } from '../../utils/format-time'
+import { ResizeHandle } from '../shared/ResizeHandle'
 import { ProjectExplorer } from './ProjectExplorer'
 import { WorkspaceChatPanel } from './WorkspaceChatPanel'
 import { TerminalPanel } from './TerminalPanel'
@@ -36,26 +38,6 @@ import { FilePreview } from './FilePreview'
 import { WorkspaceCreateDialog } from './WorkspaceCreateDialog'
 import { WorkspaceSettingsPopover } from './WorkspaceSettingsPopover'
 import { ContextTimelinePanel } from './ContextTimelinePanel'
-
-/** 相对时间格式化 */
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now()
-  const diff = now - timestamp
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (seconds < 60) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
-  if (hours < 24) return `${hours} 小时前`
-  if (days < 7) return `${days} 天前`
-
-  const date = new Date(timestamp)
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const day = date.getDate().toString().padStart(2, '0')
-  return `${month}/${day}`
-}
 
 interface WorkspacePageProps {
   onBackToChat: () => void
@@ -213,58 +195,6 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     document.addEventListener('click', handleClose)
     return () => document.removeEventListener('click', handleClose)
   }, [tabContextMenu])
-
-  // 左栏拖拽调整宽度
-  const [isDraggingLeft, setIsDraggingLeft] = useState(false)
-  const handleLeftDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDraggingLeft(true)
-    const startX = e.clientX
-    const startWidth = leftPanelWidth
-
-    const handleMove = (ev: MouseEvent) => {
-      const delta = ev.clientX - startX
-      setLeftPanelWidth(Math.max(200, Math.min(500, startWidth + delta)))
-    }
-    const handleUp = () => {
-      setIsDraggingLeft(false)
-      document.removeEventListener('mousemove', handleMove)
-      document.removeEventListener('mouseup', handleUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-
-    document.addEventListener('mousemove', handleMove)
-    document.addEventListener('mouseup', handleUp)
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-  }, [leftPanelWidth])
-
-  // 底栏拖拽调整高度
-  const [isDraggingBottom, setIsDraggingBottom] = useState(false)
-  const handleBottomDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDraggingBottom(true)
-    const startY = e.clientY
-    const startHeight = bottomPanelHeight
-
-    const handleMove = (ev: MouseEvent) => {
-      const delta = startY - ev.clientY
-      setBottomPanelHeight(Math.max(100, Math.min(500, startHeight + delta)))
-    }
-    const handleUp = () => {
-      setIsDraggingBottom(false)
-      document.removeEventListener('mousemove', handleMove)
-      document.removeEventListener('mouseup', handleUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-
-    document.addEventListener('mousemove', handleMove)
-    document.addEventListener('mouseup', handleUp)
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-  }, [bottomPanelHeight])
 
   // 文件选择处理
   const handleFileSelect = useCallback((filePath: string) => {
@@ -530,7 +460,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     .filter(Boolean) as typeof workspaces
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 relative">
       {/* C1: Tab 标签栏（始终显示） */}
       <div className="flex items-center h-9 px-1 border-b border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-900/80 select-none overflow-x-auto scrollbar-thin"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
@@ -769,16 +699,14 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
           {/* 左栏拖拽手柄 */}
           {!leftPanelCollapsed && (
-            <div
-              onMouseDown={handleLeftDragStart}
-              className={`w-1 flex-shrink-0 cursor-col-resize group/drag relative z-10 ${
-                isDraggingLeft ? 'bg-teal-500/30' : 'hover:bg-teal-400/20'
-              }`}
-            >
-              <div className={`absolute top-1/2 -translate-y-1/2 left-0 w-0.5 h-8 rounded-full transition-colors ${
-                isDraggingLeft ? 'bg-teal-500' : 'bg-transparent group-hover/drag:bg-teal-400/60'
-              }`} />
-            </div>
+            <ResizeHandle
+              direction="horizontal"
+              size={leftPanelWidth}
+              onResize={setLeftPanelWidth}
+              min={200}
+              max={500}
+              className="relative z-10 w-1 hover:bg-teal-400/20"
+            />
           )}
 
           {/* 中栏：AI 领导控制台 或 文件预览 */}
@@ -811,16 +739,14 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
         {/* 底栏拖拽手柄 */}
         {!bottomPanelCollapsed && (
-          <div
-            onMouseDown={handleBottomDragStart}
-            className={`h-1 flex-shrink-0 cursor-row-resize group/drag relative z-10 ${
-              isDraggingBottom ? 'bg-teal-500/30' : 'hover:bg-teal-400/20'
-            }`}
-          >
-            <div className={`absolute left-1/2 -translate-x-1/2 top-0 h-0.5 w-8 rounded-full transition-colors ${
-              isDraggingBottom ? 'bg-teal-500' : 'bg-transparent group-hover/drag:bg-teal-400/60'
-            }`} />
-          </div>
+          <ResizeHandle
+            direction="vertical"
+            size={bottomPanelHeight}
+            onResize={setBottomPanelHeight}
+            min={100}
+            max={500}
+            className="relative z-10 h-1 hover:bg-teal-400/20"
+          />
         )}
 
         {/* 底栏：终端 & 审批 */}

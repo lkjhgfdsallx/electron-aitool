@@ -439,6 +439,13 @@ export const MessageItem = memo(function MessageItem({
   )
 }, (prevProps, nextProps) => {
   // 自定义比较函数：只在关键属性变化时重渲染
+  // 修复 Bug 2: agentSteps 的深度比较，确保 human_input 步骤更新时能触发重渲染
+  const agentStepsEqual = prevProps.message.agentSteps === nextProps.message.agentSteps
+  const hasHumanInputChange = prevProps.message.agentSteps?.some((s, i) => {
+    const next = nextProps.message.agentSteps?.[i]
+    return s?.type === 'human_input' && next?.type === 'human_input' && s?.humanResponse !== next?.humanResponse
+  }) ?? false
+  
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.content === nextProps.message.content &&
@@ -449,7 +456,7 @@ export const MessageItem = memo(function MessageItem({
     prevProps.message.finishReason === nextProps.message.finishReason &&
     prevProps.message.hasReport === nextProps.message.hasReport &&
     prevProps.message.toolCalls === nextProps.message.toolCalls &&
-    prevProps.message.agentSteps === nextProps.message.agentSteps &&
+    agentStepsEqual && !hasHumanInputChange &&
     prevProps.message.continuable === nextProps.message.continuable &&
     prevProps.message.attachments === nextProps.message.attachments &&
     prevProps.showTimestamp === nextProps.showTimestamp &&

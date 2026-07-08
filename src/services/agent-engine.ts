@@ -24,6 +24,9 @@ import type {
   AgentModelConfig,
   ContextPolicy,
   ApprovalPolicy,
+  PromptSection,
+  PromptVariable,
+  AgentWorkflow,
 } from '../types'
 import { aiService } from './ai-service'
 import { toolService } from './tool-service'
@@ -134,7 +137,19 @@ export interface CreateAgentInput {
   systemPrompt: string
   avatar?: string
   enabledToolIds?: string[]
+  /** 绑定的 Skills ID 列表 */
+  enabledSkillIds?: string[]
+  /** 是否启用 */
+  enabled?: boolean
   // ---- Phase 4 增强字段 ----
+  /** 复用提示词系统的段落 */
+  promptSections?: PromptSection[]
+  /** 引用已有 Prompt 模板 id */
+  promptTemplateId?: string
+  /** 变量定义 */
+  variables?: PromptVariable[]
+  /** 行为编排状态机 */
+  workflow?: AgentWorkflow
   /** 规划策略（默认 'react'） */
   planningStrategy?: PlanningStrategy
   /** 记忆配置 */

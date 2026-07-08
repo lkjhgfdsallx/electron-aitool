@@ -620,6 +620,59 @@ describe('buildWorkspaceContext', () => {
       expect(createArg.maxParallelSubtasks).toBe(5)
       expect(createArg.termination.maxSteps).toBe(100)
     })
+
+    it('应支持所有用户可配置的 Agent 字段', async () => {
+      const wsCtxPromise = captureWsContext()
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('执行任务', 'conv-ws')
+      })
+      const wsCtx = await wsCtxPromise
+
+      await wsCtx!.createAgent!({
+        name: '完整配置Agent',
+        description: 'desc',
+        systemPrompt: 'sys',
+        avatar: '🤖',
+        enabledToolIds: ['builtin:knowledge_search', 'workspace:read_file'],
+        enabledSkillIds: ['skill-1', 'skill-2'],
+        enabled: false,
+        promptSections: [{ id: 'sec-1', type: 'role', title: 'Section', content: 'content', enabled: true, order: 0 }],
+        promptTemplateId: 'template-1',
+        variables: [{ name: 'var1', label: '变量1', type: 'string', defaultValue: 'default', required: true }],
+        workflow: { states: { initial: { label: '初始状态', transitions: [] } }, initial: 'initial' },
+        planningStrategy: 'plan-and-execute',
+        memoryConfig: { historyTurns: 20, longTermEnabled: true, crossSession: false },
+        termination: { maxSteps: 200, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: { providerId: 'provider-1', modelId: 'model-1', temperature: 0.7 },
+        knowledgeBaseIds: ['kb-1', 'kb-2'],
+        contextPolicy: { strategy: 'compress', maxTokens: 100000, keepRecentTurns: 5 },
+        approvalPolicy: { autoApproveRead: true, autoApproveWrite: false, requireApprovalFor: ['execute_command'] },
+        maxParallelSubtasks: 10,
+      })
+
+      const createArg = mockCreateWorkspaceAgent.mock.calls[0][0]
+      // 验证所有字段都被正确传递
+      expect(createArg.name).toBe('完整配置Agent')
+      expect(createArg.enabledToolIds).toEqual(['builtin:knowledge_search', 'workspace:read_file'])
+      expect(createArg.enabledSkillIds).toEqual(['skill-1', 'skill-2'])
+      expect(createArg.enabled).toBe(false)
+      expect(createArg.promptSections).toHaveLength(1)
+      expect(createArg.promptTemplateId).toBe('template-1')
+      expect(createArg.variables).toHaveLength(1)
+      expect(createArg.workflow).toBeDefined()
+      expect((createArg.workflow as any)?.states).toBeDefined()
+      expect(createArg.planningStrategy).toBe('plan-and-execute')
+      expect(createArg.memoryConfig.historyTurns).toBe(20)
+      expect(createArg.termination.maxSteps).toBe(200)
+      expect(createArg.modelConfig.providerId).toBe('provider-1')
+      expect(createArg.knowledgeBaseIds).toEqual(['kb-1', 'kb-2'])
+      expect(createArg.contextPolicy).toBeDefined()
+      expect((createArg.contextPolicy as any)?.strategy).toBe('compress')
+      expect(createArg.approvalPolicy).toBeDefined()
+      expect(createArg.maxParallelSubtasks).toBe(10)
+    })
   })
 
   describe('onFileActionApproval', () => {

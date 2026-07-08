@@ -98,8 +98,8 @@ export const STORE_VERSIONS = {
   GLOBAL_CONFIG: 1,
   /** ai-provider-store (ai-providers) */
   AI_PROVIDERS: 1,
-  /** agent-store (agents) - v2: 强制同步 Leader Agent 系统提示词；v3: Phase 4 工作流/上下文/审批策略字段默认值 */
-  AGENTS: 3,
+  /** agent-store (agents) - v4: Phase 6 Agent 作用域字段 */
+  AGENTS: 4,
   /** conversation-store (conversations) - 已有 v2 迁移 */
   CONVERSATIONS: 2,
   /** custom-tool-store (custom-tools) */

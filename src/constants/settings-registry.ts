@@ -569,6 +569,30 @@ const WORKSPACE_ITEMS: SettingItemMeta[] = [
     description: '控制何时自动创建存档点：修改前、手动或定时',
     keywords: ['checkpoint', '存档', '快照', 'snapshot', '版本控制'],
     controlType: 'select',
+    layer: 'policy',
+    showInQuickAccess: true,
+    options: [
+      { value: 'auto-before-modify', label: '修改前自动存档', desc: '在文件被修改前创建存档点' },
+      { value: 'timed', label: '定时存档', desc: '按固定时间间隔创建存档点' },
+      { value: 'manual', label: '手动存档', desc: '仅在手动触发时创建存档点' },
+    ],
+    defaultValue: 'auto-before-modify',
+    tags: ['存档'],
+  },
+  {
+    id: 'workspace.timedIntervalMinutes',
+    section: 'workspace',
+    key: 'timedIntervalMinutes',
+    label: '定时间隔',
+    description: '选择定时存档策略时，自动创建存档点的间隔时间',
+    keywords: ['timed interval', '定时间隔', '分钟', 'checkpoint'],
+    controlType: 'number',
+    layer: 'policy',
+    defaultValue: 30,
+    min: 1,
+    max: 1440,
+    step: 1,
+    unit: ' 分钟',
     tags: ['存档'],
   },
   {
@@ -579,6 +603,12 @@ const WORKSPACE_ITEMS: SettingItemMeta[] = [
     description: '最多保留的存档点数量，超出后自动清理旧存档',
     keywords: ['max checkpoints', '存档上限', '保留数量'],
     controlType: 'slider',
+    layer: 'policy',
+    defaultValue: 50,
+    min: 5,
+    max: 500,
+    step: 5,
+    unit: ' 个',
     tags: ['存档'],
   },
   {
@@ -589,6 +619,14 @@ const WORKSPACE_ITEMS: SettingItemMeta[] = [
     description: '控制 AI Agent 执行 shell 命令的审批方式',
     keywords: ['command', '命令', '审批', 'shell', 'terminal', '执行'],
     controlType: 'select',
+    layer: 'policy',
+    showInQuickAccess: true,
+    options: [
+      { value: 'auto-approve-safe', label: '安全命令自动批准', desc: '安全命令自动执行，中高风险需审批' },
+      { value: 'all-need-approval', label: '全部需要审批', desc: '所有命令都需要人工审批' },
+      { value: 'auto-approve-all', label: '全部自动批准', desc: '所有命令自动执行（不推荐）' },
+    ],
+    defaultValue: 'auto-approve-safe',
     tags: ['命令'],
   },
   {
@@ -599,6 +637,9 @@ const WORKSPACE_ITEMS: SettingItemMeta[] = [
     description: '是否允许 AI Agent 在工作区中执行 shell 命令',
     keywords: ['command execution', '命令执行', 'shell', 'terminal'],
     controlType: 'toggle',
+    layer: 'policy',
+    showInQuickAccess: true,
+    defaultValue: true,
     tags: ['命令'],
   },
   {
@@ -609,6 +650,9 @@ const WORKSPACE_ITEMS: SettingItemMeta[] = [
     description: '启用对话上下文压缩以节省 Token 消耗',
     keywords: ['compression', '压缩', 'context', '上下文', 'token'],
     controlType: 'toggle',
+    layer: 'policy',
+    showInQuickAccess: true,
+    defaultValue: true,
     tags: ['上下文'],
   },
   {
@@ -619,7 +663,41 @@ const WORKSPACE_ITEMS: SettingItemMeta[] = [
     description: '对话上下文的最大 Token 限制',
     keywords: ['max tokens', 'token limit', 'token 上限'],
     controlType: 'slider',
+    layer: 'policy',
+    defaultValue: 8000,
+    min: 1000,
+    max: 200000,
+    step: 1000,
+    unit: ' tokens',
     tags: ['上下文'],
+  },
+  {
+    id: 'workspace.contextConfig.compressionThreshold',
+    section: 'workspace',
+    key: 'contextConfig.compressionThreshold',
+    label: '压缩阈值',
+    description: '达到最大 Token 数的指定比例后触发上下文压缩',
+    keywords: ['compression threshold', '压缩阈值', 'context', '百分比'],
+    controlType: 'slider',
+    layer: 'policy',
+    defaultValue: 80,
+    min: 50,
+    max: 100,
+    step: 5,
+    unit: '%',
+    tags: ['上下文'],
+  },
+  {
+    id: 'workspace.contextConfig.keepCheckpointBeforeCompression',
+    section: 'workspace',
+    key: 'contextConfig.keepCheckpointBeforeCompression',
+    label: '压缩前存档',
+    description: '在压缩上下文前自动创建存档点，便于回溯任务状态',
+    keywords: ['checkpoint before compression', '压缩前存档', '上下文存档'],
+    controlType: 'toggle',
+    layer: 'policy',
+    defaultValue: true,
+    tags: ['上下文', '存档'],
   },
 ]
 
@@ -722,4 +800,11 @@ export function getSectionSettings(section: SettingsSection): SettingItemMeta[] 
  */
 export function getRestartRequiredSettings(): SettingItemMeta[] {
   return SETTINGS_REGISTRY.filter((item) => item.requiresRestart)
+}
+
+/**
+ * 获取指定 section 的快捷设置项。
+ */
+export function getQuickAccessSettings(section: SettingsSection): SettingItemMeta[] {
+  return getSectionSettings(section).filter((item) => item.showInQuickAccess)
 }

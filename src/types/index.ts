@@ -1,5 +1,6 @@
 export type {
   AgentProfile,
+  AgentScope,
   AgentProfileCreateInput,
   AgentProfileUpdateInput,
   AgentStep,
@@ -68,6 +69,8 @@ export type {
   Message,
   MessageCreateInput,
   MessageAttachment,
+  TerminalLog,
+  TerminalLogCreateInput,
   ToolCall,
   TokenUsage,
   SiteAnalyzerLiveProgress

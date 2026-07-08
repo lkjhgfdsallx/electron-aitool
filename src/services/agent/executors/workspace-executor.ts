@@ -13,15 +13,13 @@
  */
 
 import { workspaceFsService } from '../../workspace-fs-service'
-import { WORKSPACE_TOOLS } from '../../built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../built-in-tools'
 import { isToolAutoApproved } from '../../tool-group-service'
-import { useWorkspaceMessageStore } from '../../../stores/workspace-message-store'
+import { useConversationStore } from '../../../stores/conversation-store'
 import { useWorkspaceAgentStore } from '../../../stores/workspace-agent-store'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { useAIProviderStore } from '../../../stores/ai-provider-store'
-import { useCustomToolStore } from '../../../stores/custom-tool-store'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../built-in-tools'
 import { runAgent } from '../../agent-engine'
 import type { ToolExecutor, AgentSessionContext, ToolSessionContext } from '../tool-executor'
 import type {
@@ -261,7 +259,7 @@ export class WorkspaceToolExecutor implements ToolExecutor {
     const command = String(args.command ?? '')
     if (!command) return { success: false, data: '', error: '需要 command 参数' }
     try {
-      const { addTerminalLog } = useWorkspaceMessageStore.getState()
+      const { addTerminalLog } = useConversationStore.getState()
       addTerminalLog(wsCtx.workspaceId, {
         type: 'command',
         content: `[${agentSessionCtx.agentName}] $ ${command}`,
@@ -308,7 +306,7 @@ export class WorkspaceToolExecutor implements ToolExecutor {
       }
       return { success: false, data: '', error: '命令执行功能仅在 Electron 环境中可用' }
     } catch (e) {
-      const { addTerminalLog } = useWorkspaceMessageStore.getState()
+      const { addTerminalLog } = useConversationStore.getState()
       if (wsCtx) {
         addTerminalLog(wsCtx.workspaceId, {
           type: 'stderr',
@@ -508,17 +506,45 @@ export class WorkspaceToolExecutor implements ToolExecutor {
     if (!description) return { success: false, data: '', error: '需要 description 参数' }
     if (!systemPrompt) return { success: false, data: '', error: '需要 system_prompt 参数' }
     const avatar = args.avatar ? String(args.avatar) : undefined
-    const enabledToolIds = Array.isArray(args.enabled_tool_ids) ? args.enabled_tool_ids.map(String) : undefined
 
-    // ---- Phase 4 增强字段提取 ----
+    // 工具ID规范化：支持工具名称（如 knowledge_search、workspace_read_file）和工具ID（如 builtin:knowledge_search、workspace:read_file）
+    const ALL_AGENT_TOOLS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS]
+    const nameToIdMap = new Map<string, string>()
+    for (const tool of ALL_AGENT_TOOLS) {
+      nameToIdMap.set(tool.name, tool.id)
+      // 同时支持下划线风格（workspace_read_file）和中划线风格（workspace-read_file）
+      nameToIdMap.set(tool.name.replace(/_/g, '-'), tool.id)
+    }
+
+    const normalizeToolId = (raw: string): string => {
+      // 如果已经是ID格式（包含:），直接返回
+      if (raw.includes(':')) return raw
+      // 查找名称映射
+      const mapped = nameToIdMap.get(raw)
+      if (mapped) return mapped
+      // 兜底：尝试加 builtin: 前缀
+      if (!raw.includes(':')) return `builtin:${raw}`
+      return raw
+    }
+
+    const rawToolIds = Array.isArray(args.enabled_tool_ids) ? args.enabled_tool_ids.map(String) : undefined
+    const enabledToolIds = rawToolIds?.map(normalizeToolId)
+
+    // 与用户手动创建 Agent 的可配置能力保持一致：工具、知识库、Skills、策略、模型、审批、工作流等均透传。
     const planningStrategy = typeof args.planning_strategy === 'string' ? (args.planning_strategy as CreateAgentInput['planningStrategy']) : undefined
     const memoryConfig = args.memory_config && typeof args.memory_config === 'object' ? (args.memory_config as CreateAgentInput['memoryConfig']) : undefined
     const termination = args.termination_config && typeof args.termination_config === 'object' ? (args.termination_config as CreateAgentInput['termination']) : undefined
     const modelConfig = args.model_config && typeof args.model_config === 'object' ? (args.model_config as CreateAgentInput['modelConfig']) : undefined
     const knowledgeBaseIds = Array.isArray(args.knowledge_base_ids) ? args.knowledge_base_ids.map(String) : undefined
+    const enabledSkillIds = Array.isArray(args.enabled_skill_ids) ? args.enabled_skill_ids.map(String) : undefined
     const contextPolicy = args.context_policy && typeof args.context_policy === 'object' ? (args.context_policy as CreateAgentInput['contextPolicy']) : undefined
     const approvalPolicy = args.approval_policy && typeof args.approval_policy === 'object' ? (args.approval_policy as CreateAgentInput['approvalPolicy']) : undefined
     const maxParallelSubtasks = typeof args.max_parallel_subtasks === 'number' ? args.max_parallel_subtasks : undefined
+    const promptSections = Array.isArray(args.prompt_sections) ? (args.prompt_sections as CreateAgentInput['promptSections']) : undefined
+    const promptTemplateId = typeof args.prompt_template_id === 'string' ? args.prompt_template_id : undefined
+    const variables = Array.isArray(args.variables) ? (args.variables as CreateAgentInput['variables']) : undefined
+    const workflow = args.workflow && typeof args.workflow === 'object' ? (args.workflow as CreateAgentInput['workflow']) : undefined
+    const enabled = typeof args.enabled === 'boolean' ? args.enabled : undefined
 
     try {
       const agentId = await wsCtx.createAgent({
@@ -527,6 +553,12 @@ export class WorkspaceToolExecutor implements ToolExecutor {
         systemPrompt,
         avatar,
         enabledToolIds,
+        enabledSkillIds,
+        enabled,
+        promptSections,
+        promptTemplateId,
+        variables,
+        workflow,
         planningStrategy,
         memoryConfig,
         termination,

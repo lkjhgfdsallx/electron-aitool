@@ -197,6 +197,8 @@ export interface CheckpointFileChange {
   linesAdded: number
   /** 删除行数 */
   linesRemoved: number
+  /** 统一格式的 diff 内容（每行格式：+ 新增, - 删除, 空格 不变） */
+  unifiedDiff?: string
 }
 
 // ---- 命令审批 ----

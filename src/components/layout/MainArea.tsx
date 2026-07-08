@@ -11,9 +11,10 @@ interface MainAreaProps {
   settingsSection: SettingsSection
   onOpenSettings: (section?: SettingsSection) => void
   onCloseSettings: () => void
+  onOpenWorkspace: () => void
 }
 
-export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSettings }: MainAreaProps) {
+export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSettings, onOpenWorkspace }: MainAreaProps) {
   const renderContent = () => {
     switch (viewMode) {
       case 'knowledge-base':
@@ -28,6 +29,7 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
           <SettingsPage
             defaultSection={settingsSection}
             onBack={onCloseSettings}
+            onOpenWorkspace={onOpenWorkspace}
           />
         )
       case 'workspace':

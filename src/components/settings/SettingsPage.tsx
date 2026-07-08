@@ -16,9 +16,10 @@ import { WorkspaceSettings } from './WorkspaceSettings'
 interface SettingsPageProps {
   defaultSection?: SettingsSection
   onBack: () => void
+  onOpenWorkspace: () => void
 }
 
-export function SettingsPage({ defaultSection = 'ai-providers', onBack }: SettingsPageProps) {
+export function SettingsPage({ defaultSection = 'ai-providers', onBack, onOpenWorkspace }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(defaultSection)
 
   const handleNavigateToSection = (section: string) => {
@@ -45,7 +46,7 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack }: Settin
       case 'tools':
         return <ToolEditor />
       case 'workspace':
-        return <WorkspaceSettings />
+        return <WorkspaceSettings onOpenWorkspace={onOpenWorkspace} />
       case 'knowledge-base':
         return <KnowledgeBaseSettings />
       case 'model-params':

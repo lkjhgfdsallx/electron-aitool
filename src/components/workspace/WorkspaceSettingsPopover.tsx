@@ -13,9 +13,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  Settings, Shield, Terminal, Clock, ExternalLink, ToggleLeft, ToggleRight,
-  Database, Plug, ChevronDown, ChevronRight, Check, X, Crown, FileEdit,
-  Users, ArrowUpToLine, Trash2,
+  Settings, ExternalLink, ToggleLeft, ToggleRight,
+  Database, Plug, ChevronDown, ChevronRight, Check, Crown, FileEdit,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
@@ -23,9 +22,11 @@ import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT } from '../../constants/default-agents'
+import { getQuickAccessSettings } from '../../constants/settings-registry'
+import { SettingFieldRenderer } from '../settings/SettingFieldRenderer'
 import { LeaderPromptEditorModal } from './LeaderPromptEditorModal'
-import type { Workspace, CommandPolicy, CheckpointPolicy, AutoApprovalConfig } from '../../types'
-import type { AgentProfile } from '../../types/agent'
+import type { Workspace, AutoApprovalConfig } from '../../types'
+import type { SettingItemMeta } from '../../types/settings-meta'
 
 // ---- Props ----
 
@@ -35,6 +36,35 @@ interface WorkspaceSettingsPopoverProps {
   onOpenFullSettings: () => void
   /** 触发按钮的 ref，用于 fixed 定位计算 */
   anchorRef?: React.RefObject<HTMLButtonElement | null>
+}
+
+// ---- 元数据驱动设置工具 ----
+
+function getWorkspaceSettingValue(workspace: Workspace, item: SettingItemMeta): unknown {
+  const path = item.path ?? item.key
+  return path.split('.').reduce<unknown>((acc, part) => {
+    if (acc && typeof acc === 'object') {
+      return (acc as Record<string, unknown>)[part]
+    }
+    return undefined
+  }, workspace)
+}
+
+function buildWorkspaceSettingPatch(item: SettingItemMeta, value: unknown, workspace: Workspace): Partial<Workspace> {
+  const path = item.path ?? item.key
+  const parts = path.split('.')
+  if (parts.length === 1) {
+    return { [parts[0]]: value } as Partial<Workspace>
+  }
+
+  const [root, child] = parts
+  const currentRoot = workspace[root as keyof Workspace]
+  return {
+    [root]: {
+      ...(currentRoot && typeof currentRoot === 'object' ? currentRoot : {}),
+      [child]: value,
+    },
+  } as Partial<Workspace>
 }
 
 // ---- 组件 ----
@@ -64,12 +94,6 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
   const mcpServers = useGlobalConfigStore((s) => s.mcpServers)
   const [showMCPSection, setShowMCPSection] = useState(false)
 
-  // 工作区 Agent
-  const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
-  const promoteToGlobal = useWorkspaceAgentStore((s) => s.promoteToGlobal)
-  const deleteWorkspaceAgent = useWorkspaceAgentStore((s) => s.deleteWorkspaceAgent)
-  const [showAgentSection, setShowAgentSection] = useState(false)
-
   // Leader 提示词编辑
   const getAgent = useAgentStore((s) => s.getAgent)
   const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
@@ -94,27 +118,12 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [onClose, anchorRef])
 
-  // 切换命令执行
-  const toggleCommandExecution = useCallback(() => {
-    updateWorkspace({
-      id: workspace.id,
-      commandExecutionEnabled: !workspace.commandExecutionEnabled,
-    })
-  }, [workspace, updateWorkspace])
+  const quickSettingItems = getQuickAccessSettings('workspace')
 
-  // 切换审批策略
-  const setCommandPolicy = useCallback((policy: CommandPolicy) => {
+  const updateQuickSetting = useCallback((item: SettingItemMeta, value: unknown) => {
     updateWorkspace({
       id: workspace.id,
-      commandPolicy: policy,
-    })
-  }, [workspace, updateWorkspace])
-
-  // 切换存档策略
-  const setCheckpointPolicy = useCallback((policy: CheckpointPolicy) => {
-    updateWorkspace({
-      id: workspace.id,
-      checkpointPolicy: policy,
+      ...buildWorkspaceSettingPatch(item, value, workspace),
     })
   }, [workspace, updateWorkspace])
 
@@ -158,29 +167,8 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     updateWorkspace({ id: workspace.id, mcpServerIds: next })
   }, [workspace, updateWorkspace])
 
-  const commandPolicyLabels: Record<CommandPolicy, string> = {
-    'auto-approve-safe': '安全命令自动批准',
-    'auto-approve-all': '全部自动批准',
-    'all-need-approval': '全部需要审批',
-  }
-
-  const checkpointPolicyLabels: Record<CheckpointPolicy, string> = {
-    'auto-before-modify': '修改前自动存档',
-    timed: '定时存档',
-    manual: '手动存档',
-  }
-
   const enabledKBCount = (workspace.knowledgeBaseIds ?? []).length
   const enabledMCPCount = (workspace.mcpServerIds ?? []).length
-
-  // 工作区 Agent 快捷操作
-  const handlePromoteAgent = useCallback((agent: AgentProfile) => {
-    promoteToGlobal(agent.id)
-  }, [promoteToGlobal])
-
-  const handleDeleteAgent = useCallback((agentId: string) => {
-    deleteWorkspaceAgent(agentId, workspace.folderPath)
-  }, [deleteWorkspaceAgent, workspace.folderPath])
 
   return createPortal(
     <div
@@ -201,55 +189,17 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
 
       {/* 设置项（可滚动） */}
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-        {/* 命令执行开关 */}
-        <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
-          <div className="flex items-center gap-2.5">
-            <Terminal size={14} className="text-gray-400" />
-            <div>
-              <p className="text-xs text-gray-700 dark:text-gray-300">命令执行</p>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                {workspace.commandExecutionEnabled ? 'AI 可执行 shell 命令' : '命令执行已禁用'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={toggleCommandExecution}
-            className={`transition-colors ${
-              workspace.commandExecutionEnabled ? 'text-teal-500' : 'text-gray-300 dark:text-gray-600'
-            }`}
-          >
-            {workspace.commandExecutionEnabled ? (
-              <ToggleRight size={22} />
-            ) : (
-              <ToggleLeft size={22} />
-            )}
-          </button>
-        </div>
-
-        {/* 审批策略 */}
-        {workspace.commandExecutionEnabled && (
-          <div className="px-3 py-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
-            <div className="flex items-center gap-2.5 mb-2">
-              <Shield size={14} className="text-gray-400" />
-              <p className="text-xs text-gray-700 dark:text-gray-300">审批策略</p>
-            </div>
-            <div className="ml-6 space-y-1">
-              {(Object.keys(commandPolicyLabels) as CommandPolicy[]).map((policy) => (
-                <button
-                  key={policy}
-                  onClick={() => setCommandPolicy(policy)}
-                  className={`w-full text-left px-2 py-1 rounded text-[11px] transition-colors ${
-                    workspace.commandPolicy === policy
-                      ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
-                      : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-600/50'
-                  }`}
-                >
-                  {commandPolicyLabels[policy]}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* 注册表驱动快捷设置 */}
+        {quickSettingItems.map((item) => (
+          <SettingFieldRenderer
+            key={item.id}
+            item={item}
+            value={getWorkspaceSettingValue(workspace, item)}
+            onChange={(value) => updateQuickSetting(item, value)}
+            compact
+            className="rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors"
+          />
+        ))}
 
         {/* 自动审批矩阵 */}
         <div className="rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
@@ -303,29 +253,6 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
               ))}
             </div>
           )}
-        </div>
-
-        {/* 存档策略 */}
-        <div className="px-3 py-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
-          <div className="flex items-center gap-2.5 mb-2">
-            <Clock size={14} className="text-gray-400" />
-            <p className="text-xs text-gray-700 dark:text-gray-300">存档策略</p>
-          </div>
-          <div className="ml-6 space-y-1">
-            {(Object.keys(checkpointPolicyLabels) as CheckpointPolicy[]).map((policy) => (
-              <button
-                key={policy}
-                onClick={() => setCheckpointPolicy(policy)}
-                className={`w-full text-left px-2 py-1 rounded text-[11px] transition-colors ${
-                  workspace.checkpointPolicy === policy
-                    ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-600/50'
-                }`}
-              >
-                {checkpointPolicyLabels[policy]}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* C3: 知识库关联 */}
@@ -417,66 +344,6 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
               )}
               <p className="text-[9px] text-gray-400 dark:text-gray-500 pt-1">
                 工作区启用的 MCP 工具直接对 AI 领导可见
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* 工作区 Agent 管理 */}
-        <div className="rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
-          <button
-            onClick={() => setShowAgentSection(!showAgentSection)}
-            className="w-full flex items-center gap-2.5 px-3 py-2"
-          >
-            <Users size={14} className="text-gray-400" />
-            <div className="flex-1 text-left">
-              <p className="text-xs text-gray-700 dark:text-gray-300">工作区 Agent</p>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                {workspaceAgents.length > 0 ? `已创建 ${workspaceAgents.length} 个 Agent` : '暂无工作区 Agent'}
-              </p>
-            </div>
-            {workspaceAgents.length > 0 && (
-              <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
-                {workspaceAgents.length}
-              </span>
-            )}
-            {showAgentSection ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
-          </button>
-          {showAgentSection && (
-            <div className="px-3 pb-2 ml-6 space-y-1">
-              {workspaceAgents.length === 0 ? (
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 py-1">
-                  AI 领导创建的 Agent 将显示在此处
-                </p>
-              ) : (
-                workspaceAgents.map((agent) => (
-                  <div
-                    key={agent.id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded text-[11px] group hover:bg-surface-100 dark:hover:bg-surface-600/50 transition-colors"
-                  >
-                    <span className="text-sm flex-shrink-0">{agent.avatar || '🤖'}</span>
-                    <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{agent.name}</span>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handlePromoteAgent(agent)}
-                        title="提升为全局 Agent"
-                        className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 text-gray-400 hover:text-amber-500 transition-colors"
-                      >
-                        <ArrowUpToLine size={12} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteAgent(agent.id)}
-                        title="删除"
-                        className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-              <p className="text-[9px] text-gray-400 dark:text-gray-500 pt-1">
-                工作区 Agent 仅在此工作区可用，可提升为全局 Agent
               </p>
             </div>
           )}

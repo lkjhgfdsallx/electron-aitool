@@ -604,6 +604,7 @@ describe('sendMessage Agent 模式', () => {
 describe('handleToolCalls（普通模式工具调用循环）', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    convStoreState.messages = {}
     mockGetMessages.mockReturnValue([])
     mockGetVisibleMessages.mockReturnValue([])
     mockGetConversation.mockReturnValue(undefined)
@@ -696,5 +697,228 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
       (c) => c[1]?.role === 'tool' && (c[1]?.content as string)?.includes('工具报错'),
     )
     expect(failedToolMsg).toBeDefined()
+  })
+
+  it('超过最大工具迭代次数时应添加系统通知并请求无工具最终回复', async () => {
+    expect.assertions(1)
+    let initialCallbacks: Record<string, (...args: unknown[]) => unknown> | null = null
+    let streamCallCount = 0
+    let finalReplyTools: unknown[] | null = null
+
+    mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+      streamCallCount += 1
+      const callbacks = args[5] as Record<string, (...args: unknown[]) => unknown>
+
+      if (streamCallCount === 1) {
+        initialCallbacks = callbacks
+        return
+      }
+
+      if (streamCallCount <= 31) {
+        callbacks.onToolCalls?.([{ id: `loop-${streamCallCount}`, name: 'calculator', arguments: '{}' }])
+        await callbacks.onDone?.('stop')
+        return
+      }
+
+      finalReplyTools = args[3] as unknown[]
+      callbacks.onToken?.('最终回复')
+      callbacks.onReasoningToken?.('推理内容')
+      callbacks.onUsage?.({ totalTokens: 12 })
+      callbacks.onDone?.('stop')
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('循环调用工具', 'conv-plain')
+      await initialCallbacks?.onToolCalls?.([{ id: 'initial-tc', name: 'calculator', arguments: '{}' }])
+      await initialCallbacks?.onDone?.('stop')
+    })
+
+    const systemNotice = mockAddMessage.mock.calls.find(
+      (call) => call[1]?.role === 'system',
+    )?.[1]
+    const finalReply = mockUpdateMessage.mock.calls.find(
+      (call) => call[1]?.content === '最终回复' && call[1]?.isStreaming === false,
+    )?.[1]
+
+    expect({
+      streamCallCount,
+      systemNoticeRole: systemNotice?.role,
+      systemNoticeContent: systemNotice?.content,
+      finalReplyTools,
+      finalReply,
+    }).toEqual({
+      streamCallCount: 32,
+      systemNoticeRole: 'system',
+      systemNoticeContent: '[系统通知] 工具调用已达最大迭代次数（30轮），已停止工具调用。请根据目前已获取的信息直接给出最终回复，不要再尝试调用工具。',
+      finalReplyTools: [],
+      finalReply: {
+        content: '最终回复',
+        isStreaming: false,
+        reasoningContent: '推理内容',
+        finishReason: 'stop',
+      },
+    })
+  })
+
+  it('超过最大工具迭代次数后 streamChat onError 应标记最终回复为错误状态', async () => {
+    expect.assertions(1)
+    let initialCallbacks: Record<string, (...args: unknown[]) => unknown> | null = null
+    let streamCallCount = 0
+    let finalReplyTools: unknown[] | null = null
+
+    mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+      streamCallCount += 1
+      const callbacks = args[5] as Record<string, (...args: unknown[]) => unknown>
+
+      if (streamCallCount === 1) {
+        initialCallbacks = callbacks
+        return
+      }
+
+      if (streamCallCount <= 31) {
+        callbacks.onToolCalls?.([{ id: `loop-${streamCallCount}`, name: 'calculator', arguments: '{}' }])
+        await callbacks.onDone?.('stop')
+        return
+      }
+
+      // 第32次调用（最终回复）触发 onError 而非 onDone
+      finalReplyTools = args[3] as unknown[]
+      callbacks.onToken?.('部分回复')
+      callbacks.onReasoningToken?.('推理内容')
+      callbacks.onError?.('模拟流式错误')
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('循环调用工具', 'conv-plain')
+      await initialCallbacks?.onToolCalls?.([{ id: 'initial-tc', name: 'calculator', arguments: '{}' }])
+      await initialCallbacks?.onDone?.('stop')
+    })
+
+    const systemNotice = mockAddMessage.mock.calls.find(
+      (call) => call[1]?.role === 'system',
+    )?.[1]
+    const errorReply = mockUpdateMessage.mock.calls.find(
+      (call) => call[1]?.isError === true && call[1]?.isStreaming === false,
+    )?.[1]
+
+    expect({
+      streamCallCount,
+      systemNoticeRole: systemNotice?.role,
+      finalReplyTools,
+      errorReply,
+    }).toEqual({
+      streamCallCount: 32,
+      systemNoticeRole: 'system',
+      finalReplyTools: [],
+      errorReply: {
+        // onError 使用 limitFullContent || error，onToken 已设置了 limitFullContent
+        content: '部分回复',
+        isStreaming: false,
+        isError: true,
+        reasoningContent: '推理内容',
+      },
+    })
+  })
+
+  it('工具执行后 AI 返回纯文本时应结束工具调用循环并推送内容', async () => {
+    expect.assertions(1)
+    let streamCallCount = 0
+    let capturedCallbacks: Record<string, (...args: unknown[]) => unknown> | null = null
+
+    mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+      streamCallCount += 1
+      const callbacks = args[5] as Record<string, (...args: unknown[]) => unknown>
+
+      if (streamCallCount === 1) {
+        // 第一次：触发工具调用
+        callbacks.onToolCalls?.([{ id: 'tc1', name: 'calculator', arguments: '{"expr":"1+1"}' }])
+        callbacks.onDone?.('stop')
+        return
+      }
+
+      // 第二次（工具执行后）：AI 返回纯文本，不再调用工具
+      capturedCallbacks = callbacks
+      callbacks.onToken?.('计算结果为 ')
+      callbacks.onToken?.('2')
+      callbacks.onReasoningToken?.('推理步骤')
+      callbacks.onUsage?.({ totalTokens: 50 })
+      callbacks.onDone?.('stop')
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('计算一下', 'conv-plain')
+      // 等待工具执行完成
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    // 验证最终回复包含流式推送的内容
+    const finalUpdate = mockUpdateMessage.mock.calls.find(
+      (call) => call[1]?.content === '计算结果为 2' && call[1]?.isStreaming === false,
+    )?.[1]
+
+    expect({
+      streamCallCount,
+      finalUpdate,
+    }).toEqual({
+      streamCallCount: 2,
+      finalUpdate: {
+        content: '计算结果为 2',
+        isStreaming: false,
+        reasoningContent: '推理步骤',
+        finishReason: 'stop',
+      },
+    })
+  })
+
+  it('工具执行后 streamChat onError 应标记消息为错误状态', async () => {
+    expect.assertions(1)
+    let streamCallCount = 0
+
+    mockStreamChat.mockImplementation(async (...args: unknown[]) => {
+      streamCallCount += 1
+      const callbacks = args[5] as Record<string, (...args: unknown[]) => unknown>
+
+      if (streamCallCount === 1) {
+        // 第一次：触发工具调用
+        callbacks.onToolCalls?.([{ id: 'tc1', name: 'calculator', arguments: '{}' }])
+        callbacks.onDone?.('stop')
+        return
+      }
+
+      // 第二次（工具执行后）：streamChat 报错
+      callbacks.onToken?.('部分回复')
+      callbacks.onReasoningToken?.('推理内容')
+      callbacks.onError?.('网络错误')
+    })
+
+    const { result } = renderHook(() => useChat())
+
+    await act(async () => {
+      await result.current.sendMessage('计算一下', 'conv-plain')
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    const errorUpdate = mockUpdateMessage.mock.calls.find(
+      (call) => call[1]?.isError === true && call[1]?.isStreaming === false,
+    )?.[1]
+
+    expect({
+      streamCallCount,
+      errorUpdate,
+    }).toEqual({
+      streamCallCount: 2,
+      errorUpdate: {
+        content: '部分回复',
+        isStreaming: false,
+        isError: true,
+        reasoningContent: '推理内容',
+      },
+    })
   })
 })

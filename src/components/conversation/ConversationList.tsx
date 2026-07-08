@@ -13,27 +13,8 @@ import {
 import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { exportConversation, type ExportFormat } from '../../services/export-service'
+import { formatRelativeTime } from '../../utils/format-time'
 import type { Conversation } from '../../types'
-
-/** 相对时间格式化 */
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now()
-  const diff = now - timestamp
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (seconds < 60) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
-  if (hours < 24) return `${hours} 小时前`
-  if (days < 7) return `${days} 天前`
-
-  const date = new Date(timestamp)
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const day = date.getDate().toString().padStart(2, '0')
-  return `${month}/${day}`
-}
 
 /** 对话分组标签 */
 function getDateGroup(timestamp: number): string {

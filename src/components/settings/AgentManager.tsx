@@ -27,7 +27,7 @@ import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useSkillStore } from '../../stores/skill-store'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS } from '../../services/built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../services/built-in-tools'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import { SYSTEM_AGENT_TAGS } from '../../types'
 import type {
@@ -49,8 +49,9 @@ const PLANNING_STRATEGIES: { value: PlanningStrategy; label: string; description
   { value: 'trial-and-error', label: '试错重试', description: '大胆尝试，失败后回退重试' }
 ]
 
-// 新建 Agent 时默认选中所有工具的 ID
-const ALL_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
+// 新建全局 Agent 时默认选中所有通用/Agent 工具；工作区模式会额外加入工作区专用工具
+const GLOBAL_AGENT_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
+const WORKSPACE_AGENT_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS].map((t) => t.id)
 
 // 始终启用但对用户不可见的工具 ID（web 搜索相关能力由系统自动注入）
 const HIDDEN_ALWAYS_ENABLED_TOOL_IDS = ['builtin:web_search', 'builtin:fetch_webpage']
@@ -60,25 +61,27 @@ const VISIBLE_BUILT_IN_TOOLS = BUILT_IN_TOOLS.filter(
   (t) => !HIDDEN_ALWAYS_ENABLED_TOOL_IDS.includes(t.id)
 )
 
-const EMPTY_AGENT_INPUT: AgentProfileCreateInput = {
-  name: '',
-  description: '',
-  avatar: '🤖',
-  systemPrompt: '',
-  enabledToolIds: [...ALL_TOOL_IDS],
-  planningStrategy: 'react',
-  memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: true },
-  termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
-  modelConfig: {},
-  knowledgeBaseIds: [],
-  enabledSkillIds: [],
-  enabled: true,
-  // Phase 4 新增字段默认值
-  promptSections: [],
-  maxParallelSubtasks: 3,
-  contextPolicy: undefined,
-  approvalPolicy: undefined,
-  workflow: undefined,
+function createEmptyAgentInput(isWorkspaceMode: boolean): AgentProfileCreateInput {
+  return {
+    name: '',
+    description: '',
+    avatar: '🤖',
+    systemPrompt: '',
+    enabledToolIds: isWorkspaceMode ? [...WORKSPACE_AGENT_TOOL_IDS] : [...GLOBAL_AGENT_TOOL_IDS],
+    planningStrategy: 'react',
+    memoryConfig: { historyTurns: 10, longTermEnabled: true, crossSession: true },
+    termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
+    modelConfig: {},
+    knowledgeBaseIds: [],
+    enabledSkillIds: [],
+    enabled: true,
+    // Phase 4 新增字段默认值
+    promptSections: [],
+    maxParallelSubtasks: 3,
+    contextPolicy: undefined,
+    approvalPolicy: undefined,
+    workflow: undefined,
+  }
 }
 
 export interface AgentManagerProps {
@@ -86,9 +89,13 @@ export interface AgentManagerProps {
   isWorkspaceMode?: boolean
   /** 工作区根目录路径（工作区模式下必须提供） */
   folderPath?: string
+  /** 初始打开编辑的 Agent ID，用于工作区内复用完整编辑器 */
+  initialEditingAgentId?: string
+  /** 嵌入弹窗时关闭编辑器 */
+  onClose?: () => void
 }
 
-export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManagerProps) {
+export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditingAgentId, onClose }: AgentManagerProps) {
   const {
     agents: globalAgents, createAgent: createGlobalAgent, updateAgent: updateGlobalAgent, deleteAgent: deleteGlobalAgent,
     duplicateAgent: duplicateGlobalAgent, toggleAgentEnabled: toggleGlobalAgentEnabled,
@@ -134,24 +141,25 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
   }, [loadCollections])
 
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null)
-  const [agentForm, setAgentForm] = useState<AgentProfileCreateInput>(EMPTY_AGENT_INPUT)
+  const [agentForm, setAgentForm] = useState<AgentProfileCreateInput>(() => createEmptyAgentInput(isWorkspaceMode))
   const [isCreating, setIsCreating] = useState(false)
 
   // ==================== Agent 操作 ====================
 
   const handleCreateAgent = () => {
-    setAgentForm(EMPTY_AGENT_INPUT)
+    setAgentForm(createEmptyAgentInput(isWorkspaceMode))
     setEditingAgent(null)
     setIsCreating(true)
   }
 
   const handleEditAgent = (agent: AgentProfile) => {
+    const fallbackToolIds = isWorkspaceMode ? WORKSPACE_AGENT_TOOL_IDS : GLOBAL_AGENT_TOOL_IDS
     setAgentForm({
       name: agent.name,
       description: agent.description,
       avatar: agent.avatar,
       systemPrompt: agent.systemPrompt,
-      enabledToolIds: [...agent.enabledToolIds],
+      enabledToolIds: agent.enabledToolIds.length > 0 ? [...agent.enabledToolIds] : [...fallbackToolIds],
       planningStrategy: agent.planningStrategy,
       memoryConfig: { ...agent.memoryConfig },
       termination: { ...agent.termination },
@@ -169,6 +177,18 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
     setIsCreating(true)
   }
 
+  useEffect(() => {
+    if (!initialEditingAgentId || isCreating) return
+    const agent = agents.find((a) => a.id === initialEditingAgentId)
+    if (agent) handleEditAgent(agent)
+  }, [initialEditingAgentId, agents, isCreating])
+
+  const handleCloseEditor = () => {
+    setIsCreating(false)
+    setEditingAgent(null)
+    onClose?.()
+  }
+
   const handleSaveAgent = async () => {
     if (!agentForm.name.trim()) return
     try {
@@ -183,6 +203,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
     }
     setIsCreating(false)
     setEditingAgent(null)
+    onClose?.()
   }
 
   const handleDeleteAgent = async (id: string) => {
@@ -245,7 +266,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
             {editingAgent ? '编辑 Agent' : '新建 Agent'}
           </h2>
           <button
-            onClick={() => setIsCreating(false)}
+            onClick={handleCloseEditor}
             className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
           >
             <X size={18} />
@@ -349,6 +370,36 @@ export function AgentManager({ isWorkspaceMode = false, folderPath }: AgentManag
                   </div>
                 </label>
               ))}
+
+              {isWorkspaceMode && (
+                <>
+                  {/* 工作区专用工具 */}
+                  <div className="text-xs font-medium text-muted px-1 pt-2">工作区专用工具</div>
+                  {WORKSPACE_TOOLS.map((tool) => (
+                    <label
+                      key={tool.id}
+                      className="flex items-center gap-3 p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 hover:bg-surface-50 dark:hover:bg-surface-800 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={agentForm.enabledToolIds.includes(tool.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setAgentForm({ ...agentForm, enabledToolIds: [...agentForm.enabledToolIds, tool.id] })
+                          } else {
+                            setAgentForm({ ...agentForm, enabledToolIds: agentForm.enabledToolIds.filter((id) => id !== tool.id) })
+                          }
+                        }}
+                        className="rounded accent-teal-500"
+                      />
+                      <div>
+                        <span className="text-sm">{tool.name}</span>
+                        <p className="text-xs text-muted">{tool.description}</p>
+                      </div>
+                    </label>
+                  ))}
+                </>
+              )}
 
               {/* Agent 专属工具 */}
               <div className="text-xs font-medium text-muted px-1 pt-2">Agent 专属工具</div>

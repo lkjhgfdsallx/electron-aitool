@@ -6,18 +6,14 @@
  * 2. 工作区编辑表单（选中某个工作区后展示）
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   Briefcase,
-  Plus,
   FolderOpen,
   Bot,
   Users,
-  Clock,
-  Shield,
   Terminal,
   Database,
-  Plug,
   ChevronRight,
   Trash2,
   Play,
@@ -25,29 +21,25 @@ import {
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
+import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import type {
   Workspace,
   WorkspaceUpdateInput,
-  CheckpointPolicy,
-  CommandPolicy,
 } from '../../types'
+import { getSectionSettings } from '../../constants/settings-registry'
+import type { SettingItemMeta } from '../../types/settings-meta'
+import { SettingFieldRenderer } from './SettingFieldRenderer'
+import { AgentManager } from './AgentManager'
+import { LeaderPromptEditorModal } from '../workspace/LeaderPromptEditorModal'
 
-// ---- 存档策略选项 ----
+const WORKSPACE_SETTING_ITEMS = getSectionSettings('workspace')
 
-const CHECKPOINT_POLICY_OPTIONS: Array<{ value: CheckpointPolicy; label: string; desc: string }> = [
-  { value: 'auto-before-modify', label: '自动（修改前）', desc: '在文件被修改前自动创建存档点' },
-  { value: 'manual', label: '手动', desc: '仅在手动触发时创建存档点' },
-  { value: 'timed', label: '定时', desc: '按固定时间间隔创建存档点' },
-]
-
-// ---- 命令策略选项 ----
-
-const COMMAND_POLICY_OPTIONS: Array<{ value: CommandPolicy; label: string; desc: string }> = [
-  { value: 'auto-approve-safe', label: '自动批准安全命令', desc: '安全命令自动执行，中高风险需审批' },
-  { value: 'all-need-approval', label: '全部需要审批', desc: '所有命令都需要人工审批' },
-  { value: 'auto-approve-all', label: '全部自动批准', desc: '所有命令自动执行（不推荐）' },
-]
+function workspaceSetting(id: string): SettingItemMeta {
+  const item = WORKSPACE_SETTING_ITEMS.find((meta) => meta.id === id)
+  if (!item) throw new Error(`Workspace setting metadata not found: ${id}`)
+  return item
+}
 
 // ---- 工作区卡片 ----
 
@@ -123,28 +115,82 @@ function SectionTitle({ icon: Icon, title, description }: { icon: typeof Briefca
   )
 }
 
+function getWorkspaceSettingValue(workspace: Workspace, item: SettingItemMeta): unknown {
+  const path = item.path ?? item.key
+  return path.split('.').reduce<unknown>((acc, part) => {
+    if (acc && typeof acc === 'object') {
+      return (acc as Record<string, unknown>)[part]
+    }
+    return undefined
+  }, workspace)
+}
+
+function applyWorkspaceSettingValue(workspace: Workspace, item: SettingItemMeta, value: unknown): Workspace {
+  const path = item.path ?? item.key
+  const parts = path.split('.')
+
+  if (parts.length === 1) {
+    return { ...workspace, [parts[0]]: value }
+  }
+
+  const [root, child] = parts
+  const currentRoot = workspace[root as keyof Workspace]
+  return {
+    ...workspace,
+    [root]: {
+      ...(currentRoot && typeof currentRoot === 'object' ? currentRoot : {}),
+      [child]: value,
+    },
+  }
+}
+
 // ---- 工作区编辑表单 ----
 
 function WorkspaceEditForm({
   workspace,
   onBack,
+  onOpenWorkspace,
 }: {
   workspace: Workspace
   onBack: () => void
+  onOpenWorkspace: () => void
 }) {
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const deleteWorkspace = useWorkspaceStore((s) => s.deleteWorkspace)
   const activateWorkspace = useWorkspaceStore((s) => s.activateWorkspace)
-  const agents = useAgentStore((s) => s.agents)
-  const updateAgent = useAgentStore((s) => s.updateAgent)
+  const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
+  const loadWorkspaceAgents = useWorkspaceAgentStore((s) => s.loadWorkspaceAgents)
+  const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
 
   const [form, setForm] = useState({ ...workspace })
   const [isSaving, setIsSaving] = useState(false)
   const [showPromptEditor, setShowPromptEditor] = useState(false)
-  const [leaderPrompt, setLeaderPrompt] = useState('')
+
+  useEffect(() => {
+    setForm({ ...workspace })
+  }, [workspace])
+
+  useEffect(() => {
+    let cancelled = false
+    loadWorkspaceAgents(workspace.folderPath).then(() => {
+      if (cancelled) return
+      const leader = getLeaderAgent()
+      if (leader && workspace.leaderAgentId !== leader.id) {
+        updateWorkspace({ id: workspace.id, leaderAgentId: leader.id })
+        setForm((prev) => ({ ...prev, leaderAgentId: leader.id }))
+      }
+    }).catch((err) => {
+      console.warn('[WorkspaceSettings] 加载工作区 Agent 失败:', err)
+    })
+    return () => { cancelled = true }
+  }, [workspace.id, workspace.folderPath, workspace.leaderAgentId, loadWorkspaceAgents, getLeaderAgent, updateWorkspace])
 
   const updateField = useCallback(<K extends keyof Workspace>(key: K, value: Workspace[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }, [])
+
+  const updateRegistryField = useCallback((item: SettingItemMeta, value: unknown) => {
+    setForm((prev) => applyWorkspaceSettingValue(prev, item, value))
   }, [])
 
   const handleSave = useCallback(async () => {
@@ -168,6 +214,7 @@ function WorkspaceEditForm({
         contextConfig: form.contextConfig,
         knowledgeBaseIds: form.knowledgeBaseIds,
         mcpServerIds: form.mcpServerIds,
+        autoApproval: form.autoApproval,
       }
       updateWorkspace(input)
     } finally {
@@ -191,27 +238,13 @@ function WorkspaceEditForm({
 
   const handleActivate = useCallback(() => {
     activateWorkspace(workspace.id)
-  }, [workspace.id, activateWorkspace])
+    onOpenWorkspace()
+  }, [workspace.id, activateWorkspace, onOpenWorkspace])
 
-  // 打开提示词编辑器
+  // 打开提示词编辑器：由 LeaderPromptEditorModal 从工作区专属 leader 读取和保存
   const handleOpenPromptEditor = useCallback(() => {
-    const leaderAgent = agents.find((a) => a.id === form.leaderAgentId)
-    if (leaderAgent) {
-      setLeaderPrompt(leaderAgent.systemPrompt)
-      setShowPromptEditor(true)
-    }
-  }, [agents, form.leaderAgentId])
-
-  // 保存提示词
-  const handleSavePrompt = useCallback(() => {
-    if (form.leaderAgentId) {
-      updateAgent({
-        id: form.leaderAgentId,
-        systemPrompt: leaderPrompt,
-      })
-      setShowPromptEditor(false)
-    }
-  }, [form.leaderAgentId, leaderPrompt, updateAgent])
+    setShowPromptEditor(true)
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -277,7 +310,7 @@ function WorkspaceEditForm({
           className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
         >
           <option value="">不指定</option>
-          {agents.map((a) => (
+          {workspaceAgents.map((a) => (
             <option key={a.id} value={a.id}>{a.avatar} {a.name}</option>
           ))}
         </select>
@@ -302,31 +335,11 @@ function WorkspaceEditForm({
             编辑 AI 领导提示词
           </button>
         )}
-        {showPromptEditor && (
-          <div className="space-y-2">
-            <textarea
-              value={leaderPrompt}
-              onChange={(e) => setLeaderPrompt(e.target.value)}
-              rows={12}
-              className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 resize-y"
-              placeholder="输入 AI 领导的系统提示词..."
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowPromptEditor(false)}
-                className="px-3 py-1.5 text-xs rounded-lg border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleSavePrompt}
-                className="px-3 py-1.5 text-xs rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
-              >
-                保存提示词
-              </button>
-            </div>
-          </div>
-        )}
+        <LeaderPromptEditorModal
+          open={showPromptEditor}
+          onClose={() => setShowPromptEditor(false)}
+          folderPath={workspace.folderPath}
+        />
       </div>
 
       {/* 工作文件夹 + 存档策略 */}
@@ -344,53 +357,23 @@ function WorkspaceEditForm({
             更改
           </button>
         </div>
-        <div>
-          <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1.5 block">存档策略</label>
-          <div className="space-y-2">
-            {CHECKPOINT_POLICY_OPTIONS.map((opt) => (
-              <label key={opt.value} className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="checkpointPolicy"
-                  value={opt.value}
-                  checked={form.checkpointPolicy === opt.value}
-                  onChange={() => updateField('checkpointPolicy', opt.value)}
-                  className="mt-0.5 w-4 h-4 border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
-                />
-                <div>
-                  <span className="text-xs font-medium text-surface-700 dark:text-surface-300">{opt.label}</span>
-                  <p className="text-[10px] text-surface-400 dark:text-surface-500">{opt.desc}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-        {form.checkpointPolicy === 'timed' && (
-          <div>
-            <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-              定时间隔（分钟）
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={form.timedIntervalMinutes}
-              onChange={(e) => updateField('timedIntervalMinutes', Number(e.target.value))}
-              className="w-32 px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+        <div className="divide-y divide-surface-100 dark:divide-surface-700/60">
+          <SettingFieldRenderer
+            item={workspaceSetting('workspace.checkpointPolicy')}
+            value={getWorkspaceSettingValue(form, workspaceSetting('workspace.checkpointPolicy'))}
+            onChange={(value) => updateRegistryField(workspaceSetting('workspace.checkpointPolicy'), value)}
+          />
+          {form.checkpointPolicy === 'timed' && (
+            <SettingFieldRenderer
+              item={workspaceSetting('workspace.timedIntervalMinutes')}
+              value={getWorkspaceSettingValue(form, workspaceSetting('workspace.timedIntervalMinutes'))}
+              onChange={(value) => updateRegistryField(workspaceSetting('workspace.timedIntervalMinutes'), value)}
             />
-          </div>
-        )}
-        <div>
-          <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-            最多保留存档数
-          </label>
-          <input
-            type="number"
-            min={5}
-            max={500}
-            value={form.maxCheckpoints}
-            onChange={(e) => updateField('maxCheckpoints', Number(e.target.value))}
-            className="w-32 px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+          )}
+          <SettingFieldRenderer
+            item={workspaceSetting('workspace.maxCheckpoints')}
+            value={getWorkspaceSettingValue(form, workspaceSetting('workspace.maxCheckpoints'))}
+            onChange={(value) => updateRegistryField(workspaceSetting('workspace.maxCheckpoints'), value)}
           />
         </div>
       </div>
@@ -398,38 +381,22 @@ function WorkspaceEditForm({
       {/* 命令执行策略 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
         <SectionTitle icon={Terminal} title="命令执行策略" description="控制 AI Agent 执行 shell 命令的权限" />
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.commandExecutionEnabled}
-            onChange={(e) => updateField('commandExecutionEnabled', e.target.checked)}
-            className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
+        <div className="divide-y divide-surface-100 dark:divide-surface-700/60">
+          <SettingFieldRenderer
+            item={workspaceSetting('workspace.commandExecutionEnabled')}
+            value={getWorkspaceSettingValue(form, workspaceSetting('workspace.commandExecutionEnabled'))}
+            onChange={(value) => updateRegistryField(workspaceSetting('workspace.commandExecutionEnabled'), value)}
           />
-          <span className="text-xs font-medium text-surface-700 dark:text-surface-300">启用命令执行</span>
-        </label>
+          {form.commandExecutionEnabled && (
+            <SettingFieldRenderer
+              item={workspaceSetting('workspace.commandPolicy')}
+              value={getWorkspaceSettingValue(form, workspaceSetting('workspace.commandPolicy'))}
+              onChange={(value) => updateRegistryField(workspaceSetting('workspace.commandPolicy'), value)}
+            />
+          )}
+        </div>
         {form.commandExecutionEnabled && (
           <>
-            <div>
-              <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1.5 block">审批策略</label>
-              <div className="space-y-2">
-                {COMMAND_POLICY_OPTIONS.map((opt) => (
-                  <label key={opt.value} className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="commandPolicy"
-                      value={opt.value}
-                      checked={form.commandPolicy === opt.value}
-                      onChange={() => updateField('commandPolicy', opt.value)}
-                      className="mt-0.5 w-4 h-4 border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
-                    />
-                    <div>
-                      <span className="text-xs font-medium text-surface-700 dark:text-surface-300">{opt.label}</span>
-                      <p className="text-[10px] text-surface-400 dark:text-surface-500">{opt.desc}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
             <div>
               <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
                 安全命令白名单（每行一个）
@@ -459,48 +426,29 @@ function WorkspaceEditForm({
       {/* 上下文管理 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
         <SectionTitle icon={Database} title="上下文管理" description="控制对话上下文压缩行为" />
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">最大 Token 数</label>
-            <input
-              type="number"
-              min={1000}
-              max={200000}
-              value={form.contextConfig.maxTokens}
-              onChange={(e) => updateField('contextConfig', { ...form.contextConfig, maxTokens: Number(e.target.value) })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">压缩阈值 (%)</label>
-            <input
-              type="number"
-              min={50}
-              max={100}
-              value={form.contextConfig.compressionThreshold}
-              onChange={(e) => updateField('contextConfig', { ...form.contextConfig, compressionThreshold: Number(e.target.value) })}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
-            />
-          </div>
+        <div className="divide-y divide-surface-100 dark:divide-surface-700/60">
+          {[
+            'workspace.contextConfig.maxTokens',
+            'workspace.contextConfig.compressionThreshold',
+            'workspace.contextConfig.compressionEnabled',
+            'workspace.contextConfig.keepCheckpointBeforeCompression',
+          ].map((id) => {
+            const item = workspaceSetting(id)
+            return (
+              <SettingFieldRenderer
+                key={id}
+                item={item}
+                value={getWorkspaceSettingValue(form, item)}
+                onChange={(value) => updateRegistryField(item, value)}
+              />
+            )
+          })}
         </div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.contextConfig.compressionEnabled}
-            onChange={(e) => updateField('contextConfig', { ...form.contextConfig, compressionEnabled: e.target.checked })}
-            className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
-          />
-          <span className="text-xs text-surface-600 dark:text-surface-400">启用上下文压缩</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.contextConfig.keepCheckpointBeforeCompression}
-            onChange={(e) => updateField('contextConfig', { ...form.contextConfig, keepCheckpointBeforeCompression: e.target.checked })}
-            className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
-          />
-          <span className="text-xs text-surface-600 dark:text-surface-400">压缩前自动创建存档点</span>
-        </label>
+      </div>
+
+      {/* 工作区 Agent 管理 */}
+      <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50">
+        <AgentManager isWorkspaceMode folderPath={workspace.folderPath} />
       </div>
 
       {/* 保存按钮 */}
@@ -519,7 +467,7 @@ function WorkspaceEditForm({
 
 // ---- 主组件 ----
 
-export function WorkspaceSettings() {
+export function WorkspaceSettings({ onOpenWorkspace }: { onOpenWorkspace: () => void }) {
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const agents = useAgentStore((s) => s.agents)
 
@@ -532,6 +480,7 @@ export function WorkspaceSettings() {
       <WorkspaceEditForm
         workspace={selectedWorkspace}
         onBack={() => setSelectedId(null)}
+        onOpenWorkspace={onOpenWorkspace}
       />
     )
   }

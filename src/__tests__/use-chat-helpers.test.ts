@@ -589,4 +589,609 @@ describe('use-chat 内部辅助函数（真实模块）', () => {
       expect(usageCall![1].tokenUsage).toEqual({ prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 })
     })
   })
+
+  describe('mapProgressTypeToPhase - 通过 onSiteAnalyzerProgress 验证', () => {
+    it('type="ai_analyzing_page" 应映射为 analyzing 阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'ai_analyzing_page', message: 'AI分析中' })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('analyzing')
+    })
+
+    it('type="report_ready" 应映射为 report 阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'report_ready', message: '报告就绪' })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('report')
+    })
+
+    it('type="error" 应映射为 error 阶段并触发延迟清除', async () => {
+      jest.useFakeTimers()
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'error', message: '出错', error: '连接失败' })
+      })
+
+      const errorProgressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress?.phase === 'error',
+      )
+      expect(errorProgressCall).toBeDefined()
+      expect(errorProgressCall![1].siteAnalyzerProgress.error).toBe('连接失败')
+
+      // 验证 3 秒后清除进度
+      await act(async () => {
+        jest.advanceTimersByTime(3000)
+      })
+
+      const clearCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress === undefined,
+      )
+      expect(clearCall).toBeDefined()
+      jest.useRealTimers()
+    })
+
+    it('type="login_success" 应映射为 login 阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'login_success', message: '登录成功' })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('login')
+    })
+
+    it('type="page_crawled" 应映射为 crawling 阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'page_crawled', message: '页面已爬取', pagesCrawled: 5 })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('crawling')
+      expect(progressCall![1].siteAnalyzerProgress.pagesCrawled).toBe(5)
+    })
+
+    it('type="ai_analysis_done" 应映射为 analyzing 阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'ai_analysis_done', message: 'AI分析完成' })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('analyzing')
+    })
+
+    it('type="generating_report" 应映射为 report 阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'generating_report', message: '生成报告中' })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('report')
+    })
+
+    it('type="completed" 应映射为 completed 阶段并触发延迟清除', async () => {
+      jest.useFakeTimers()
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'completed', message: '完成' })
+      })
+
+      const completedCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress?.phase === 'completed',
+      )
+      expect(completedCall).toBeDefined()
+
+      // 验证 3 秒后清除进度
+      await act(async () => {
+        jest.advanceTimersByTime(3000)
+      })
+
+      const clearCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress === undefined,
+      )
+      expect(clearCall).toBeDefined()
+      jest.useRealTimers()
+    })
+
+    it('未知 type 应映射为 crawling 默认阶段', async () => {
+      const agent: AgentProfile = {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: 'test-agent', title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析网站', 'conv-agent')
+        const cb = await captured
+        cb.onSiteAnalyzerProgress?.({ type: 'unknown_type', message: '未知类型' })
+      })
+
+      const progressCall = mockUpdateMessage.mock.calls.find(
+        (c) => c[1]?.siteAnalyzerProgress,
+      )
+      expect(progressCall).toBeDefined()
+      expect(progressCall![1].siteAnalyzerProgress.phase).toBe('crawling')
+    })
+  })
+
+  describe('buildMessageContent - 附件内容构建（通过 Agent 模式验证）', () => {
+    function setupAgent(agent: AgentProfile) {
+      mockGetConversation.mockReturnValue({ id: 'conv-agent', agentId: agent.id, title: 't', messageCount: 0 })
+      const agentStoreModule = require('../stores/agent-store')
+      agentStoreModule.useAgentStore.getState().getAgent = jest.fn(() => agent)
+    }
+
+    function makeAgent(overrides: Partial<AgentProfile> = {}): AgentProfile {
+      return {
+        id: 'test-agent',
+        name: '测试Agent',
+        description: '测试',
+        systemPrompt: 'sys',
+        enabledToolIds: [],
+        planningStrategy: 'react',
+        memoryConfig: { historyTurns: 10, longTermEnabled: false, crossSession: false },
+        termination: { maxSteps: 5, timeoutSeconds: 60, autoStopOnGoal: false },
+        modelConfig: {},
+        enabled: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        ...overrides,
+      }
+    }
+
+    it('无附件时应返回纯文本内容', async () => {
+      const agent = makeAgent()
+      setupAgent(agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('你好', 'conv-agent')
+        await captured
+      })
+
+      // runAgent 第 2 参数为 userMessage
+      const userMessage = mockRunAgent.mock.calls[0][1] as string
+      expect(userMessage).toBe('你好')
+    })
+
+    it('带图片附件时应返回多模态格式', async () => {
+      const agent = makeAgent()
+      setupAgent(agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('看图', 'conv-agent', [
+          { name: 'photo.jpg', type: 'image/jpeg', content: 'https://example.com/photo.jpg', size: 1024 },
+        ])
+        await captured
+      })
+
+      // 有图片时 buildMessageContent 返回数组，但传给 runAgent 的是 content 原文（line 610）
+      const userMessage = mockRunAgent.mock.calls[0][1]
+      expect(userMessage).toBe('看图')
+      // addMessage 也存储原始文本（line 615）
+      const addCall = mockAddMessage.mock.calls.find(
+        (c) => c[1]?.role === 'user',
+      )
+      expect(addCall).toBeDefined()
+      expect(addCall![1].content).toBe('看图')
+      // attachments 被传递给 addMessage
+      expect(addCall![1].attachments).toHaveLength(1)
+      expect(addCall![1].attachments[0].type).toBe('image/jpeg')
+    })
+
+    it('带非图片附件时应拼接文件内容', async () => {
+      const agent = makeAgent()
+      setupAgent(agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('分析文件', 'conv-agent', [
+          { name: 'data.txt', type: 'text/plain', content: '文件数据内容', size: 50 },
+        ])
+        await captured
+      })
+
+      const userMessage = mockRunAgent.mock.calls[0][1] as string
+      expect(userMessage).toContain('分析文件')
+      expect(userMessage).toContain('文件数据内容')
+    })
+
+    it('混合图片和非图片附件时应正确组合', async () => {
+      const agent = makeAgent()
+      setupAgent(agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('混合附件', 'conv-agent', [
+          { name: 'doc.txt', type: 'text/plain', content: '文档内容', size: 30 },
+          { name: 'img.png', type: 'image/png', content: 'https://example.com/img.png', size: 2048 },
+        ])
+        await captured
+      })
+
+      // 有图片时 runAgent 收到原始文本
+      const userMessage = mockRunAgent.mock.calls[0][1]
+      expect(userMessage).toBe('混合附件')
+      // addMessage 存储原始文本和 attachments
+      const addCall = mockAddMessage.mock.calls.find(
+        (c) => c[1]?.role === 'user',
+      )
+      expect(addCall).toBeDefined()
+      expect(addCall![1].content).toBe('混合附件')
+      expect(addCall![1].attachments).toHaveLength(2)
+    })
+
+    it('data: URI 附件不应包含在文件文本中', async () => {
+      const agent = makeAgent()
+      setupAgent(agent)
+
+      const captured = new Promise<Record<string, (...args: unknown[]) => void>>((resolve) => {
+        mockRunAgent.mockImplementation(async (...args: unknown[]) => {
+          const callbacks = args[6] as Record<string, (...args: unknown[]) => void>
+          resolve(callbacks)
+          callbacks.onDone('完成')
+        })
+      })
+
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('base64附件', 'conv-agent', [
+          { name: 'data.bin', type: 'application/octet-stream', content: 'data:application/octet-stream;base64,ABC', size: 100 },
+        ])
+        await captured
+      })
+
+      const userMessage = mockRunAgent.mock.calls[0][1] as string
+      // data: URI 不应包含在文本内容中
+      expect(userMessage).toBe('base64附件')
+    })
+  })
+
+  describe('getCurrentAgent - 获取当前 Agent', () => {
+    it('无 currentConversationId 时应返回 undefined', async () => {
+      mockCurrentConversationId.current = ''
+      const { result } = renderHook(() => useChat())
+
+      // getCurrentAgent 是内部函数，通过 sendMessage 的 Agent 分发间接验证
+      // 没有 conversationId 时不会调用 runAgent
+      await act(async () => {
+        await result.current.sendMessage('你好', '')
+      })
+
+      expect(mockRunAgent).not.toHaveBeenCalled()
+      expect(mockStreamChat).not.toHaveBeenCalled()
+    })
+
+    it('对话无 agentId 时应返回 undefined（普通模式）', async () => {
+      mockGetConversation.mockReturnValue({ id: 'conv-no-agent', title: 't', messageCount: 0 })
+      const callbacksPromise = captureStreamChatCallbacks()
+      const { result } = renderHook(() => useChat())
+
+      await act(async () => {
+        await result.current.sendMessage('你好', 'conv-no-agent')
+        await callbacksPromise
+      })
+
+      expect(mockStreamChat).toHaveBeenCalled()
+      expect(mockRunAgent).not.toHaveBeenCalled()
+    })
+  })
 })

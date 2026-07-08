@@ -861,9 +861,18 @@ export const WORKSPACE_TOOLS: Tool[] = [
         enabled_tool_ids: {
           type: 'array',
           items: { type: 'string' },
-          description: '该 Agent 可使用的工具 ID 列表。工作区 Agent 自动拥有 workspace_read_file、workspace_write_file、workspace_list_files、workspace_execute_command 等工作区工具。如需额外工具请列出其 ID。'
+          description: '该 Agent 可使用的工具 ID 列表，必须使用工具 ID（例如 builtin:knowledge_search、workspace:read_file、workspace:write_file、workspace:list_files、workspace:execute_command）。如果提供该字段，将精确使用该列表；如不提供则使用默认工作区工具。'
         },
-        // ---- Phase 4 增强字段（全部可选） ----
+        enabled_skill_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选。绑定的 Skills ID 列表，应使用设置页中 Skill 的 dirPath/id。与用户在 Agent 设置中勾选 Skills 等价。'
+        },
+        enabled: {
+          type: 'boolean',
+          description: '可选。是否启用该 Agent，默认 true。'
+        },
+        // ---- 与用户手动配置 Agent 保持一致的增强字段（全部可选） ----
         planning_strategy: {
           type: 'string',
           enum: ['react', 'plan-and-execute', 'trial-and-error'],
@@ -923,6 +932,24 @@ export const WORKSPACE_TOOLS: Tool[] = [
         max_parallel_subtasks: {
           type: 'number',
           description: '可选。并行子任务度上限。控制 workspace_dispatch_parallel 同时执行的最大子任务数。'
+        },
+        prompt_sections: {
+          type: 'array',
+          description: '可选。Prompt 段落配置，与设置页的 Prompt 段落等价。每项通常包含 id、type、title、content、enabled、order 等字段。',
+          items: { type: 'object' }
+        },
+        prompt_template_id: {
+          type: 'string',
+          description: '可选。引用已有 Prompt 模板 ID。'
+        },
+        variables: {
+          type: 'array',
+          description: '可选。Prompt 变量定义列表。',
+          items: { type: 'object' }
+        },
+        workflow: {
+          type: 'object',
+          description: '可选。Agent 工作流状态机配置，与设置页高级策略中的工作流状态机等价。'
         }
       },
       required: ['name', 'description', 'system_prompt']

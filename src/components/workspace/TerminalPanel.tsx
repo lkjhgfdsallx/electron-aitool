@@ -13,9 +13,9 @@ import {
   Trash2, ChevronDown, ChevronRight, Send,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useWorkspaceMessageStore, type TerminalLog } from '../../stores/workspace-message-store'
+import { useConversationStore } from '../../stores/conversation-store'
 import { workspaceCommandExecutor } from '../../services/workspace-command-executor'
-import type { Workspace, CommandApprovalRequest } from '../../types'
+import type { Workspace, CommandApprovalRequest, TerminalLog } from '../../types'
 
 interface TerminalPanelProps {
   workspace: Workspace
@@ -26,9 +26,9 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
   const resolveCommandApproval = useWorkspaceStore((s) => s.resolveCommandApproval)
   const clearCommandApproval = useWorkspaceStore((s) => s.clearCommandApproval)
 
-  const terminalHistory = useWorkspaceMessageStore((s) => s.getTerminalHistory(workspace.id))
-  const addTerminalLog = useWorkspaceMessageStore((s) => s.addTerminalLog)
-  const clearTerminalHistory = useWorkspaceMessageStore((s) => s.clearTerminalHistory)
+  const terminalHistory = useConversationStore((s) => s.getTerminalHistory(workspace.id))
+  const addTerminalLog = useConversationStore((s) => s.addTerminalLog)
+  const clearTerminalHistory = useConversationStore((s) => s.clearTerminalHistory)
 
   const [commandInput, setCommandInput] = useState('')
   const [isExecuting, setIsExecuting] = useState(false)

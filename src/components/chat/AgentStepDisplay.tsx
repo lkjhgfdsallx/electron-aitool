@@ -103,10 +103,20 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
   const [customExpandedMap, setCustomExpandedMap] = useState<Map<string, boolean>>(new Map())
 
   // 自动展开 human_input 步骤 + 超时自动选择
+  // 使用 ref 追踪已处理过的 step ids，避免重复启动计时器
+  const processedStepIdsRef = useRef<Set<string>>(new Set())
+  const prevStepsRef = useRef<AgentStep[]>([])
+
   useEffect(() => {
     const pendingHumanSteps = steps.filter(
       (s) => s.type === 'human_input' && s.humanChoice && !s.humanResponse
     )
+
+    // 追踪新增的 human_input 步骤
+    const prevStepIds = new Set(prevStepsRef.current.map(s => s.id))
+    const newHumanSteps = pendingHumanSteps.filter(s => !prevStepIds.has(s.id))
+    prevStepsRef.current = steps
+
     if (pendingHumanSteps.length > 0) {
       // 自动展开所有待选择的 human_input 步骤
       setExpandedSteps((prev) => {
@@ -121,9 +131,11 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
         return changed ? next : prev
       })
 
-      // 启动超时倒计时（只对第一个待选择步骤）
-      const firstPending = pendingHumanSteps[0]
-      if (!timeoutRef.current) {
+      // 启动超时倒计时（只对新增的第一个待选择步骤）
+      const firstPending = newHumanSteps.length > 0 ? newHumanSteps[0] : pendingHumanSteps[0]
+      const firstPendingId = firstPending.id
+      if (!timeoutRef.current && !processedStepIdsRef.current.has(firstPendingId)) {
+        processedStepIdsRef.current.add(firstPendingId)
         const remaining = HUMAN_INPUT_TIMEOUT_MS
         setCountdown(Math.ceil(remaining / 1000))
 

@@ -63,6 +63,9 @@ export const SYSTEM_AGENT_TAGS = {
 
 export type SystemAgentTag = typeof SYSTEM_AGENT_TAGS[keyof typeof SYSTEM_AGENT_TAGS]
 
+/** Agent 作用域：全局 Agent 存在于应用级配置，工作区 Agent 跟随工作区文件持久化。 */
+export type AgentScope = 'global' | 'workspace'
+
 /**
  * Agent 配置文件（用户可自主设计的 Agent）
  */
@@ -89,6 +92,10 @@ export interface AgentProfile {
   enabledSkillIds?: string[]
   /** 标签列表（`workspace` 为系统保留标签，标识工作区独立 Agent） */
   tags?: string[]
+  /** Agent 作用域：缺省视为 global，用于兼容旧数据 */
+  scope?: AgentScope
+  /** 工作区 Agent 所属的工作区文件夹路径；scope='workspace' 时应存在 */
+  workspaceFolderPath?: string
   /** 是否启用 */
   enabled: boolean
 

@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
 import { Plus, PanelLeftClose, PanelLeft, Settings, Database, Briefcase } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
+import { ResizeHandle } from '../shared/ResizeHandle'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
@@ -16,44 +16,6 @@ interface SidebarProps {
 export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onOpenWorkspace, onBackToChat }: SidebarProps) {
   const { createConversation } = useConversationStore()
   const { sidebarCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth } = useSettingsStore()
-
-  // ---- 拖拽调整宽度 ----
-  const [isDragging, setIsDragging] = useState(false)
-  const dragStartX = useRef(0)
-  const dragStartWidth = useRef(sidebarWidth)
-
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-    dragStartX.current = e.clientX
-    dragStartWidth.current = sidebarWidth
-  }, [sidebarWidth])
-
-  useEffect(() => {
-    if (!isDragging) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const delta = e.clientX - dragStartX.current
-      setSidebarWidth(dragStartWidth.current + delta)
-    }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    // 防止拖拽时选中文本
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-  }, [isDragging, setSidebarWidth])
 
   if (sidebarCollapsed) {
     return (
@@ -220,16 +182,14 @@ export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onOpenW
       </div>
 
       {/* 拖拽调整宽度的手柄 */}
-      <div
-        onMouseDown={handleDragStart}
-        className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize group/drag z-10 ${
-          isDragging ? 'bg-accent-500/30' : 'hover:bg-accent-400/20'
-        }`}
-      >
-        <div className={`absolute top-1/2 -translate-y-1/2 right-0 w-0.5 h-8 rounded-full transition-colors ${
-          isDragging ? 'bg-accent-500' : 'bg-transparent group-hover/drag:bg-accent-400/60'
-        }`} />
-      </div>
+      <ResizeHandle
+        direction="horizontal"
+        size={sidebarWidth}
+        onResize={setSidebarWidth}
+        min={220}
+        max={420}
+        className="absolute top-0 right-0 h-full w-1.5 group/drag z-10 hover:bg-accent-400/20"
+      />
     </div>
   )
 }

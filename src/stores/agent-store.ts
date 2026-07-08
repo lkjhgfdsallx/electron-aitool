@@ -35,6 +35,7 @@ const REQUIREMENT_ANALYST_TOOL_IDS = [
 ]
 
 const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 'systemPrompt' | 'createdAt' | 'updatedAt'> = {
+  scope: 'global',
   avatar: '🤖',
   enabledToolIds: [...DEFAULT_ALL_TOOL_IDS],
   planningStrategy: 'react',
@@ -62,6 +63,7 @@ function createDefaultRequirementAnalyst(): AgentProfile {
     avatar: '🔍',
     systemPrompt: REQUIREMENT_ANALYST_PROMPT,
     enabledToolIds: [...REQUIREMENT_ANALYST_TOOL_IDS],
+    scope: 'global',
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -76,6 +78,7 @@ function createDefaultWebsiteAnalyzer(): AgentProfile {
     description: '自动化分析网站功能模块、API接口，生成交互式报告',
     avatar: '🌐',
     systemPrompt: WEBSITE_ANALYZER_PROMPT,
+    scope: 'global',
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -130,6 +133,10 @@ interface AgentStore {
   deleteAgent: (id: string) => void
   selectAgent: (id: string | null) => void
   getAgent: (id: string) => AgentProfile | undefined
+  getGlobalAgents: () => AgentProfile[]
+  getWorkspaceScopedAgents: (folderPath?: string) => AgentProfile[]
+  replaceWorkspaceScopedAgents: (folderPath: string, agents: AgentProfile[]) => void
+  removeWorkspaceScopedAgents: (folderPath?: string) => void
   toggleAgentEnabled: (id: string) => void
   duplicateAgent: (id: string) => AgentProfile | undefined
   importAgents: (agents: AgentProfile[]) => void
@@ -183,6 +190,7 @@ export const useAgentStore = create<AgentStore>()(
         const agent: AgentProfile = {
           ...DEFAULT_AGENT_PROFILE,
           ...input,
+          scope: input.scope ?? 'global',
           id: uuidv4(),
           createdAt: Date.now(),
           updatedAt: Date.now()
@@ -209,6 +217,34 @@ export const useAgentStore = create<AgentStore>()(
       selectAgent: (id) => set({ selectedAgentId: id }),
 
       getAgent: (id) => get().agents.find((a) => a.id === id),
+
+      getGlobalAgents: () => get().agents.filter((a) => (a.scope ?? 'global') === 'global'),
+
+      getWorkspaceScopedAgents: (folderPath) => get().agents.filter((a) =>
+        a.scope === 'workspace' && (!folderPath || a.workspaceFolderPath === folderPath)
+      ),
+
+      replaceWorkspaceScopedAgents: (folderPath, agents) => {
+        const scopedAgents = agents.map((agent) => ({
+          ...agent,
+          scope: 'workspace' as const,
+          workspaceFolderPath: folderPath,
+        }))
+        set((state) => ({
+          agents: [
+            ...state.agents.filter((a) => !(a.scope === 'workspace' && a.workspaceFolderPath === folderPath)),
+            ...scopedAgents,
+          ],
+        }))
+      },
+
+      removeWorkspaceScopedAgents: (folderPath) => {
+        set((state) => ({
+          agents: state.agents.filter((a) =>
+            a.scope !== 'workspace' || (folderPath ? a.workspaceFolderPath !== folderPath : false)
+          ),
+        }))
+      },
 
       toggleAgentEnabled: (id) => {
         set((state) => ({
@@ -474,6 +510,13 @@ export const useAgentStore = create<AgentStore>()(
             maxParallelSubtasks: agent.maxParallelSubtasks ?? 3,
           }))
         }
+        if (version < 4) {
+          // v4 (Phase 6): 补充 Agent 作用域，旧数据默认视为全局 Agent。
+          state.agents = state.agents.map((agent) => ({
+            ...agent,
+            scope: agent.scope ?? 'global',
+          }))
+        }
         return state
       },
       onRehydrateStorage: () => {
@@ -481,12 +524,12 @@ export const useAgentStore = create<AgentStore>()(
           if (state) {
             // 确保默认 Agent 存在（需要读取其他 store，放 onRehydrateStorage）
             if (!state.agents.some((a) => a.id === DEFAULT_AGENT_ID)) {
-              const defaultAgent = createDefaultRequirementAnalyst()
+              const defaultAgent = { ...createDefaultRequirementAnalyst(), scope: 'global' as const }
               state.agents = [...state.agents, defaultAgent]
             }
             // 确保网站分析 Agent 存在
             if (!state.agents.some((a) => a.id === WEBSITE_ANALYZER_AGENT_ID)) {
-              const websiteAnalyzer = createDefaultWebsiteAnalyzer()
+              const websiteAnalyzer = { ...createDefaultWebsiteAnalyzer(), scope: 'global' as const }
               state.agents = [...state.agents, websiteAnalyzer]
             }
             // ★ 已废弃：AI 领导现已完全工作区化，不再存于全局 agent-store

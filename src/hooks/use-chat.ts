@@ -346,6 +346,7 @@ export function useChat() {
         systemPrompt: input.systemPrompt,
         avatar: input.avatar ?? '🤖',
         enabledToolIds: toolIds,
+        enabledSkillIds: input.enabledSkillIds,
         planningStrategy: input.planningStrategy ?? 'react',
         memoryConfig: input.memoryConfig ?? { historyTurns: 10, longTermEnabled: false, crossSession: false },
         termination: input.termination ?? { maxSteps: 50, timeoutSeconds: 0, autoStopOnGoal: true },
@@ -354,7 +355,11 @@ export function useChat() {
         contextPolicy: input.contextPolicy,
         approvalPolicy: input.approvalPolicy,
         maxParallelSubtasks: input.maxParallelSubtasks,
-        enabled: true,
+        promptSections: input.promptSections,
+        promptTemplateId: input.promptTemplateId,
+        variables: input.variables,
+        workflow: input.workflow,
+        enabled: input.enabled ?? true,
       }, ws.folderPath)
 
       // 从 store 读取最新的 teamAgentIds（而非使用快照），避免覆盖之前创建的 Agent
@@ -1711,12 +1716,15 @@ export function useChat() {
     }
 
     // 更新消息中的 agentSteps，触发 React 重新渲染显示用户选择
+    // 修复 Bug 2：不再依赖 isStreaming 状态查找消息，而是遍历所有消息查找包含该 stepId 的消息
+    // 这是因为子 agent 的 human_input 步骤可能在主消息已完成 streaming 后才被用户选择
     if (currentConversationId) {
       const msgs = getMessages(currentConversationId)
-      const assistantMsg = [...msgs].reverse().find(m => m.isStreaming && m.agentSteps?.length)
-      if (assistantMsg) {
-        updateMessage(assistantMsg.id, {
-          agentSteps: [...(assistantMsg.agentSteps ?? [])]
+      const targetMsg = msgs.find(m => m.agentSteps?.some(s => s.id === stepId))
+      if (targetMsg) {
+        // 更新 agentSteps 以反射用户选择（humanResponse 已在 executor 中设置）
+        updateMessage(targetMsg.id, {
+          agentSteps: [...(targetMsg.agentSteps ?? [])]
         })
       }
     }

@@ -24,7 +24,23 @@ export interface SettingItemMeta {
   /** 修改后是否需要重新加载页面 */
   requiresReload?: boolean
   /** 设置项类型（影响 UI 渲染方式） */
-  controlType: 'toggle' | 'slider' | 'select' | 'input' | 'color' | 'custom'
+  controlType: 'toggle' | 'slider' | 'select' | 'input' | 'number' | 'textarea' | 'color' | 'custom'
+  /** 设置所属层级：基础设施 / 绑定 / 策略 */
+  layer?: 'infrastructure' | 'binding' | 'policy'
+  /** 是否在快捷设置浮层中展示 */
+  showInQuickAccess?: boolean
+  /** select / radio 类型选项 */
+  options?: Array<{ value: string; label: string; desc?: string }>
+  /** 默认值，用于 UI 提示或重置 */
+  defaultValue?: unknown
+  /** slider / number 最小值 */
+  min?: number
+  /** slider / number 最大值 */
+  max?: number
+  /** slider 步长 */
+  step?: number
+  /** 数值单位 */
+  unit?: string
   /** 标签/分类，用于搜索结果分组 */
   tags?: string[]
   /** 嵌套路径标识，如 "retrievalConfig.hybridWeight" 用于标识 store 中的深层字段 */
