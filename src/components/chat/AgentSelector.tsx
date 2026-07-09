@@ -1,9 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { ChevronDown, Zap, Settings2, Search, Check, FolderOpen } from 'lucide-react'
+import { ChevronDown, Zap, Settings2, Search, Check, FolderOpen, Sparkles, User } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { SYSTEM_AGENT_TAGS } from '../../types'
 import type { AgentProfile } from '../../types'
+import { AgentCategoryBadge } from '../shared/AgentCategoryBadge'
+import {
+  getAgentCategory,
+  getAgentCategoryMeta,
+  type AgentCategory,
+} from '../../utils/agent-utils'
 
 interface AgentSelectorProps {
   selectedAgentId?: string
@@ -20,13 +26,18 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
   const { workspaceAgents } = useWorkspaceAgentStore()
 
   // 区分工作区 Agent 和全局 Agent
+  // 工作区 Agent 中过滤掉 AI 领导（leader 标签），领导只能在活跃的工作区上下文中选择
   const enabledWorkspaceAgents = useMemo(
-    () => workspaceAgents.filter((a) => a.enabled),
+    () => workspaceAgents.filter(
+      (a) => a.enabled && !a.tags?.includes(SYSTEM_AGENT_TAGS.LEADER)
+    ),
     [workspaceAgents]
   )
+  // 全局 Agent 中过滤掉工作区专属和领导标签的 agent（它们不应该出现在非工作区对话中）
   const enabledGlobalAgents = useMemo(
     () => globalAgents.filter(
       (a) => a.enabled
+        && a.scope !== 'workspace'
         && !a.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE)
         && !a.tags?.includes(SYSTEM_AGENT_TAGS.LEADER)
     ),
@@ -59,7 +70,19 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
     [enabledGlobalAgents, searchTerm]
   )
 
-  const hasWorkspaceAgents = enabledWorkspaceAgents.length > 0
+  // 合并所有可用 Agent 后按分类分组（预设 / 工作区专属 / 自定义），
+  // 用于下拉面板分区展示。预设的工作区 Leader 归入 preset 组。
+  const groupedFilteredAgents = useMemo(() => {
+    const all = [...filteredWorkspaceAgents, ...filteredGlobalAgents]
+    const buckets: Record<AgentCategory, AgentProfile[]> = { preset: [], workspace: [], custom: [] }
+    for (const a of all) {
+      buckets[getAgentCategory(a)].push(a)
+    }
+    return (['preset', 'workspace', 'custom'] as AgentCategory[])
+      .map((category) => ({ category, agents: buckets[category] }))
+      .filter((g) => g.agents.length > 0)
+  }, [filteredWorkspaceAgents, filteredGlobalAgents])
+
   const hasResults = filteredWorkspaceAgents.length > 0 || filteredGlobalAgents.length > 0
 
   // 点击外部关闭下拉
@@ -82,7 +105,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
   }, [isOpen])
 
   /** 渲染单个 Agent 选项 */
-  const renderAgentItem = (agent: AgentProfile, isWorkspace: boolean) => (
+  const renderAgentItem = (agent: AgentProfile) => (
     <div
       key={agent.id}
       onClick={() => {
@@ -104,12 +127,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
           <span className={`text-sm font-medium truncate ${selectedAgentId === agent.id ? 'text-accent-700 dark:text-accent-300' : 'text-gray-700 dark:text-gray-300'}`}>
             {agent.name}
           </span>
-          {isWorkspace && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
-              <FolderOpen size={9} />
-              工作区
-            </span>
-          )}
+          <AgentCategoryBadge agent={agent} short className="flex-shrink-0" />
         </div>
         {agent.description && (
           <div className="text-xs text-muted truncate">{agent.description}</div>
@@ -121,13 +139,17 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
     </div>
   )
 
-  /** 渲染分组标题 */
-  const renderGroupHeader = (label: string, icon: React.ReactNode) => (
-    <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
-      {icon}
-      <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</span>
-    </div>
-  )
+  /** 渲染分组标题（按分类） */
+  const renderGroupHeader = (category: AgentCategory) => {
+    const meta = getAgentCategoryMeta(category)
+    const Icon = meta.icon === 'Sparkles' ? Sparkles : meta.icon === 'FolderOpen' ? FolderOpen : User
+    return (
+      <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
+        <Icon size={11} className="text-gray-400 dark:text-gray-500" />
+        <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{meta.label}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -142,9 +164,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
             <span className="font-medium text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
               {selectedAgent.name}
             </span>
-            {selectedAgent.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE) && (
-              <FolderOpen size={12} className="text-amber-500 flex-shrink-0" />
-            )}
+            <AgentCategoryBadge agent={selectedAgent} short showIcon={false} className="flex-shrink-0" />
           </>
         ) : (
           <>
@@ -207,26 +227,16 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
               <div className="border-t border-surface-200/40 dark:border-surface-700/30 my-0.5" />
             )}
 
-            {/* 工作区 Agent 分组 */}
-            {filteredWorkspaceAgents.length > 0 && (
-              <>
-                {renderGroupHeader('工作区', <FolderOpen size={11} className="text-amber-500" />)}
-                {filteredWorkspaceAgents.map((agent) => renderAgentItem(agent, true))}
-              </>
-            )}
-
-            {/* 工作区/全局 Agent 分割线 */}
-            {filteredWorkspaceAgents.length > 0 && filteredGlobalAgents.length > 0 && (
-              <div className="border-t border-surface-200/30 dark:border-surface-700/20 my-0.5 mx-3" />
-            )}
-
-            {/* 全局 Agent 分组 */}
-            {filteredGlobalAgents.length > 0 && (
-              <>
-                {hasWorkspaceAgents && renderGroupHeader('全局', <Zap size={11} className="text-gray-400" />)}
-                {filteredGlobalAgents.map((agent) => renderAgentItem(agent, false))}
-              </>
-            )}
+            {/* 按分类分组：预设 / 工作区专属 / 自定义 */}
+            {groupedFilteredAgents.map((group, gi) => (
+              <div key={group.category}>
+                {gi > 0 && (
+                  <div className="border-t border-surface-200/30 dark:border-surface-700/20 my-0.5 mx-3" />
+                )}
+                {renderGroupHeader(group.category)}
+                {group.agents.map((agent) => renderAgentItem(agent))}
+              </div>
+            ))}
 
             {/* 无结果 */}
             {!hasResults && (

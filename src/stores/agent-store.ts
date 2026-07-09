@@ -93,6 +93,7 @@ function createDefaultWorkspaceLeader(): AgentProfile {
     description: '工作区的 AI 项目领导，负责协调任务、规划执行并交付高质量成果',
     avatar: '👑',
     systemPrompt: WORKSPACE_LEADER_PROMPT,
+    scope: 'workspace',
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -141,6 +142,8 @@ interface AgentStore {
   duplicateAgent: (id: string) => AgentProfile | undefined
   importAgents: (agents: AgentProfile[]) => void
   exportAgents: () => AgentProfile[]
+  /** 恢复预设 Agent 到默认状态（创建不存在的，更新修改过的） */
+  resetToDefaultAgents: () => void
 
   // Prompt State
   prompts: Prompt[]
@@ -277,6 +280,44 @@ export const useAgentStore = create<AgentStore>()(
       },
 
       exportAgents: () => get().agents,
+
+      resetToDefaultAgents: () => {
+        // 全局预设 Agent 的固定 ID 列表（不包含 AI 领导，它是工作区专用的）
+        const globalDefaultIds = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID]
+        const existingIds = new Set(get().agents.map((a) => a.id))
+
+        // 构建重置后的预设 Agent 列表
+        const resetAgents: AgentProfile[] = []
+
+        for (const id of globalDefaultIds) {
+          let defaultAgent: AgentProfile
+          if (id === DEFAULT_AGENT_ID) {
+            defaultAgent = createDefaultRequirementAnalyst()
+          } else if (id === WEBSITE_ANALYZER_AGENT_ID) {
+            defaultAgent = createDefaultWebsiteAnalyzer()
+          } else {
+            continue
+          }
+
+          if (!existingIds.has(id)) {
+            // 新 Agent：直接使用默认值
+            resetAgents.push(defaultAgent)
+          } else {
+            // 已存在的 Agent：保留 ID，重置为默认值
+            resetAgents.push({ ...defaultAgent, id })
+          }
+        }
+
+        if (resetAgents.length === 0) return
+
+        // 移除所有全局预设 Agent，然后添加重置后的版本
+        set((state) => ({
+          agents: [
+            ...state.agents.filter((a) => !globalDefaultIds.includes(a.id)),
+            ...resetAgents,
+          ],
+        }))
+      },
 
       // ==================== Prompt State ====================
       prompts: [],

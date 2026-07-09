@@ -1,7 +1,8 @@
-import { X, FolderOpen, ArrowUpToLine, Brain, Wrench, Database, Clock } from 'lucide-react'
+import { X, ArrowUpToLine, Brain, Wrench, Database, Clock } from 'lucide-react'
 import type { AgentProfile } from '../../types'
-import { SYSTEM_AGENT_TAGS } from '../../types'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
+import { AgentCategoryBadge } from '../shared/AgentCategoryBadge'
+import { isWorkspaceAgent } from '../../utils/agent-utils'
 
 interface AgentDetailDialogProps {
   agent: AgentProfile | null
@@ -14,7 +15,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
 
   if (!open || !agent) return null
 
-  const isWorkspaceAgent = agent.tags?.includes(SYSTEM_AGENT_TAGS.WORKSPACE)
+  const isWorkspaceScoped = isWorkspaceAgent(agent)
 
   const handlePromoteToGlobal = () => {
     const promoted = promoteToGlobal(agent.id)
@@ -37,12 +38,9 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
             <span className="text-2xl">{agent.avatar || '🤖'}</span>
             <div>
               <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">{agent.name}</h3>
-              {isWorkspaceAgent && (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 mt-0.5">
-                  <FolderOpen size={9} />
-                  工作区专属
-                </span>
-              )}
+              <div className="mt-0.5">
+                <AgentCategoryBadge agent={agent} />
+              </div>
             </div>
           </div>
           <button
@@ -157,7 +155,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
           >
             关闭
           </button>
-          {isWorkspaceAgent && (
+          {isWorkspaceScoped && (
             <button
               onClick={handlePromoteToGlobal}
               className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"

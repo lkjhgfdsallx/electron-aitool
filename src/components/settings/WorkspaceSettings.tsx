@@ -170,6 +170,7 @@ function WorkspaceEditForm({
     setForm({ ...workspace })
   }, [workspace])
 
+  // 加载工作区 Agent 用于设置页展示
   useEffect(() => {
     let cancelled = false
     loadWorkspaceAgents(workspace.folderPath).then(() => {
@@ -184,6 +185,21 @@ function WorkspaceEditForm({
     })
     return () => { cancelled = true }
   }, [workspace.id, workspace.folderPath, workspace.leaderAgentId, loadWorkspaceAgents, getLeaderAgent, updateWorkspace])
+
+  // ★ 组件卸载时清理设置页加载的工作区 Agent，避免泄露到全局对话页
+  //    仅当该工作区当前未被激活时才清理（激活的工作区需要保留其 agent 数据）
+  useEffect(() => {
+    const folderPath = workspace.folderPath
+    return () => {
+      // 如果当前活跃工作区不是这个设置页对应的工作区，清理 agent-store 中的残留
+      const currentActive = useWorkspaceStore.getState().activeWorkspaceId
+      if (currentActive !== workspace.id) {
+        useWorkspaceAgentStore.getState().clearWorkspaceAgents()
+        // 同时清理 agent-store 中可能残留的 scope='workspace' agent
+        useAgentStore.getState().removeWorkspaceScopedAgents(folderPath)
+      }
+    }
+  }, [workspace.folderPath, workspace.id])
 
   const updateField = useCallback(<K extends keyof Workspace>(key: K, value: Workspace[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))

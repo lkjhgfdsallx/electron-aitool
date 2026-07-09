@@ -21,10 +21,13 @@ import {
   BookOpen,
   FolderOpen,
   ArrowUpToLine,
-  Zap
+  Zap,
+  Sparkles,
+  User,
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
+import { DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useSkillStore } from '../../stores/skill-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../services/built-in-tools'
@@ -40,6 +43,11 @@ import type {
   PromptSection,
 } from '../../types'
 import { AgentWorkflowEditor } from '../chat/AgentWorkflowEditor'
+import { AgentCategoryBadge } from '../shared/AgentCategoryBadge'
+import {
+  groupAgentsByCategory,
+  getAgentCategoryMeta,
+} from '../../utils/agent-utils'
 
 const AVATAR_OPTIONS = ['🤖', '🧠', '💻', '📝', '🔍', '🎨', '📊', '🔧', '🌐', '📚', '🎯', '⚡', '🛡️', '🧪', '🎮', '🎵']
 
@@ -99,8 +107,30 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   const {
     agents: globalAgents, createAgent: createGlobalAgent, updateAgent: updateGlobalAgent, deleteAgent: deleteGlobalAgent,
     duplicateAgent: duplicateGlobalAgent, toggleAgentEnabled: toggleGlobalAgentEnabled,
-    importAgents: importGlobalAgents, exportAgents: exportGlobalAgents
+    importAgents: importGlobalAgents, exportAgents: exportGlobalAgents, resetToDefaultAgents,
   } = useAgentStore()
+
+  // 全局预设 Agent 的固定 ID 列表（不包含 AI 领导，它是工作区专用的）
+  const GLOBAL_DEFAULT_AGENT_IDS = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID]
+
+  // 判断当前 Agent 是否为全局预设 Agent
+  const isDefaultAgent = (agentId: string) => GLOBAL_DEFAULT_AGENT_IDS.includes(agentId)
+
+  // 恢复单个预设 Agent 到默认状态
+  const handleResetAgentToDefault = (agentId: string) => {
+    const agentName = agents.find((a) => a.id === agentId)?.name
+    if (confirm(`确定要将 Agent"${agentName}"恢复为默认状态吗？\n\n此操作将丢失所有自定义修改。`)) {
+      deleteGlobalAgent(agentId)
+      resetToDefaultAgents()
+    }
+  }
+
+  // 恢复所有预设 Agent 到默认状态
+  const handleResetAllDefaults = () => {
+    if (confirm('确定要恢复所有预设 Agent 到默认状态吗？\n\n此操作将丢失所有预设 Agent 的自定义修改。')) {
+      resetToDefaultAgents()
+    }
+  }
 
   const {
     workspaceAgents, createWorkspaceAgent, updateWorkspaceAgent, deleteWorkspaceAgent,
@@ -130,6 +160,9 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         if (agent && folderPath) updateWorkspaceAgent({ id, enabled: !agent.enabled }, folderPath)
       }
     : toggleGlobalAgentEnabled
+
+  // 按分类分组（预设 / 工作区专属 / 自定义），用于列表视图分区展示
+  const groupedAgents = useMemo(() => groupAgentsByCategory(agents), [agents])
 
   const { providers } = useAIProviderStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
@@ -937,6 +970,15 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {!isWorkspaceMode && (
+            <button
+              onClick={handleResetAllDefaults}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+              title="恢复所有预设 Agent 到默认状态"
+            >
+              <Sparkles size={14} /> 恢复默认
+            </button>
+          )}
           <button
             onClick={handleCreateAgent}
             className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent-500 text-white rounded-xl hover:bg-accent-600 transition-colors"
@@ -962,7 +1004,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         </div>
       </div>
 
-      {/* Agent 列表 */}
+      {/* Agent 列表（按分类分组：预设 / 工作区专属 / 自定义） */}
       {agents.length === 0 ? (
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8">
           <div className="text-center text-muted">
@@ -972,90 +1014,113 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           </div>
         </div>
       ) : (
-        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-          {agents.map((agent) => (
-            <div
-              key={agent.id}
-              className={`flex items-center justify-between px-5 py-4 hover:bg-surface-50 dark:hover:bg-surface-900/30 transition-colors ${
-                agent.enabled ? '' : 'opacity-60'
-              }`}
-            >
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <span className="text-2xl">{agent.avatar || '🤖'}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm text-surface-800 dark:text-surface-200">{agent.name}</span>
-                    {isWorkspaceMode && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
-                        <FolderOpen size={9} />
-                        工作区
-                      </span>
-                    )}
-                    {!agent.enabled && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 text-muted dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60">
-                        已禁用
-                      </span>
-                    )}
-                  </div>
-                  {agent.description && (
-                    <p className="text-xs text-muted mt-0.5 truncate">{agent.description}</p>
-                  )}
-                  {agent.tags && agent.tags.filter((t) => t !== SYSTEM_AGENT_TAGS.WORKSPACE).length > 0 && (
-                    <div className="flex items-center gap-1 mt-1 flex-wrap">
-                      {agent.tags.filter((t) => t !== SYSTEM_AGENT_TAGS.WORKSPACE).map((tag) => (
-                        <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-muted border border-surface-200/80 dark:border-surface-700/60">
-                          {tag}
-                        </span>
-                      ))}
+        <div className="space-y-4">
+          {groupedAgents.map(({ category, agents: groupAgents }) => {
+            const meta = getAgentCategoryMeta(category)
+            const GroupIcon = meta.icon === 'Sparkles' ? Sparkles : meta.icon === 'FolderOpen' ? FolderOpen : User
+            return (
+              <div key={category}>
+                {/* 分组标题 */}
+                <div className="flex items-center gap-1.5 px-1 pb-2">
+                  <GroupIcon size={13} className="text-surface-400 dark:text-surface-500" />
+                  <span className="text-xs font-semibold text-surface-600 dark:text-surface-400">
+                    {meta.label}
+                  </span>
+                  <span className="text-[11px] text-muted">({groupAgents.length})</span>
+                </div>
+                {/* 分组列表 */}
+                <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+                  {groupAgents.map((agent) => (
+                    <div
+                      key={agent.id}
+                      className={`flex items-center justify-between px-5 py-4 hover:bg-surface-50 dark:hover:bg-surface-900/30 transition-colors ${
+                        agent.enabled ? '' : 'opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className="text-2xl">{agent.avatar || '🤖'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm text-surface-800 dark:text-surface-200">{agent.name}</span>
+                            <AgentCategoryBadge agent={agent} short />
+                            {!agent.enabled && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 text-muted dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60">
+                                已禁用
+                              </span>
+                            )}
+                          </div>
+                          {agent.description && (
+                            <p className="text-xs text-muted mt-0.5 truncate">{agent.description}</p>
+                          )}
+                          {agent.tags && agent.tags.filter((t) => t !== SYSTEM_AGENT_TAGS.WORKSPACE && t !== SYSTEM_AGENT_TAGS.LEADER).length > 0 && (
+                            <div className="flex items-center gap-1 mt-1 flex-wrap">
+                              {agent.tags.filter((t) => t !== SYSTEM_AGENT_TAGS.WORKSPACE && t !== SYSTEM_AGENT_TAGS.LEADER).map((tag) => (
+                                <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-muted border border-surface-200/80 dark:border-surface-700/60">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0 ml-3">
+                        {!isWorkspaceMode && isDefaultAgent(agent.id) && (
+                          <button
+                            onClick={() => handleResetAgentToDefault(agent.id)}
+                            className="p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-500"
+                            title="恢复为默认 Agent"
+                          >
+                            <Sparkles size={14} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => toggleAgentEnabledFn(agent.id)}
+                          className={`p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 ${
+                            agent.enabled ? 'text-green-500' : 'text-muted'
+                          }`}
+                          title={agent.enabled ? '禁用' : '启用'}
+                        >
+                          {agent.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                        </button>
+                        <button
+                          onClick={() => handleEditAgent(agent)}
+                          className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
+                          title="编辑"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        {!isWorkspaceMode && duplicateAgentFn && (
+                          <button
+                            onClick={() => duplicateAgentFn(agent.id)}
+                            className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
+                            title="复制"
+                          >
+                            <Copy size={14} />
+                          </button>
+                        )}
+                        {isWorkspaceMode && (
+                          <button
+                            onClick={() => handlePromoteToGlobal(agent.id)}
+                            className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/20 text-accent-500"
+                            title="提升为全局 Agent"
+                          >
+                            <ArrowUpToLine size={14} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteAgent(agent.id)}
+                          className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-500"
+                          title="删除"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0 ml-3">
-                <button
-                  onClick={() => toggleAgentEnabledFn(agent.id)}
-                  className={`p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 ${
-                    agent.enabled ? 'text-green-500' : 'text-muted'
-                  }`}
-                  title={agent.enabled ? '禁用' : '启用'}
-                >
-                  {agent.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                </button>
-                <button
-                  onClick={() => handleEditAgent(agent)}
-                  className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
-                  title="编辑"
-                >
-                  <Edit2 size={14} />
-                </button>
-                {!isWorkspaceMode && duplicateAgentFn && (
-                  <button
-                    onClick={() => duplicateAgentFn(agent.id)}
-                    className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
-                    title="复制"
-                  >
-                    <Copy size={14} />
-                  </button>
-                )}
-                {isWorkspaceMode && (
-                  <button
-                    onClick={() => handlePromoteToGlobal(agent.id)}
-                    className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/20 text-accent-500"
-                    title="提升为全局 Agent"
-                  >
-                    <ArrowUpToLine size={14} />
-                  </button>
-                )}
-                <button
-                  onClick={() => handleDeleteAgent(agent.id)}
-                  className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-500"
-                  title="删除"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
