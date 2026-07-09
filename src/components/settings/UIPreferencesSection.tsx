@@ -6,6 +6,7 @@ import {
 import hljs from 'highlight.js'
 import { useSettingsStore, applyCSSVariables } from '../../stores/settings-store'
 import type { CodeHighlightTheme, MessageAlignment } from '../../types'
+import { isShortcutBindingSupported } from '../../types'
 
 /** 动态加载 highlight.js 主题 CSS（与 MarkdownRenderer 保持一致） */
 const HLJS_THEME_MAP: Record<CodeHighlightTheme, () => Promise<unknown>> = {
@@ -497,13 +498,22 @@ function ShortcutRow({ label, binding, onChange }: {
 
   return (
     <div className="flex items-center justify-between py-3">
-      <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
+      <div className="flex flex-col min-w-0">
+        <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
+        {!isShortcutBindingSupported(binding) && (
+          <span className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 leading-tight">
+            此键名不支持全局快捷键注册，快捷键将无法生效
+          </span>
+        )}
+      </div>
       <button
         onClick={() => setRecording(!recording)}
-        className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-all ${
+        className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-mono border transition-all ${
           recording
             ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 animate-pulse'
-            : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:border-accent-300'
+            : !isShortcutBindingSupported(binding)
+              ? 'border-red-400 dark:border-red-700 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400'
+              : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:border-accent-300'
         }`}
       >
         {recording ? '按下快捷键...' : formatShortcut(binding)}

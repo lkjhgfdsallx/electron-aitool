@@ -1134,9 +1134,34 @@ export async function runAgent(
   if (resumeOptions?.resume) {
     // resume 模式：从对话历史重建，跳过最后一条未完成的 assistant 消息
     // 排除最后一条 assistant 消息（它就是要继续的那条）
+    // 但需要先检查最后一条 assistant 消息是否包含**未完成的工具调用**
+    // （即工具调用期间点击了停止，然后用户点击继续生成）
+    let lastAssistantHasIncompleteTools = false
+    const lastMsg = recentHistory[recentHistory.length - 1]
+    if (lastMsg?.role === 'assistant' && lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
+      // 最后一条 assistant 消息有工具调用，检查这些工具调用是否都有对应的结果
+      const lastToolCallIds = new Set(lastMsg.toolCalls.map(tc => tc.id))
+      // 查找已出现的 toolCallId（去重）
+      const appearedToolCallIds = new Set<string>()
+      for (const m of recentHistory) {
+        if (m.role === 'tool' && m.toolCallId) {
+          appearedToolCallIds.add(m.toolCallId)
+        }
+      }
+      // 检查 lastMsg 中的每个 toolCall 是否都有对应的结果
+      for (const tc of lastMsg.toolCalls) {
+        if (!appearedToolCallIds.has(tc.id)) {
+          // 发现有工具调用没有结果，说明未完成
+          lastAssistantHasIncompleteTools = true
+          break
+        }
+      }
+    }
+
     const historyForResume = recentHistory.filter((msg, idx) => {
-      // 跳过最后一条 assistant 消息（未完成的）
-      if (idx === recentHistory.length - 1 && msg.role === 'assistant') {
+      // 只有当最后一条 assistant 消息没有未完成的工具调用时才排除它
+      // 如果有未完成的工具调用，需要保留它以便 LLM 知道上下文
+      if (idx === recentHistory.length - 1 && msg.role === 'assistant' && !lastAssistantHasIncompleteTools) {
         return false
       }
       return true

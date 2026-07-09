@@ -203,6 +203,22 @@ export interface ShortcutConfig {
   focusInput: ShortcutBinding
 }
 
+/**
+ * Electron globalShortcut 不支持的原始键名（如逗号、句号等标点符号）。
+ * 这些快捷键组合在注册时会失败，UI 层需要提示用户。
+ */
+export const GLOBAL_SHORTCUT_UNSUPPORTED_KEYS = new Set([
+  ',',  // Comma
+  '.',  // Period
+  "'",  // Quote（单引号）
+  ';',  // Semicolon
+])
+
+/** 检查一个快捷键绑定是否被 Electron globalShortcut 支持 */
+export function isShortcutBindingSupported(binding: ShortcutBinding): boolean {
+  return !GLOBAL_SHORTCUT_UNSUPPORTED_KEYS.has(binding.key)
+}
+
 export const DEFAULT_SHORTCUT_CONFIG: ShortcutConfig = {
   newConversation: { key: 'n', modifiers: ['Ctrl'] },
   toggleSidebar: { key: 'b', modifiers: ['Ctrl'] },

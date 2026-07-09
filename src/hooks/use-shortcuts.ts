@@ -3,12 +3,19 @@ import { useSettingsStore } from '../stores/settings-store'
 import { useConversationStore } from '../stores/conversation-store'
 import { useAgentStore } from '../stores/agent-store'
 import type { ShortcutBinding, ShortcutConfig } from '../types'
+import { isShortcutBindingSupported } from '../types'
 
 /**
  * 将 ShortcutBinding 转换为 Electron accelerator 字符串
  * 例如 { key: 'n', modifiers: ['Ctrl'] } → 'CommandOrControl+N'
+ * 返回 null 表示该快捷键不被 globalShortcut 支持
  */
-function toAccelerator(binding: ShortcutBinding): string {
+function toAccelerator(binding: ShortcutBinding): string | null {
+  // 先检查是否被 globalShortcut 支持
+  if (!isShortcutBindingSupported(binding)) {
+    return null
+  }
+
   const parts: string[] = []
 
   // Electron 使用 CommandOrControl 做跨平台修饰键
@@ -79,6 +86,11 @@ export function useShortcuts(actions: ShortcutActions): void {
     for (const [actionId, binding] of Object.entries(config) as [keyof ShortcutConfig, ShortcutBinding][]) {
       if (!binding.key) continue
       const accelerator = toAccelerator(binding)
+      // toAccelerator 返回 null 表示该快捷键不被 globalShortcut 支持
+      if (accelerator === null) {
+        console.warn(`[shortcuts] 不支持的键名，跳过注册: ${actionId} (key="${binding.key}")`)
+        continue
+      }
       api.register(actionId, accelerator).then((result: { success: boolean; error?: string }) => {
         if (!result.success) {
           console.warn(`[shortcuts] 注册失败: ${actionId} (${accelerator})`, result.error)
