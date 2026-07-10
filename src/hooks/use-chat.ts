@@ -2071,6 +2071,8 @@ export function useChat() {
         const history = msgs
         const allTools = getAvailableTools()
         const existingSteps = [...(targetMsg.agentSteps || [])]
+        // 记录本次继续生成之前的 final_answer 数量
+        const existingFinalAnswerCount = existingSteps.filter((s) => s.type === 'final_answer').length
         const agentSteps = [...existingSteps]
         // 剥离中断提示，确保 Agent 继续时 content 是纯净的
         let finalContent = targetMsg.content || ''
@@ -2127,9 +2129,10 @@ export function useChat() {
                 const existingFinishReason = currentMsg?.finishReason
                 const notice = getFinishNotice(existingFinishReason)
                 const finalContentWithNotice = notice ? finalContent + notice : finalContent
-                // 检查是否有 final_answer 来决定是否可继续
-                const hasFinalAnswer = agentSteps.some((s) => s.type === 'final_answer')
-                const agentContinuable: 'agent' | null = (!hasFinalAnswer && existingFinishReason !== 'error') ? 'agent' : null
+                // 检查本次新增的步骤中是否有 final_answer 来决定是否可继续
+                const newFinalAnswerCount = agentSteps.filter((s) => s.type === 'final_answer').length
+                const hasNewFinalAnswer = (newFinalAnswerCount - existingFinalAnswerCount) > 0
+                const agentContinuable: 'agent' | null = (!hasNewFinalAnswer && existingFinishReason !== 'error') ? 'agent' : null
                 updateMessage(messageId, {
                   content: finalContentWithNotice,
                   agentSteps: [...agentSteps],

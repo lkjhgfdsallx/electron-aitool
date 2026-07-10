@@ -1199,15 +1199,28 @@ export async function runAgent(
       }
     }
     // resume 模式：从 existingSteps 重建已有的工具调用和结果到 messages 中
+    // 关键修复：只添加尚未在 messages 中出现的步骤，避免重复
     // 这样 LLM 能看到已有的上下文，避免重复执行相同的工具调用
     if (resumeOptions?.existingSteps && resumeOptions.existingSteps.length > 0) {
       const existingSteps = resumeOptions.existingSteps
+      // 记录已出现的 toolCallId（用于去重）
+      const existingToolCallIds = new Set<string>()
+      for (const m of messages) {
+        if (m.toolCalls) {
+          for (const tc of m.toolCalls) {
+            existingToolCallIds.add(tc.id)
+          }
+        }
+      }
+
       for (let i = 0; i < existingSteps.length; i++) {
         const step = existingSteps[i]
-        if (step.type === 'thinking' && step.content) {
-          // thinking 步骤作为 assistant 消息
-          messages.push({ role: 'assistant', content: step.content })
-        } else if (step.type === 'action' && step.toolCall) {
+        // 跳过已存在的 action 步骤（已通过 recentHistory 添加）
+        if (step.type === 'action' && step.toolCall) {
+          // 检查这个 action 是否已经在 messages 中
+          if (existingToolCallIds.has(step.id)) {
+            continue
+          }
           // action 步骤作为带 tool_calls 的 assistant 消息
           messages.push({
             role: 'assistant',
@@ -1218,8 +1231,27 @@ export async function runAgent(
               arguments: JSON.stringify(step.toolCall.arguments)
             }]
           })
+          // 如果下一步是 observation，也添加它
+          if (i + 1 < existingSteps.length && existingSteps[i + 1].type === 'observation') {
+            const obsStep = existingSteps[i + 1]
+            if (obsStep.toolResult) {
+              messages.push({
+                role: 'tool',
+                content: obsStep.toolResult.data || obsStep.toolResult.error || '',
+                toolCallId: obsStep.id,
+                toolName: step.toolCall.name
+              })
+            }
+          }
+        } else if (step.type === 'thinking' && step.content) {
+          // thinking 步骤作为 assistant 消息
+          messages.push({ role: 'assistant', content: step.content })
         } else if (step.type === 'observation' && step.toolResult) {
-          // observation 步骤作为 tool 结果消息
+          // observation 步骤（如果没有对应的 action 被添加）
+          // 检查是否已经添加过
+          if (existingToolCallIds.has(step.id)) {
+            continue
+          }
           messages.push({
             role: 'tool',
             content: step.toolResult.data || step.toolResult.error || '',
