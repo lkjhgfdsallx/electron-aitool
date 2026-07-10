@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
-import { DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
+import { DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, WORKSPACE_LEADER_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID } from '../../constants/default-agents'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useSkillStore } from '../../stores/skill-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../services/built-in-tools'
@@ -111,7 +111,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   } = useAgentStore()
 
   // 全局预设 Agent 的固定 ID 列表（不包含 AI 领导，它是工作区专用的）
-  const GLOBAL_DEFAULT_AGENT_IDS = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID]
+  const GLOBAL_DEFAULT_AGENT_IDS = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID]
 
   // 判断当前 Agent 是否为全局预设 Agent
   const isDefaultAgent = (agentId: string) => GLOBAL_DEFAULT_AGENT_IDS.includes(agentId)

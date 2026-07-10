@@ -12,7 +12,7 @@ import type {
   PromptABTest,
   PromptChain,
 } from '../types'
-import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT, WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT } from '../constants/default-agents'
+import { DEFAULT_AGENT_ID, REQUIREMENT_ANALYST_PROMPT, WEBSITE_ANALYZER_AGENT_ID, WEBSITE_ANALYZER_PROMPT, WORKSPACE_LEADER_AGENT_ID, WORKSPACE_LEADER_PROMPT, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_PROMPT } from '../constants/default-agents'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
 import { PromptVersionService } from '../services/prompt-version-service'
 import { STORE_VERSIONS } from '../utils/store-migration'
@@ -32,6 +32,25 @@ const REQUIREMENT_ANALYST_TOOL_IDS = [
   'agent-builtin:define_requirement',
   'agent-builtin:review_requirements',
   'agent-builtin:ask_human',
+]
+
+/** 任务拆解执行师 Agent 可使用的工具（通用工具集，不含工作区工具） */
+const TASK_DECOMPOSITION_EXECUTOR_TOOL_IDS = [
+  // BUILT_IN_TOOLS
+  'builtin:web_search',
+  'builtin:fetch_webpage',
+  'builtin:get_current_time',
+  'builtin:calculate',
+  'builtin:knowledge_search',
+  // AGENT_BUILTIN_TOOLS
+  'agent-builtin:remember',
+  'agent-builtin:recall',
+  'agent-builtin:ask_self',
+  'agent-builtin:ask_human',
+  'agent-builtin:define_requirement',
+  'agent-builtin:review_requirements',
+  'agent-builtin:list_skills',
+  'agent-builtin:use_skill',
 ]
 
 const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 'systemPrompt' | 'createdAt' | 'updatedAt'> = {
@@ -94,6 +113,124 @@ function createDefaultWorkspaceLeader(): AgentProfile {
     avatar: '👑',
     systemPrompt: WORKSPACE_LEADER_PROMPT,
     scope: 'workspace',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  }
+}
+
+/** 创建任务拆解执行师 Agent（通用型，启用高级策略和工作流状态机） */
+function createTaskDecompositionExecutor(): AgentProfile {
+  return {
+    ...DEFAULT_AGENT_PROFILE,
+    id: TASK_DECOMPOSITION_EXECUTOR_AGENT_ID,
+    name: '任务拆解执行师',
+    description: '将复杂任务先拆解为可执行的子任务，再按照工作流阶段逐步推进执行，适用于写作、研究、策划、分析等多种场景',
+    avatar: '🧩',
+    systemPrompt: TASK_DECOMPOSITION_EXECUTOR_PROMPT,
+    enabledToolIds: [...TASK_DECOMPOSITION_EXECUTOR_TOOL_IDS],
+    planningStrategy: 'plan-and-execute',
+    memoryConfig: {
+      historyTurns: 20,
+      longTermEnabled: true,
+      crossSession: true
+    },
+    termination: {
+      maxSteps: 200,
+      timeoutSeconds: 0,
+      autoStopOnGoal: true
+    },
+    scope: 'global',
+    // ===== Phase 4 高级策略扩展 =====
+    workflow: {
+      initial: 'clarify',
+      terminals: ['summarize'],
+      states: {
+        clarify: {
+          label: '需求澄清',
+          allowedTools: ['agent-builtin:ask_self', 'agent-builtin:ask_human', 'agent-builtin:recall'],
+          systemPromptSection: '你正处于[需求澄清]阶段。你的任务是深入理解用户的意图和目标。通过 ask_self 进行内部推理，通过 ask_human 向用户提问来澄清模糊之处，通过 recall 回忆之前记录的关键信息。不要急于开始执行，先确保你完全理解了用户的需求。',
+          transitions: [
+            {
+              to: 'decompose',
+              when: [{ type: 'message_contains', keyword: '需求理解完成' }]
+            }
+          ]
+        },
+        decompose: {
+          label: '任务拆解',
+          allowedTools: ['agent-builtin:ask_self', 'builtin:knowledge_search', 'builtin:web_search', 'builtin:fetch_webpage', 'agent-builtin:remember', 'agent-builtin:define_requirement'],
+          systemPromptSection: '你正处于[任务拆解]阶段。你的任务是将大任务拆解为可执行的子任务。使用 knowledge_search/web_search/fetch_webpage 搜索参考资料，使用 remember 记录拆解结果。拆解完成后输出清晰的子任务列表。',
+          transitions: [
+            {
+              to: 'execute',
+              when: [{ type: 'message_contains', keyword: '子任务确认启动' }]
+            }
+          ]
+        },
+        execute: {
+          label: '逐步执行',
+          allowedTools: [
+            'builtin:web_search', 'builtin:fetch_webpage', 'builtin:get_current_time', 'builtin:calculate', 'builtin:knowledge_search',
+            'agent-builtin:remember', 'agent-builtin:recall', 'agent-builtin:ask_self', 'agent-builtin:ask_human',
+            'agent-builtin:define_requirement', 'agent-builtin:review_requirements', 'agent-builtin:list_skills', 'agent-builtin:use_skill'
+          ],
+          systemPromptSection: '你正处于[逐步执行]阶段。根据拆解计划，当前只专注于执行一个子任务。执行过程中主动利用搜索工具收集信息，使用 remember 记录进展。完成后声明"当前子任务完成"。',
+          transitions: [
+            {
+              to: 'verify',
+              when: [{ type: 'message_contains', keyword: '当前子任务完成' }]
+            }
+          ]
+        },
+        verify: {
+          label: '成果评审',
+          allowedTools: ['agent-builtin:ask_self', 'agent-builtin:review_requirements'],
+          systemPromptSection: '你正处于[成果评审]阶段。客观评估当前子任务的成果是否满足完成标准。如果满足，声明"评审通过"；如果不满足，声明"需要调整"。',
+          transitions: [
+            {
+              to: 'execute',
+              when: [{ type: 'message_contains', keyword: '需要调整' }]
+            },
+            {
+              to: 'next_task',
+              when: [{ type: 'message_contains', keyword: '评审通过' }]
+            }
+          ]
+        },
+        next_task: {
+          label: '任务推进',
+          allowedTools: ['agent-builtin:ask_self'],
+          systemPromptSection: '你正处于[任务推进]阶段。检查剩余子任务，如有剩余则声明"开始下一个子任务"并执行；如无剩余则声明"所有子任务完成"进入总结阶段。',
+          transitions: [
+            {
+              to: 'execute',
+              when: [{ type: 'message_contains', keyword: '开始下一个子任务' }]
+            },
+            {
+              to: 'summarize',
+              when: [{ type: 'message_contains', keyword: '所有子任务完成' }]
+            }
+          ]
+        },
+        summarize: {
+          label: '总结交付',
+          allowedTools: ['agent-builtin:ask_self'],
+          systemPromptSection: '你正处于[总结交付]阶段。汇总所有子任务的成果，形成最终的交付物总结。包含：完成的工作、主要发现、待办事项、后续建议。',
+          transitions: []
+        }
+      }
+    },
+    contextPolicy: {
+      strategy: 'compress',
+      maxTokens: 80000,
+      keepRecentTurns: 5
+    },
+    approvalPolicy: {
+      requireApprovalFor: [],
+      autoApproveRead: true,
+      autoApproveWrite: true
+    },
+    maxParallelSubtasks: 3,
     createdAt: Date.now(),
     updatedAt: Date.now()
   }
@@ -283,7 +420,7 @@ export const useAgentStore = create<AgentStore>()(
 
       resetToDefaultAgents: () => {
         // 全局预设 Agent 的固定 ID 列表（不包含 AI 领导，它是工作区专用的）
-        const globalDefaultIds = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID]
+        const globalDefaultIds = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID]
         const existingIds = new Set(get().agents.map((a) => a.id))
 
         // 构建重置后的预设 Agent 列表
@@ -295,6 +432,8 @@ export const useAgentStore = create<AgentStore>()(
             defaultAgent = createDefaultRequirementAnalyst()
           } else if (id === WEBSITE_ANALYZER_AGENT_ID) {
             defaultAgent = createDefaultWebsiteAnalyzer()
+          } else if (id === TASK_DECOMPOSITION_EXECUTOR_AGENT_ID) {
+            defaultAgent = createTaskDecompositionExecutor()
           } else {
             continue
           }
@@ -572,6 +711,11 @@ export const useAgentStore = create<AgentStore>()(
             if (!state.agents.some((a) => a.id === WEBSITE_ANALYZER_AGENT_ID)) {
               const websiteAnalyzer = { ...createDefaultWebsiteAnalyzer(), scope: 'global' as const }
               state.agents = [...state.agents, websiteAnalyzer]
+            }
+            // 确保任务拆解执行师 Agent 存在（启用高级策略和工作流状态机）
+            if (!state.agents.some((a) => a.id === TASK_DECOMPOSITION_EXECUTOR_AGENT_ID)) {
+              const taskExecutor = { ...createTaskDecompositionExecutor(), scope: 'global' as const }
+              state.agents = [...state.agents, taskExecutor]
             }
             // ★ 已废弃：AI 领导现已完全工作区化，不再存于全局 agent-store
             //    迁移逻辑在 workspace-agent-store.loadWorkspaceAgents 中处理

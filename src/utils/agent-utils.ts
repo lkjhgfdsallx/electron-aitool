@@ -11,6 +11,7 @@ import {
   DEFAULT_AGENT_ID,
   WEBSITE_ANALYZER_AGENT_ID,
   WORKSPACE_LEADER_AGENT_ID,
+  TASK_DECOMPOSITION_EXECUTOR_AGENT_ID,
 } from '../constants/default-agents'
 
 /** Agent 来源类别 */
@@ -21,6 +22,7 @@ export const PRESET_AGENT_IDS: ReadonlySet<string> = new Set([
   DEFAULT_AGENT_ID,
   WEBSITE_ANALYZER_AGENT_ID,
   WORKSPACE_LEADER_AGENT_ID,
+  TASK_DECOMPOSITION_EXECUTOR_AGENT_ID,
 ])
 
 /**
