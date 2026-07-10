@@ -2,13 +2,16 @@ import { useState, useMemo, useCallback } from 'react'
 import Editor from '@monaco-editor/react'
 import {
   Plus, Edit2, Trash2, Save, Wrench, ToggleLeft, ToggleRight, X,
-  Play, Loader2, CheckCircle2, XCircle, BarChart3, RotateCcw, Code2
+  Play, Loader2, CheckCircle2, XCircle, BarChart3, RotateCcw, Code2,
+  Server, Cpu, Layers
 } from 'lucide-react'
-import { BUILT_IN_TOOLS } from '../../services/built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../services/built-in-tools'
 import { useCustomToolStore } from '../../stores/custom-tool-store'
 import { useToolStatsStore } from '../../stores/tool-stats-store'
-import { toolService } from '../../services/tool-service'
+import { useMCPToolStore } from '../../stores/mcp-tool-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { useGlobalConfigStore } from '../../stores/global-config-store'
+import { toolService } from '../../services/tool-service'
 import type { Tool } from '../../types'
 
 // ==================== 默认 JS 代码模板 ====================
@@ -29,14 +32,53 @@ async (params) => {
 // ==================== Tab 类型 ====================
 type DetailTab = 'edit' | 'test' | 'stats'
 
+// ==================== 内置类型枚举 ====================
+type BuiltinType = 'general' | 'agent' | 'workspace'
+
+/** 判断工具是否为 Agent 协议工具 */
+function isAgentBuiltinTool(tool: Tool): boolean {
+  return AGENT_BUILTIN_TOOLS.some((t) => t.id === tool.id)
+}
+
+/** 判断工具是否为工作区工具 */
+function isWorkspaceTool(tool: Tool): boolean {
+  return WORKSPACE_TOOLS.some((t) => t.id === tool.id)
+}
+
+/** 获取工具的内置类型 */
+function getBuiltinType(tool: Tool): BuiltinType | null {
+  if (BUILT_IN_TOOLS.some((t) => t.id === tool.id)) return 'general'
+  if (isAgentBuiltinTool(tool)) return 'agent'
+  if (isWorkspaceTool(tool)) return 'workspace'
+  return null
+}
+
 // ==================== 主组件 ====================
 export function ToolEditor() {
   const { customTools, addTool, updateTool, deleteTool, toggleTool } = useCustomToolStore()
+  const mcpTools = useMCPToolStore((s) => s.mcpTools)
+  const disabledIds = useSettingsStore((s) => s.disabledBuiltinToolIds)
+  const toggleBuiltinTool = useSettingsStore((s) => s.toggleBuiltinTool)
   const [view, setView] = useState<'list' | 'detail'>('list')
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null)
   const [activeTab, setActiveTab] = useState<DetailTab>('edit')
 
-  const allTools = useMemo(() => [...BUILT_IN_TOOLS, ...customTools], [customTools])
+  // 过滤被禁用的通用内置工具
+  const enabledBuiltInTools = useMemo(
+    () => BUILT_IN_TOOLS.map((t) =>
+      disabledIds.includes(t.id) ? { ...t, enabled: false } : t
+    ),
+    [disabledIds]
+  )
+
+  // 构建五区域工具列表
+  const regions = useMemo(() => ({
+    general: enabledBuiltInTools,
+    agent: AGENT_BUILTIN_TOOLS,
+    workspace: WORKSPACE_TOOLS,
+    mcp: mcpTools,
+    custom: customTools.filter((t) => t.enabled),
+  }), [enabledBuiltInTools, mcpTools, customTools])
 
   const handleCreate = () => {
     const newTool = addTool({
@@ -59,6 +101,13 @@ export function ToolEditor() {
   }
 
   const handleBack = () => {
+    // 清理空白的自定义工具（name 和 description 都为空的工具）
+    if (selectedTool && !selectedTool.isBuiltIn) {
+      const isEmpty = !selectedTool.name?.trim() && !selectedTool.description?.trim()
+      if (isEmpty) {
+        deleteTool(selectedTool.id)
+      }
+    }
     setView('list')
     setSelectedTool(null)
   }
@@ -89,6 +138,55 @@ export function ToolEditor() {
     )
   }
 
+  // 区域配置
+  const regionConfig = [
+    {
+      key: 'general' as const,
+      title: '通用内置工具',
+      description: '搜索引擎、网页抓取、时间查询等基础工具',
+      icon: <Wrench size={14} className="text-indigo-500" />,
+      badge: '内置',
+      badgeClass: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
+      tools: regions.general,
+    },
+    {
+      key: 'agent' as const,
+      title: 'Agent 协议工具',
+      description: 'Agent 记忆管理、状态协调等协议工具（基础设施）',
+      icon: <Cpu size={14} className="text-violet-500" />,
+      badge: '基础设施',
+      badgeClass: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400',
+      tools: regions.agent,
+    },
+    {
+      key: 'workspace' as const,
+      title: '工作区工具',
+      description: '文件操作、终端命令、工作区管理等工作区工具（基础设施）',
+      icon: <Layers size={14} className="text-teal-500" />,
+      badge: '基础设施',
+      badgeClass: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400',
+      tools: regions.workspace,
+    },
+    {
+      key: 'mcp' as const,
+      title: 'MCP 工具',
+      description: '通过 MCP 服务器注册的工具（只读展示，可测试）',
+      icon: <Server size={14} className="text-amber-500" />,
+      badge: 'MCP',
+      badgeClass: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
+      tools: regions.mcp,
+    },
+    {
+      key: 'custom' as const,
+      title: '自定义工具',
+      description: '用户自定义的 JavaScript 工具',
+      icon: <Code2 size={14} className="text-emerald-500" />,
+      badge: customTools.length > 0 ? String(customTools.length) : undefined,
+      badgeClass: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
+      tools: regions.custom,
+    },
+  ]
+
   return (
     <div className="space-y-6">
       {/* 标题 */}
@@ -98,8 +196,8 @@ export function ToolEditor() {
             <Wrench size={20} className="text-indigo-500" />
             工具管理
           </h2>
-          <p className="text-sm text-muted mt-1">
-            管理 AI 可使用的工具，包括内置工具和自定义工具
+          <p className="text-sm text-muted">
+            管理 AI 可使用的工具，包括内置工具、MCP 工具和自定义工具
           </p>
         </div>
         <button
@@ -110,57 +208,87 @@ export function ToolEditor() {
         </button>
       </div>
 
-      {/* 内置工具 */}
-      <div>
-        <h3 className="text-xs font-medium text-muted mb-2">内置工具</h3>
-        <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-          {BUILT_IN_TOOLS.map((tool) => (
-            <ToolListItem
-              key={tool.id}
-              tool={tool}
-              onSelect={() => handleSelectTool(tool, 'test')}
-              onEdit={() => handleSelectTool(tool, 'edit')}
-              onTest={() => handleSelectTool(tool, 'test')}
-              onToggle={() => {}}
-              onDelete={() => {}}
-              isBuiltIn
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* 自定义工具 */}
-      <div>
-        <h3 className="text-xs font-medium text-muted mb-2">
-          自定义工具
-          {customTools.length > 0 && (
-            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full">
-              {customTools.length}
+      {/* 工具区域 */}
+      {regionConfig.map((region) => (
+        <div key={region.key}>
+          {/* 区域标题 */}
+          <div className="flex items-center gap-2 mb-2">
+            {region.icon}
+            <h3 className="text-xs font-medium text-surface-700 dark:text-surface-300">
+              {region.title}
+            </h3>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${region.badgeClass}`}>
+              {region.badge}
             </span>
+            {region.badge !== '基础设施' && (
+              <span className="text-[10px] text-muted">· {region.tools.length}</span>
+            )}
+          </div>
+          <p className="text-[10px] text-muted mb-2">{region.description}</p>
+
+          {region.key === 'custom' ? (
+            // 自定义工具单独渲染，需要特殊的回调处理
+            customTools.length > 0 ? (
+              <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+                {customTools.map((tool) => (
+                  <ToolListItem
+                    key={tool.id}
+                    tool={tool}
+                    builtinType={null}
+                    isMcp={false}
+                    isInfrastructure={false}
+                    mcpServerId={undefined}
+                    onSelect={() => handleSelectTool(tool)}
+                    onEdit={() => handleSelectTool(tool, 'edit')}
+                    onTest={() => handleSelectTool(tool, 'test')}
+                    onToggle={() => toggleTool(tool.id)}
+                    onDelete={() => handleDelete(tool.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-muted py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
+                <Code2 size={24} className="mx-auto mb-1 opacity-30" />
+                <p className="text-xs">暂无自定义工具</p>
+                <p className="text-[10px] mt-1">点击上方"新建自定义工具"开始创建</p>
+              </div>
+            )
+          ) : region.tools.length > 0 ? (
+            <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
+              {region.tools.map((tool) => {
+                const builtinType = getBuiltinType(tool)
+                const isMcp = tool.isMCP
+                const isInfrastructure = builtinType === 'agent' || builtinType === 'workspace'
+
+                return (
+                  <ToolListItem
+                    key={tool.id}
+                    tool={tool}
+                    builtinType={builtinType}
+                    isMcp={isMcp}
+                    isInfrastructure={isInfrastructure}
+                    mcpServerId={tool.mcpServerId}
+                    onSelect={() => handleSelectTool(tool, 'test')}
+                    onEdit={() => handleSelectTool(tool, 'edit')}
+                    onTest={() => handleSelectTool(tool, 'test')}
+                    onToggle={
+                      builtinType === 'general'
+                        ? () => toggleBuiltinTool(tool.id)
+                        : undefined
+                    }
+                    onDelete={() => {}}
+                  />
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-center text-muted py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
+              <Code2 size={24} className="mx-auto mb-1 opacity-30" />
+              <p className="text-xs">暂无工具</p>
+            </div>
           )}
-        </h3>
-        {customTools.length > 0 ? (
-          <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-            {customTools.map((tool) => (
-              <ToolListItem
-                key={tool.id}
-                tool={tool}
-                onSelect={() => handleSelectTool(tool)}
-                onEdit={() => handleSelectTool(tool, 'edit')}
-                onTest={() => handleSelectTool(tool, 'test')}
-                onToggle={() => toggleTool(tool.id)}
-                onDelete={() => handleDelete(tool.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center text-muted py-8 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
-            <Code2 size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">暂无自定义工具</p>
-            <p className="text-xs mt-1">点击上方"新建自定义工具"开始创建</p>
-          </div>
-        )}
-      </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -168,52 +296,132 @@ export function ToolEditor() {
 // ==================== 工具列表项 ====================
 function ToolListItem({
   tool,
+  builtinType,
+  isMcp,
+  isInfrastructure,
+  mcpServerId,
   onSelect,
   onEdit,
   onTest,
   onToggle,
-  onDelete,
-  isBuiltIn = false
+  onDelete
 }: {
   tool: Tool
+  builtinType: BuiltinType | null
+  isMcp: boolean
+  isInfrastructure: boolean
+  mcpServerId?: string
   onSelect: () => void
   onEdit: () => void
   onTest: () => void
-  onToggle: () => void
+  onToggle?: () => void
   onDelete: () => void
-  isBuiltIn?: boolean
 }) {
   const stats = useToolStatsStore((s) => s.stats[tool.name])
   const hasCode = !!tool.code
+  const isDisabled = !tool.enabled
+
+  // 获取 MCP 服务器名称
+  const mcpServerName = useMemo(() => {
+    if (!isMcp || !mcpServerId) return null
+    const { mcpServers } = useGlobalConfigStore.getState()
+    const server = mcpServers.find((s: { id: string; name: string }) => s.id === mcpServerId)
+    return server?.name ?? mcpServerId
+  }, [isMcp, mcpServerId])
+
+  // 获取内置类型标签
+  const builtinLabel = useMemo(() => {
+    if (builtinType === 'agent') return 'Agent'
+    if (builtinType === 'workspace') return '工作区'
+    if (builtinType === 'general') return '内置'
+    if (isMcp) return 'MCP'
+    return null
+  }, [builtinType, isMcp])
+
+  // 获取图标样式
+  const iconStyle = useMemo(() => {
+    if (builtinType === 'general') {
+      return {
+        bg: 'bg-indigo-100 dark:bg-indigo-900/30',
+        text: 'text-indigo-600 dark:text-indigo-400'
+      }
+    }
+    if (builtinType === 'agent') {
+      return {
+        bg: 'bg-violet-100 dark:bg-violet-900/30',
+        text: 'text-violet-600 dark:text-violet-400'
+      }
+    }
+    if (builtinType === 'workspace') {
+      return {
+        bg: 'bg-teal-100 dark:bg-teal-900/30',
+        text: 'text-teal-600 dark:text-teal-400'
+      }
+    }
+    if (isMcp) {
+      return {
+        bg: 'bg-amber-100 dark:bg-amber-900/30',
+        text: 'text-amber-600 dark:text-amber-400'
+      }
+    }
+    // 自定义工具
+    return {
+      bg: hasCode ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-amber-100 dark:bg-amber-900/30',
+      text: hasCode ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+    }
+  }, [builtinType, isMcp, hasCode])
 
   return (
     <div
-      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
-      onClick={onSelect}
+      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
+        isDisabled
+          ? 'opacity-50 cursor-not-allowed'
+          : 'hover:bg-surface-50 dark:hover:bg-surface-800/40'
+      }`}
+      onClick={isDisabled ? undefined : onSelect}
     >
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-        isBuiltIn
-          ? 'bg-indigo-100 dark:bg-indigo-900/30'
-          : hasCode
-            ? 'bg-emerald-100 dark:bg-emerald-900/30'
-            : 'bg-amber-100 dark:bg-amber-900/30'
-      }`}>
-        <Wrench size={14} className={
-          isBuiltIn
-            ? 'text-indigo-600 dark:text-indigo-400'
-            : hasCode
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-amber-600 dark:text-amber-400'
-        } />
+      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconStyle.bg}`}>
+        <Wrench size={14} className={iconStyle.text} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-surface-800 dark:text-surface-200">{tool.name}</span>
-          {isBuiltIn && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 text-muted rounded-full font-medium">内置</span>
+          <span className={`text-sm font-medium ${
+            isDisabled
+              ? 'text-muted line-through'
+              : 'text-surface-800 dark:text-surface-200'
+          }`}>
+            {tool.name}
+          </span>
+          {builtinLabel && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+              builtinType === 'general'
+                ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                : builtinType === 'agent'
+                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
+                  : builtinType === 'workspace'
+                    ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
+                    : isMcp
+                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                      : 'bg-surface-100 dark:bg-surface-800 text-muted'
+            }`}>
+              {builtinLabel}
+            </span>
           )}
-          {!isBuiltIn && hasCode && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full font-medium">JS</span>
+          {isInfrastructure && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 text-muted rounded-full font-medium">
+              基础设施
+            </span>
+          )}
+          {!isInfrastructure && builtinType !== 'general' && hasCode && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full font-medium">
+              JS
+            </span>
+          )}
+          {mcpServerName && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 text-muted rounded-full font-medium"
+              title={`来源: ${mcpServerName}`}>
+              {mcpServerName}
+            </span>
           )}
           {stats && stats.callCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full font-medium">
@@ -226,12 +434,30 @@ function ToolListItem({
       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onTest}
-          className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-all"
-          title="测试"
+          className={`p-1.5 rounded-lg transition-all ${
+            isInfrastructure
+              ? 'text-muted/50 cursor-not-allowed'
+              : 'text-muted hover:text-accent-500 hover:bg-accent-50 dark:hover:bg-accent-950/30'
+          }`}
+          title={isInfrastructure ? '需要工作区上下文才能测试' : '测试'}
+          disabled={isInfrastructure}
         >
           <Play size={12} />
         </button>
-        {isBuiltIn ? null : (
+        {builtinType === 'general' && onToggle && (
+          <button
+            onClick={onToggle}
+            className="text-muted"
+            title={tool.enabled ? '禁用此工具' : '启用此工具'}
+          >
+            {tool.enabled ? (
+              <ToggleRight size={18} className="text-accent-500" />
+            ) : (
+              <ToggleLeft size={18} />
+            )}
+          </button>
+        )}
+        {builtinType === null && !isMcp && (
           <>
             <button onClick={onToggle} className="text-muted">
               {tool.enabled ? (
@@ -274,6 +500,8 @@ function ToolDetailView({
   onSave: (updates: Partial<Tool>) => void
 }) {
   const isBuiltIn = tool.isBuiltIn
+  const builtinType = getBuiltinType(tool)
+  const isInfrastructure = builtinType === 'agent' || builtinType === 'workspace'
 
   return (
     <div className="space-y-4">
@@ -298,6 +526,7 @@ function ToolDetailView({
 
       {/* Tab 导航 */}
       <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-xl">
+        {/* 编辑 tab：仅自定义工具显示 */}
         {!isBuiltIn && (
           <TabButton
             active={activeTab === 'edit'}
@@ -306,11 +535,15 @@ function ToolDetailView({
             label="编辑"
           />
         )}
+        {/* 测试 tab：基础设施工具（Agent 协议/工作区）显示灰色提示 */}
         <TabButton
           active={activeTab === 'test'}
-          onClick={() => onTabChange('test')}
+          onClick={() => {
+            if (!isInfrastructure) onTabChange('test')
+          }}
           icon={<Play size={14} />}
-          label="测试"
+          label={isInfrastructure ? '测试 (需上下文)' : '测试'}
+          disabled={isInfrastructure}
         />
         <TabButton
           active={activeTab === 'stats'}
@@ -324,7 +557,9 @@ function ToolDetailView({
       {activeTab === 'edit' && !isBuiltIn && (
         <ToolEditForm tool={tool} onSave={onSave} />
       )}
-      {activeTab === 'test' && <ToolTestPanel tool={tool} />}
+      {activeTab === 'test' && (
+        <ToolTestPanel tool={tool} isInfrastructure={isInfrastructure} />
+      )}
       {activeTab === 'stats' && <ToolStatsPanel toolName={tool.name} />}
     </div>
   )
@@ -334,20 +569,25 @@ function TabButton({
   active,
   onClick,
   icon,
-  label
+  label,
+  disabled = false
 }: {
   active: boolean
   onClick: () => void
   icon: React.ReactNode
   label: string
+  disabled?: boolean
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-        active
-          ? 'bg-white dark:bg-surface-700 text-accent-600 dark:text-accent-400 shadow-sm'
-          : 'text-muted hover:text-surface-700 dark:hover:text-surface-300'
+        disabled
+          ? 'text-muted/50 cursor-not-allowed'
+          : active
+            ? 'bg-white dark:bg-surface-700 text-accent-600 dark:text-accent-400 shadow-sm'
+            : 'text-muted hover:text-surface-700 dark:hover:text-surface-300'
       }`}
     >
       {icon} {label}
@@ -372,6 +612,7 @@ function ToolEditForm({
   const [code, setCode] = useState(tool.code || DEFAULT_CODE_TEMPLATE)
   const [timeout, setTimeout_] = useState(tool.timeout || 5000)
   const [jsonError, setJsonError] = useState('')
+  const [nameError, setNameError] = useState('')
   const [saved, setSaved] = useState(false)
 
   const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs'
@@ -388,6 +629,12 @@ function ToolEditForm({
   }
 
   const handleSave = () => {
+    // 验证名称不能为空
+    if (!name.trim()) {
+      setNameError('工具名称不能为空')
+      return
+    }
+    setNameError('') // 清除错误
     let parsedParams: Record<string, unknown>
     try {
       parsedParams = JSON.parse(parametersJson)
@@ -417,10 +664,15 @@ function ToolEditForm({
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => { setName(e.target.value); setNameError('') }}
               placeholder="my_tool"
-              className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all"
+              className={`w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all ${
+                nameError ? 'border-danger-400' : 'border-surface-200/80 dark:border-surface-700/60'
+              }`}
             />
+            {nameError && (
+              <p className="text-xs text-danger-500 mt-1.5">{nameError}</p>
+            )}
           </div>
           <div>
             <label className="block text-xs text-muted mb-1.5">超时 (ms)</label>
@@ -508,7 +760,7 @@ function ToolEditForm({
       <div className="flex items-center gap-3">
         <button
           onClick={handleSave}
-          disabled={!name.trim() || !!jsonError}
+          disabled={!name.trim() || !!jsonError || !!nameError}
           className="flex items-center gap-2 bg-accent-500 hover:bg-accent-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-all shadow-sm disabled:opacity-50"
         >
           {saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
@@ -520,7 +772,7 @@ function ToolEditForm({
 }
 
 // ==================== 工具测试面板 ====================
-function ToolTestPanel({ tool }: { tool: Tool }) {
+function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfrastructure?: boolean }) {
   const theme = useSettingsStore((s) => s.theme)
   const [inputJson, setInputJson] = useState(() => {
     // 根据 parameters Schema 生成示例参数
@@ -554,7 +806,7 @@ function ToolTestPanel({ tool }: { tool: Tool }) {
 
   const allTools = useMemo(() => {
     const { customTools } = useCustomToolStore.getState()
-    return [...BUILT_IN_TOOLS, ...customTools]
+    return [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS, ...customTools]
   }, [])
 
   const handleExecute = useCallback(async () => {
@@ -602,13 +854,31 @@ function ToolTestPanel({ tool }: { tool: Tool }) {
 
   return (
     <div className="space-y-4">
+      {/* 基础设施提示 */}
+      {isInfrastructure && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200/80 dark:border-amber-700/60 rounded-xl p-4">
+          <div className="flex items-start gap-2">
+            <XCircle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                需要工作区上下文
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                此工具是 {tool.isBuiltIn && AGENT_BUILTIN_TOOLS.some((t) => t.id === tool.id) ? 'Agent 协议' : '工作区'} 
+                基础设施工具，在实际对话中由系统自动调用。此处测试可能需要有效的工作区上下文。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 输入区 */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5">
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs text-muted">输入参数 (JSON)</label>
           <button
             onClick={handleExecute}
-            disabled={isRunning}
+            disabled={isRunning || isInfrastructure}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors disabled:opacity-50"
           >
             {isRunning ? (

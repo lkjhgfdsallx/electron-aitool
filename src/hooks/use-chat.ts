@@ -40,6 +40,19 @@ function filterWebTools(tools: Tool[]): Tool[] {
   return tools.filter((t) => !WEB_TOOL_NAMES.has(t.name) || webSearchEnabled)
 }
 
+/**
+ * 过滤被用户禁用的内置工具
+ * @param tools 工具列表（通常为 BUILT_IN_TOOLS）
+ * @returns 过滤后的工具列表
+ */
+function filterDisabledBuiltinTools(tools: Tool[]): Tool[] {
+  const disabledIds = useSettingsStore.getState().disabledBuiltinToolIds
+  if (disabledIds.length === 0) return tools
+  return tools.map((t) =>
+    disabledIds.includes(t.id) ? { ...t, enabled: false } : t
+  )
+}
+
 /** 将进度事件类型映射到阶段 */
 /** 检查通知设置并在 AI 回复完成时发送系统通知和播放提示音 */
 function notifyIfReady(title: string, body: string): void {
@@ -199,7 +212,7 @@ export function useChat() {
 
       // 获取目标 Agent 可用的工具
       const allTools: Tool[] = [
-        ...BUILT_IN_TOOLS,
+        ...filterDisabledBuiltinTools(BUILT_IN_TOOLS),
         ...AGENT_BUILTIN_TOOLS,
         ...WORKSPACE_TOOLS,
         ...useCustomToolStore.getState().customTools.filter((t) => t.enabled),
@@ -533,7 +546,8 @@ export function useChat() {
     const mcpTools = useMCPToolStore.getState().mcpTools
     const customTools = useCustomToolStore.getState().customTools.filter((t) => t.enabled)
     // 联网工具也需要根据开关过滤（Agent 模式同样受此限制）
-    return filterWebTools([...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...mcpTools, ...customTools])
+    // 内置工具需要应用用户禁用黑名单（仅影响 BUILT_IN_TOOLS）
+    return filterWebTools([...filterDisabledBuiltinTools(BUILT_IN_TOOLS), ...AGENT_BUILTIN_TOOLS, ...mcpTools, ...customTools])
   }, [])
 
   /**

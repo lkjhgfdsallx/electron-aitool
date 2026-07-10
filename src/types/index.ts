@@ -249,4 +249,6 @@ export interface UIPreferences {
   notificationSound: string      // 提示音文件名
   // 快捷键
   shortcuts: ShortcutConfig
+  /** 被禁用的内置工具 ID 列表（仅 BUILT_IN_TOOLS，不影响 AGENT_BUILTIN_TOOLS 和 WORKSPACE_TOOLS） */
+  disabledBuiltinToolIds: string[]
 }

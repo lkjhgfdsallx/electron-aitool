@@ -35,7 +35,9 @@ const DEFAULT_PREFERENCES: UIPreferences = {
   enableNotification: true,
   enableSound: false,
   notificationSound: 'default',
-  shortcuts: { ...DEFAULT_SHORTCUT_CONFIG }
+  shortcuts: { ...DEFAULT_SHORTCUT_CONFIG },
+  /** 被禁用的内置工具 ID 列表（仅 BUILT_IN_TOOLS，运行时过滤） */
+  disabledBuiltinToolIds: [] as string[]
 }
 
 interface SettingsStore extends UIPreferences {
@@ -70,6 +72,8 @@ interface SettingsStore extends UIPreferences {
   setChunkingConfig: (config: ChunkingConfig) => void
   setRetrievalConfig: (config: RetrievalConfig) => void
   resetPreferences: () => void
+  /** 切换某个内置工具的启用状态 */
+  toggleBuiltinTool: (toolId: string) => void
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -144,7 +148,18 @@ export const useSettingsStore = create<SettingsStore>()(
         embeddingConfig: { type: 'tfidf' },
         chunkingConfig: { ...DEFAULT_CHUNKING_CONFIG },
         retrievalConfig: { ...DEFAULT_RETRIEVAL_CONFIG }
-      })
+      }),
+
+      toggleBuiltinTool: (toolId) =>
+        set((state) => {
+          const ids = state.disabledBuiltinToolIds
+          const disabled = ids.includes(toolId)
+          return {
+            disabledBuiltinToolIds: disabled
+              ? ids.filter((id) => id !== toolId)
+              : [...ids, toolId]
+          }
+        }),
     }),
     {
       name: 'ui-preferences',
@@ -157,6 +172,10 @@ export const useSettingsStore = create<SettingsStore>()(
             ...DEFAULT_RETRIEVAL_CONFIG,
             ...state.retrievalConfig
           }
+        }
+        // v1 → v2: 新增 disabledBuiltinToolIds
+        if (version < 2) {
+          state.disabledBuiltinToolIds = []
         }
         return state
       },
