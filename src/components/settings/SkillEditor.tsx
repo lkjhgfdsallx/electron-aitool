@@ -19,6 +19,7 @@ import {
 import type { Skill, SkillCreateInput } from '../../types'
 import { MarkdownRenderer } from '../ui/MarkdownRenderer'
 import { useSkillStore } from '../../stores/skill-store'
+import { SettingsTabs, useConfirmDialog } from './ui'
 
 // ==================== 类型定义 ====================
 
@@ -51,6 +52,7 @@ interface ResourceFileViewerProps {
 
 function ResourceFileViewer({ skillId, filePath, onClose, viewOnly }: ResourceFileViewerProps) {
   const { readResourceFile, writeResourceFile, deleteResourceFile } = useSkillStore()
+  const { confirm, Dialog } = useConfirmDialog()
   const [content, setContent] = useState<string>('')
   const [encoding, setEncoding] = useState<'text' | 'base64'>('text')
   const [loading, setLoading] = useState(true)
@@ -83,7 +85,13 @@ function ResourceFileViewer({ skillId, filePath, onClose, viewOnly }: ResourceFi
   }
 
   const handleDelete = async () => {
-    if (!confirm(`确定删除资源文件 "${filePath}"？`)) return
+    const ok = await confirm({
+      title: '删除资源文件',
+      message: `确定删除资源文件 "${filePath}"？`,
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (!ok) return
     await deleteResourceFile(skillId, filePath)
     onClose()
   }
@@ -144,7 +152,7 @@ function ResourceFileViewer({ skillId, filePath, onClose, viewOnly }: ResourceFi
           {!viewOnly && !isBinary && (
             <button
               onClick={() => { setEditing(!editing); setEditContent(content) }}
-              className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-400 hover:text-amber-500 transition-colors"
+              className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-400 hover:text-accent-500 transition-colors"
               title={editing ? '取消编辑' : '编辑'}
             >
               <Pencil size={12} />
@@ -180,7 +188,7 @@ function ResourceFileViewer({ skillId, filePath, onClose, viewOnly }: ResourceFi
             <textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="w-full min-h-[200px] max-h-[280px] px-2 py-1.5 rounded border border-surface-300 dark:border-surface-600 text-xs font-mono bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40 resize-y"
+              className="w-full min-h-[200px] max-h-[280px] px-2 py-1.5 rounded border border-surface-300 dark:border-surface-600 text-xs font-mono bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-accent-500/40 resize-y"
             />
             <div className="flex justify-end gap-2 mt-2">
               <button
@@ -192,7 +200,7 @@ function ResourceFileViewer({ skillId, filePath, onClose, viewOnly }: ResourceFi
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-accent-500 hover:bg-accent-600 text-white disabled:opacity-50 transition-colors"
               >
                 {saving ? '保存中...' : <><Check size={10} /> 保存</>}
               </button>
@@ -204,6 +212,7 @@ function ResourceFileViewer({ skillId, filePath, onClose, viewOnly }: ResourceFi
           </pre>
         )}
       </div>
+      <Dialog />
     </div>
   )
 }
@@ -238,6 +247,20 @@ export function SkillEditor({
   // ==================== 资源文件上传 ====================
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { writeResourceFile } = useSkillStore()
+  const { confirm: confirmDelete, Dialog: DeleteDialog } = useConfirmDialog()
+
+  const handleDeleteSkill = async () => {
+    if (!skill) return
+    const ok = await confirmDelete({
+      title: '删除 Skill',
+      message: '确定删除此 Skill？\n此操作会删除整个目录，不可恢复。',
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
+      onDelete(skill.dirPath)
+    }
+  }
 
   // 从 skill 初始化表单
   useEffect(() => {
@@ -361,7 +384,7 @@ export function SkillEditor({
         {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <Zap size={18} className="text-amber-500" />
+            <Zap size={18} className="text-accent-500" />
             <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-100">
               {skill.name}
             </h2>
@@ -377,7 +400,7 @@ export function SkillEditor({
             {onEnterEdit && (
               <button
                 onClick={onEnterEdit}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-accent-500 hover:bg-accent-600 text-white shadow-sm transition-all"
               >
                 <Edit2 size={14} />
                 编辑
@@ -393,21 +416,13 @@ export function SkillEditor({
         </div>
 
         {/* 标签页导航 */}
-        <div className="flex items-center gap-1 px-6 pt-3 border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0">
-          {TAB_LIST.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 ${
-                activeTab === tab.key
-                  ? 'text-amber-600 dark:text-amber-400 border-amber-500 bg-amber-50/50 dark:bg-amber-900/10'
-                  : 'text-surface-500 dark:text-surface-400 border-transparent hover:text-surface-700 dark:hover:text-surface-300'
-              }`}
-            >
-              <tab.icon size={12} />
-              {tab.label}
-            </button>
-          ))}
+        <div className="px-6 pt-3 flex-shrink-0">
+          <SettingsTabs
+            variant="underline"
+            activeTab={activeTab}
+            onTabChange={(key) => setActiveTab(key as EditorTab)}
+            tabs={TAB_LIST.map(({ key, label, icon }) => ({ key, label, icon }))}
+          />
         </div>
 
         {/* 标签页内容 */}
@@ -491,7 +506,7 @@ export function SkillEditor({
       {/* 头部 */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Zap size={18} className="text-amber-500" />
+          <Zap size={18} className="text-accent-500" />
           <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-100">
             {isCreating ? '新建 Skill' : `编辑 — ${skill?.name}`}
           </h2>
@@ -504,10 +519,7 @@ export function SkillEditor({
         <div className="flex items-center gap-2">
           {!isCreating && skill && (
             <button
-              onClick={() => {
-                if (confirm('确定删除此 Skill？\n此操作会删除整个目录，不可恢复。'))
-                  onDelete(skill.dirPath)
-              }}
+              onClick={handleDeleteSkill}
               className="p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
               title="删除"
             >
@@ -524,21 +536,13 @@ export function SkillEditor({
       </div>
 
       {/* 标签页导航 */}
-      <div className="flex items-center gap-1 px-6 pt-3 border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0">
-        {TAB_LIST.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-lg transition-colors border-b-2 ${
-              activeTab === tab.key
-                ? 'text-amber-600 dark:text-amber-400 border-amber-500 bg-amber-50/50 dark:bg-amber-900/10'
-                : 'text-surface-500 dark:text-surface-400 border-transparent hover:text-surface-700 dark:hover:text-surface-300'
-            }`}
-          >
-            <tab.icon size={12} />
-            {tab.label}
-          </button>
-        ))}
+      <div className="px-6 pt-3 flex-shrink-0">
+        <SettingsTabs
+          variant="underline"
+          activeTab={activeTab}
+          onTabChange={(key) => setActiveTab(key as EditorTab)}
+          tabs={TAB_LIST.map(({ key, label, icon }) => ({ key, label, icon }))}
+        />
       </div>
 
       {/* 标签页内容 */}
@@ -557,7 +561,7 @@ export function SkillEditor({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="pdf-processing"
                 disabled={!isCreating}
-                className={`w-full px-3 py-2 rounded-lg border text-sm font-mono bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-all ${
+                className={`w-full px-3 py-2 rounded-lg border text-sm font-mono bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-accent-500/40 transition-all ${
                   !isCreating ? 'opacity-60 cursor-not-allowed' : ''
                 } ${
                   errors.name
@@ -583,7 +587,7 @@ export function SkillEditor({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="提取 PDF 文件中的文本和表格数据"
-                className={`w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-all ${
+                className={`w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-accent-500/40 transition-all ${
                   errors.description
                     ? 'border-red-400 dark:border-red-500'
                     : 'border-surface-300 dark:border-surface-600'
@@ -602,7 +606,7 @@ export function SkillEditor({
                 </label>
                 <button
                   onClick={() => setPreview(!preview)}
-                  className="flex items-center gap-1 text-xs text-surface-500 hover:text-amber-500 transition-colors"
+                  className="flex items-center gap-1 text-xs text-surface-500 hover:text-accent-500 transition-colors"
                 >
                   <Eye size={12} />
                   {preview ? '编辑' : '预览'}
@@ -618,7 +622,7 @@ export function SkillEditor({
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="# 技能标题&#10;&#10;详细的指令内容...&#10;&#10;## 步骤&#10;1. 首先执行...&#10;2. 然后执行..."
-                  className={`w-full min-h-[300px] max-h-[500px] px-3 py-2 rounded-lg border text-sm font-mono bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 resize-y transition-all ${
+                  className={`w-full min-h-[300px] max-h-[500px] px-3 py-2 rounded-lg border text-sm font-mono bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-accent-500/40 resize-y transition-all ${
                     errors.content
                       ? 'border-red-400 dark:border-red-500'
                       : 'border-surface-300 dark:border-surface-600'
@@ -680,7 +684,7 @@ export function SkillEditor({
                     key={f}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors cursor-pointer group ${
                       viewingFile === f
-                        ? 'bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40'
+                        ? 'bg-accent-50 dark:bg-accent-900/10 border border-accent-200 dark:border-accent-800/40'
                         : 'bg-surface-50 dark:bg-surface-700/50 hover:bg-surface-100 dark:hover:bg-surface-700'
                     }`}
                     onClick={() => setViewingFile(viewingFile === f ? null : f)}
@@ -711,12 +715,13 @@ export function SkillEditor({
         </button>
         <button
           onClick={handleSave}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-accent-500 hover:bg-accent-600 text-white shadow-sm transition-all"
         >
           <Save size={14} />
           {isCreating ? '创建' : '保存'}
         </button>
       </div>
+      <DeleteDialog />
     </div>
   )
 }

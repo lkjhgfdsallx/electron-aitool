@@ -41,6 +41,7 @@ import {
   DEFAULT_CHUNKING_CONFIG,
   DEFAULT_RETRIEVAL_CONFIG
 } from '../../types'
+import { SettingsHeader, SettingsSectionHeader, DangerZone, useConfirmDialog } from './ui'
 
 export function KnowledgeBaseSettings() {
   const {
@@ -55,7 +56,6 @@ export function KnowledgeBaseSettings() {
   const [showErrorDetail, setShowErrorDetail] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [migrationProgress, setMigrationProgress] = useState<{
     total: number; migrated: number; percentage: number
   } | null>(null)
@@ -64,6 +64,7 @@ export function KnowledgeBaseSettings() {
     current: number; total: number; phase: string
   } | null>(null)
   const [showRebuildConfirm, setShowRebuildConfirm] = useState(false)
+  const { confirm, Dialog } = useConfirmDialog()
 
   // 订阅引擎状态变化
   useEffect(() => {
@@ -146,10 +147,16 @@ export function KnowledgeBaseSettings() {
   )
 
   const handleClearAll = useCallback(async () => {
+    const ok = await confirm({
+      title: '清空知识库',
+      message: '确定清空所有知识库数据？此操作不可恢复。',
+      confirmLabel: '确认清空',
+      variant: 'danger',
+    })
+    if (!ok) return
     await knowledgeBaseService.clearAll()
-    setShowClearConfirm(false)
     window.location.reload()
-  }, [])
+  }, [confirm])
 
   const handleRebuild = useCallback(async () => {
     setIsRebuilding(true)
@@ -190,19 +197,11 @@ export function KnowledgeBaseSettings() {
   return (
     <div className="space-y-6">
       {/* 标题 */}
-      <div>
-        <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-          <Database size={20} className="text-violet-500" />
-          知识库设置
-        </h2>
-        <p className="text-sm text-muted mt-1">
-          配置知识库的嵌入引擎和检索参数
-        </p>
-      </div>
+      <SettingsHeader icon={Database} title="知识库设置" description="配置知识库的嵌入引擎和检索参数" />
 
       {/* ===== 普通设置 ===== */}
       <div className="space-y-4">
-        <SectionHeader title="普通设置" />
+        <SettingsSectionHeader title="普通设置" />
 
         {/* 语义引擎状态卡片 */}
         <SemanticEngineStatusCard
@@ -240,7 +239,7 @@ export function KnowledgeBaseSettings() {
                   onClick={() => handleProviderChange(type)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all ${
                     isActive
-                      ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700'
+                      ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 border border-accent-300 dark:border-accent-700'
                       : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 border border-transparent hover:bg-surface-200 dark:hover:bg-surface-700'
                   }`}
                 >
@@ -266,17 +265,15 @@ export function KnowledgeBaseSettings() {
 
       {/* ===== 高级设置 ===== */}
       <div className="space-y-4">
-        <button
+        <div
           onClick={() => setShowAdvanced(!showAdvanced)}
-          className="w-full flex items-center justify-between group"
+          className="w-full cursor-pointer group"
         >
-          <SectionHeader title="高级设置" noMargin />
-          {showAdvanced ? (
-            <ChevronUp size={16} className="text-muted" />
-          ) : (
-            <ChevronDown size={16} className="text-muted" />
-          )}
-        </button>
+          <SettingsSectionHeader
+            title="高级设置"
+            actions={showAdvanced ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
+          />
+        </div>
 
         {showAdvanced && (
           <>
@@ -310,7 +307,7 @@ export function KnowledgeBaseSettings() {
                         onClick={() => setChunkingConfig({ ...chunkingConfig, mode })}
                         className={`flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg text-xs transition-all ${
                           isActive
-                            ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700'
+                            ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 border border-accent-300 dark:border-accent-700'
                             : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 border border-transparent hover:bg-surface-200 dark:hover:bg-surface-700'
                         }`}
                       >
@@ -333,13 +330,13 @@ export function KnowledgeBaseSettings() {
                     type="range" min={100} max={2000} step={50}
                     value={chunkingConfig.chunkSize}
                     onChange={(e) => setChunkingConfig({ ...chunkingConfig, chunkSize: Number(e.target.value) })}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-500"
                   />
                   <input
                     type="number" min={100} max={5000}
                     value={chunkingConfig.chunkSize}
                     onChange={(e) => setChunkingConfig({ ...chunkingConfig, chunkSize: Math.max(100, Number(e.target.value)) })}
-                    className="w-20 px-2 py-1.5 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 text-center focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    className="w-20 px-2 py-1.5 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 text-center focus:outline-none focus:ring-2 focus:ring-accent-500/50"
                   />
                 </div>
               </div>
@@ -354,7 +351,7 @@ export function KnowledgeBaseSettings() {
                     type="range" min={0} max={Math.floor(chunkingConfig.chunkSize / 2)} step={10}
                     value={chunkingConfig.chunkOverlap}
                     onChange={(e) => setChunkingConfig({ ...chunkingConfig, chunkOverlap: Number(e.target.value) })}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-500"
                   />
                   <input
                     type="number" min={0} max={Math.floor(chunkingConfig.chunkSize / 2)}
@@ -363,7 +360,7 @@ export function KnowledgeBaseSettings() {
                       ...chunkingConfig,
                       chunkOverlap: Math.max(0, Math.min(Number(e.target.value), Math.floor(chunkingConfig.chunkSize / 2)))
                     })}
-                    className="w-20 px-2 py-1.5 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 text-center focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    className="w-20 px-2 py-1.5 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 text-center focus:outline-none focus:ring-2 focus:ring-accent-500/50"
                   />
                 </div>
               </div>
@@ -379,7 +376,7 @@ export function KnowledgeBaseSettings() {
                     value={chunkingConfig.delimiter}
                     onChange={(e) => setChunkingConfig({ ...chunkingConfig, delimiter: e.target.value })}
                     placeholder='\n\n'
-                    className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+                    className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 font-mono focus:outline-none focus:ring-2 focus:ring-accent-500/50"
                   />
                 </div>
               )}
@@ -414,7 +411,7 @@ export function KnowledgeBaseSettings() {
                     type="range" min={1} max={20} step={1}
                     value={retrievalConfig.topK}
                     onChange={(e) => setRetrievalConfig({ ...retrievalConfig, topK: Number(e.target.value) })}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-500"
                   />
                   <span className="text-sm font-medium text-surface-800 dark:text-surface-200 w-8 text-center">
                     {retrievalConfig.topK}
@@ -435,7 +432,7 @@ export function KnowledgeBaseSettings() {
                       ...retrievalConfig,
                       similarityThreshold: Number(e.target.value)
                     })}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-500"
                   />
                   <span className="text-sm font-medium text-surface-800 dark:text-surface-200 w-12 text-center">
                     {retrievalConfig.similarityThreshold.toFixed(2)}
@@ -463,7 +460,7 @@ export function KnowledgeBaseSettings() {
                           hybridBM25Weight: +(1 - wVec).toFixed(2)
                         })
                       }}
-                      className="flex-1 accent-violet-500"
+                      className="flex-1 accent-500"
                     />
                     <span className="text-sm font-medium text-surface-800 dark:text-surface-200 w-10 text-center">
                       {(retrievalConfig.hybridVectorWeight ?? 0.6).toFixed(2)}
@@ -517,7 +514,7 @@ export function KnowledgeBaseSettings() {
               {isRebuilding && rebuildProgress ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin text-violet-500" />
+                    <Loader2 size={14} className="animate-spin text-accent-500" />
                     <span className="text-xs text-surface-600 dark:text-surface-300">
                       {rebuildProgress.phase === 'clearing' ? '正在清除旧向量...' :
                        rebuildProgress.phase === 'done' ? '重建完成' :
@@ -527,7 +524,7 @@ export function KnowledgeBaseSettings() {
                   {rebuildProgress.total > 0 && (
                     <div className="w-full h-2 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-violet-500 to-purple-500 rounded-full transition-all"
+                        className="h-full bg-gradient-to-r from-accent-500 to-purple-500 rounded-full transition-all"
                         style={{ width: `${Math.round((rebuildProgress.current / rebuildProgress.total) * 100)}%` }}
                       />
                     </div>
@@ -538,7 +535,7 @@ export function KnowledgeBaseSettings() {
                   <span className="text-xs text-amber-600 dark:text-amber-400">确定重建所有向量？这可能需要几分钟。</span>
                   <button
                     onClick={handleRebuild}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-colors"
+                    className="px-3 py-1.5 text-xs rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
                   >
                     确认重建
                   </button>
@@ -553,7 +550,7 @@ export function KnowledgeBaseSettings() {
                 <button
                   onClick={() => setShowRebuildConfirm(true)}
                   disabled={isRebuilding}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-violet-50 dark:bg-violet-950/20 text-violet-600 dark:text-violet-400 border border-violet-200/60 dark:border-violet-800/30 hover:bg-violet-100 dark:hover:bg-violet-950/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-accent-50 dark:bg-accent-950/20 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/30 hover:bg-accent-100 dark:hover:bg-accent-950/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <RotateCcw size={12} />
                   一键重建向量库
@@ -562,57 +559,24 @@ export function KnowledgeBaseSettings() {
             </div>
 
             {/* 危险操作 */}
-            <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-red-200/60 dark:border-red-800/30 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={14} className="text-red-500" />
-                <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                  危险操作
-                </span>
-              </div>
-              {showClearConfirm ? (
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-red-500">确定清空所有知识库数据？此操作不可恢复。</span>
-                  <button
-                    onClick={handleClearAll}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors"
-                  >
-                    确认清空
-                  </button>
-                  <button
-                    onClick={() => setShowClearConfirm(false)}
-                    className="px-3 py-1.5 text-xs rounded-lg bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-300 dark:hover:bg-surface-600 transition-colors"
-                  >
-                    取消
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowClearConfirm(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-200/60 dark:border-red-800/30 hover:bg-red-100 dark:hover:bg-red-950/40 transition-colors"
-                >
-                  <Trash2 size={12} />
-                  清空知识库
-                </button>
-              )}
-            </div>
+            <DangerZone>
+              <button
+                onClick={handleClearAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg text-danger-500 border border-danger-200 dark:border-danger-800/60 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
+              >
+                <Trash2 size={12} />
+                清空知识库
+              </button>
+            </DangerZone>
           </>
         )}
       </div>
+      <Dialog />
     </div>
   )
 }
 
 // ==================== 子组件 ====================
-
-function SectionHeader({ title, noMargin }: { title: string; noMargin?: boolean }) {
-  return (
-    <div className={noMargin ? '' : 'mb-2'}>
-      <span className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">
-        {title}
-      </span>
-    </div>
-  )
-}
 
 function SemanticEngineStatusCard({
   status, config, showErrorDetail, setShowErrorDetail,
@@ -668,7 +632,7 @@ function SemanticEngineStatusCard({
           {subtitle && <div className="text-xs text-muted mt-0.5">{subtitle}</div>}
         </div>
         {showLoadButton && (
-          <button onClick={onLoadModel} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-900/50 transition-all">
+          <button onClick={onLoadModel} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all">
             <Download size={12} />加载模型
           </button>
         )}
@@ -719,14 +683,14 @@ function LocalModelConfig({ config, onChange }: {
     <div className="space-y-3">
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">模型 ID</label>
-        <input type="text" value={config.modelId} onChange={(e) => onChange({ ...config, modelId: e.target.value })} placeholder="Xenova/all-MiniLM-L6-v2" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="text" value={config.modelId} onChange={(e) => onChange({ ...config, modelId: e.target.value })} placeholder="Xenova/all-MiniLM-L6-v2" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">镜像站 URL</label>
-        <input type="text" value={config.mirrorUrl} onChange={(e) => onChange({ ...config, mirrorUrl: e.target.value })} placeholder="https://hf-mirror.com" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="text" value={config.mirrorUrl} onChange={(e) => onChange({ ...config, mirrorUrl: e.target.value })} placeholder="https://hf-mirror.com" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div className="flex items-center gap-2">
-        <input type="checkbox" id="autoDownload" checked={config.autoDownload} onChange={(e) => onChange({ ...config, autoDownload: e.target.checked })} className="rounded border-surface-300 dark:border-surface-600 text-violet-500 focus:ring-violet-500/50" />
+        <input type="checkbox" id="autoDownload" checked={config.autoDownload} onChange={(e) => onChange({ ...config, autoDownload: e.target.checked })} className="rounded border-surface-300 dark:border-surface-600 text-accent-500 focus:ring-accent-500/50" />
         <label htmlFor="autoDownload" className="text-xs text-surface-700 dark:text-surface-300">应用启动时自动下载模型</label>
       </div>
     </div>
@@ -741,11 +705,11 @@ function OllamaConfig({ config, onChange }: {
     <div className="space-y-3">
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">Ollama 服务地址</label>
-        <input type="text" value={config.baseUrl} onChange={(e) => onChange({ ...config, baseUrl: e.target.value })} placeholder="http://localhost:11434" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="text" value={config.baseUrl} onChange={(e) => onChange({ ...config, baseUrl: e.target.value })} placeholder="http://localhost:11434" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">模型名称</label>
-        <input type="text" value={config.model} onChange={(e) => onChange({ ...config, model: e.target.value })} placeholder="nomic-embed-text" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="text" value={config.model} onChange={(e) => onChange({ ...config, model: e.target.value })} placeholder="nomic-embed-text" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
         <p className="text-xs text-muted mt-1">推荐: nomic-embed-text、mxbai-embed-large、all-minilm</p>
       </div>
     </div>
@@ -760,15 +724,15 @@ function OpenAIConfig({ config, onChange }: {
     <div className="space-y-3">
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">API 地址</label>
-        <input type="text" value={config.baseUrl} onChange={(e) => onChange({ ...config, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="text" value={config.baseUrl} onChange={(e) => onChange({ ...config, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">API Key</label>
-        <input type="password" value={config.apiKey} onChange={(e) => onChange({ ...config, apiKey: e.target.value })} placeholder="sk-..." className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="password" value={config.apiKey} onChange={(e) => onChange({ ...config, apiKey: e.target.value })} placeholder="sk-..." className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
         <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">模型名称</label>
-        <input type="text" value={config.model} onChange={(e) => onChange({ ...config, model: e.target.value })} placeholder="text-embedding-3-small" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50" />
+        <input type="text" value={config.model} onChange={(e) => onChange({ ...config, model: e.target.value })} placeholder="text-embedding-3-small" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
     </div>
   )

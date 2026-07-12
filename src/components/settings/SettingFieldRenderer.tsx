@@ -40,7 +40,7 @@ export function SettingFieldRenderer<T = unknown>({
             onClick={() => onChange((!checked) as T)}
             disabled={disabled}
             className={`transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-              checked ? 'text-teal-500' : 'text-gray-300 dark:text-gray-600'
+              checked ? 'text-accent-500' : 'text-gray-300 dark:text-gray-600'
             }`}
             aria-label={`${checked ? '关闭' : '开启'}${item.label}`}
           >
@@ -56,7 +56,7 @@ export function SettingFieldRenderer<T = unknown>({
               value={String(value ?? '')}
               onChange={(e) => onChange(e.target.value as T)}
               disabled={disabled}
-              className={`appearance-none rounded-lg border border-surface-200 dark:border-surface-600 bg-surface-50 dark:bg-surface-700/60 text-surface-700 dark:text-surface-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`appearance-none rounded-lg border border-surface-200 dark:border-surface-600 bg-surface-50 dark:bg-surface-700/60 text-surface-700 dark:text-surface-300 focus:outline-none focus:ring-2 focus:ring-accent-500/30 disabled:opacity-50 disabled:cursor-not-allowed ${
                 compact ? 'max-w-[150px] px-2 py-1 pr-7 text-[11px]' : 'px-3 py-1.5 pr-8 text-xs'
               }`}
               aria-label={item.label}
@@ -77,7 +77,7 @@ export function SettingFieldRenderer<T = unknown>({
         return (
           <div className={compact ? 'w-32' : 'w-full max-w-xs'}>
             <div className="flex items-center justify-end mb-1">
-              <span className="text-[10px] font-mono text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-mono text-accent-600 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/30 px-1.5 py-0.5 rounded">
                 {numValue}{item.unit ?? ''}
               </span>
             </div>
@@ -89,7 +89,7 @@ export function SettingFieldRenderer<T = unknown>({
               value={numValue}
               onChange={(e) => onChange(Number(e.target.value) as T)}
               disabled={disabled}
-              className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-surface-200 dark:bg-surface-700 accent-teal-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-surface-200 dark:bg-surface-700 accent-500 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label={item.label}
             />
           </div>
@@ -105,7 +105,7 @@ export function SettingFieldRenderer<T = unknown>({
             value={Number(value ?? item.defaultValue ?? 0)}
             onChange={(e) => onChange(Number(e.target.value) as T)}
             disabled={disabled}
-            className="w-28 px-3 py-1.5 text-xs rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-50"
+            className="w-28 px-3 py-1.5 text-xs rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50 disabled:opacity-50"
             aria-label={item.label}
           />
         )
@@ -118,7 +118,7 @@ export function SettingFieldRenderer<T = unknown>({
             value={String(value ?? '')}
             onChange={(e) => onChange(e.target.value as T)}
             disabled={disabled}
-            className="w-full max-w-xs px-3 py-1.5 text-xs rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-50"
+            className="w-full max-w-xs px-3 py-1.5 text-xs rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50 disabled:opacity-50"
             aria-label={item.label}
           />
         )
@@ -130,7 +130,7 @@ export function SettingFieldRenderer<T = unknown>({
             onChange={(e) => onChange(e.target.value as T)}
             disabled={disabled}
             rows={3}
-            className="w-full px-3 py-2 text-xs rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 disabled:opacity-50 resize-y"
+            className="w-full px-3 py-2 text-xs rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50 disabled:opacity-50 resize-y"
             aria-label={item.label}
           />
         )

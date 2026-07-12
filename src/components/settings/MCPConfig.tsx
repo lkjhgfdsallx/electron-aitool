@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react'
+import { SettingsHeader, SettingsSaveBar, SettingsTabs, StatusFeedback } from './ui'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useMCPToolStore } from '../../stores/mcp-tool-store'
 import { mcpService } from '../../services/mcp-service'
@@ -321,49 +322,30 @@ export function MCPConfig() {
   }, [servers])
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-full">
       {/* 标题 + 描述 */}
-      <div>
-        <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-          <Sparkles size={20} className="text-accent-500" />
-          MCP 扩展服务
-        </h2>
-        <p className="text-sm text-muted mt-1">
-          MCP 扩展服务让 AI 获得额外能力，如抓取网页、操作 GitHub、查询数据库等。
-          选择下方的推荐服务一键启用，或切换到「自定义配置」手动添加。
-        </p>
+      <div className="flex-shrink-0 px-1 pb-4">
+        <SettingsHeader icon={Sparkles} title="MCP 扩展服务" description="MCP 扩展服务让 AI 获得额外能力，如抓取网页、操作 GitHub、查询数据库等。选择下方的推荐服务一键启用，或切换到「自定义配置」手动添加。" />
       </div>
+
+      {/* 可滚动内容区域 */}
+      <div className="flex-1 overflow-y-auto space-y-6 pr-1">
 
       {/* Tab 切换 + 内容卡片 */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 overflow-hidden">
         {/* Tab 栏 */}
-        <div className="flex border-b border-surface-200/80 dark:border-surface-700/60">
-          <button
-            onClick={() => setActiveTab('presets')}
-            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'presets'
-                ? 'border-accent-500 text-accent-600 dark:text-accent-400'
-                : 'border-transparent text-muted hover:text-surface-700 dark:hover:text-surface-300'
-            }`}
-          >
-            <Sparkles size={14} />
-            推荐服务
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('custom')
-              handleInitJsonEditor()
-            }}
-            className={`flex items-center gap-1.5 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'custom'
-                ? 'border-accent-500 text-accent-600 dark:text-accent-400'
-                : 'border-transparent text-muted hover:text-surface-700 dark:hover:text-surface-300'
-            }`}
-          >
-            <Code2 size={14} />
-            自定义配置
-          </button>
-        </div>
+        <SettingsTabs
+          variant="underline"
+          activeTab={activeTab}
+          onTabChange={(key) => {
+            setActiveTab(key as TabType)
+            if (key === 'custom') handleInitJsonEditor()
+          }}
+          tabs={[
+            { key: 'presets', label: '推荐服务', icon: Sparkles },
+            { key: 'custom', label: '自定义配置', icon: Code2 },
+          ]}
+        />
 
         {/* 内容区域 */}
         <div className="p-5">
@@ -420,28 +402,15 @@ export function MCPConfig() {
         </div>
       )}
 
-      {/* 底部操作按钮 */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-xl hover:bg-accent-600 transition-colors text-sm"
-        >
-          <Save size={14} /> 保存配置
-        </button>
-        <button
-          onClick={refreshTools}
-          disabled={mcpLoading}
-          className="flex items-center gap-2 px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 text-sm text-muted disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={mcpLoading ? 'animate-spin' : ''} />
-          刷新工具
-        </button>
-        {presetStatus.count > 0 && (
-          <span className="text-xs text-muted ml-auto">
-            已启用 {presetStatus.count} 个服务
-          </span>
-        )}
       </div>
+
+      {/* Sticky 底部保存栏 */}
+      <SettingsSaveBar
+        onSave={handleSave}
+        isDirty={true}
+        saveLabel="保存配置"
+        shortcut="Ctrl+S"
+      />
     </div>
   )
 }
@@ -755,10 +724,11 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
       </div>
 
       {jsonError && (
-        <div className="flex items-start gap-2 p-2.5 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-600 dark:text-red-400">
-          <AlertCircle size={14} className="mt-0.5 shrink-0" />
-          <span>{jsonError}</span>
-        </div>
+        <StatusFeedback
+          type="error"
+          message={jsonError}
+          className="items-start"
+        />
       )}
 
       <div className="flex items-center gap-2">

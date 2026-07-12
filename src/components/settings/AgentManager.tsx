@@ -25,6 +25,7 @@ import {
   Sparkles,
   User,
 } from 'lucide-react'
+import { SettingsHeader, SettingsSaveBar, useConfirmDialog, SettingsEmptyState } from './ui'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, WORKSPACE_LEADER_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID } from '../../constants/default-agents'
@@ -109,6 +110,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
     duplicateAgent: duplicateGlobalAgent, toggleAgentEnabled: toggleGlobalAgentEnabled,
     importAgents: importGlobalAgents, exportAgents: exportGlobalAgents, resetToDefaultAgents,
   } = useAgentStore()
+  const { confirm, Dialog } = useConfirmDialog()
 
   // 全局预设 Agent 的固定 ID 列表（不包含 AI 领导，它是工作区专用的）
   const GLOBAL_DEFAULT_AGENT_IDS = [DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID]
@@ -117,17 +119,29 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   const isDefaultAgent = (agentId: string) => GLOBAL_DEFAULT_AGENT_IDS.includes(agentId)
 
   // 恢复单个预设 Agent 到默认状态
-  const handleResetAgentToDefault = (agentId: string) => {
+  const handleResetAgentToDefault = async (agentId: string) => {
     const agentName = agents.find((a) => a.id === agentId)?.name
-    if (confirm(`确定要将 Agent"${agentName}"恢复为默认状态吗？\n\n此操作将丢失所有自定义修改。`)) {
+    const ok = await confirm({
+      title: '恢复默认状态',
+      message: `确定要将 Agent"${agentName}"恢复为默认状态吗？\n\n此操作将丢失所有自定义修改。`,
+      confirmLabel: '恢复',
+      variant: 'warning',
+    })
+    if (ok) {
       deleteGlobalAgent(agentId)
       resetToDefaultAgents()
     }
   }
 
   // 恢复所有预设 Agent 到默认状态
-  const handleResetAllDefaults = () => {
-    if (confirm('确定要恢复所有预设 Agent 到默认状态吗？\n\n此操作将丢失所有预设 Agent 的自定义修改。')) {
+  const handleResetAllDefaults = async () => {
+    const ok = await confirm({
+      title: '恢复所有预设 Agent',
+      message: '确定要恢复所有预设 Agent 到默认状态吗？\n\n此操作将丢失所有预设 Agent 的自定义修改。',
+      confirmLabel: '恢复全部',
+      variant: 'warning',
+    })
+    if (ok) {
       resetToDefaultAgents()
     }
   }
@@ -240,7 +254,13 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   }
 
   const handleDeleteAgent = async (id: string) => {
-    if (confirm('确定删除此 Agent？')) {
+    const ok = await confirm({
+      title: '删除 Agent',
+      message: '确定删除此 Agent？',
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
       try {
         await deleteAgentFn(id)
       } catch (err) {
@@ -291,23 +311,25 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
 
   if (isCreating) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col h-full">
         {/* 标题 */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Bot size={20} className="text-accent-500" />
-            {editingAgent ? '编辑 Agent' : '新建 Agent'}
-          </h2>
-          <button
-            onClick={handleCloseEditor}
-            className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-          >
-            <X size={18} />
-          </button>
+        <div className="flex-shrink-0 px-1 pb-4">
+          <SettingsHeader
+            icon={Bot}
+            title={editingAgent ? '编辑 Agent' : '新建 Agent'}
+            actions={
+              <button
+                onClick={handleCloseEditor}
+                className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
+              >
+                <X size={18} />
+              </button>
+            }
+          />
         </div>
 
-        {/* 表单 */}
-        <div className="space-y-6">
+        {/* 表单 — 可滚动区域 */}
+        <div className="flex-1 overflow-y-auto space-y-6 pr-1">
           {/* 基本信息 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-4">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
@@ -395,7 +417,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                         setAgentForm({ ...agentForm, enabledToolIds: agentForm.enabledToolIds.filter((id) => id !== tool.id) })
                       }
                     }}
-                    className="rounded accent-accent-500"
+                    className="rounded accent-500"
                   />
                   <div>
                     <span className="text-sm">{tool.name}</span>
@@ -423,7 +445,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                             setAgentForm({ ...agentForm, enabledToolIds: agentForm.enabledToolIds.filter((id) => id !== tool.id) })
                           }
                         }}
-                        className="rounded accent-teal-500"
+                        className="rounded accent-500"
                       />
                       <div>
                         <span className="text-sm">{tool.name}</span>
@@ -451,7 +473,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                         setAgentForm({ ...agentForm, enabledToolIds: agentForm.enabledToolIds.filter((id) => id !== tool.id) })
                       }
                     }}
-                    className="rounded accent-accent-500"
+                    className="rounded accent-500"
                   />
                   <div>
                     <span className="text-sm">{tool.name}</span>
@@ -496,7 +518,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                             setAgentForm({ ...agentForm, knowledgeBaseIds: current.filter((id) => id !== col.id) })
                           }
                         }}
-                        className="rounded accent-accent-500"
+                        className="rounded accent-500"
                       />
                       <span className="text-base flex-shrink-0">{col.icon}</span>
                       <div>
@@ -531,7 +553,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       key={skill.dirPath}
                       className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
                         isSelected
-                          ? 'border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-900/20'
+                          ? 'border-accent-300 dark:border-accent-700 bg-accent-50/50 dark:bg-accent-900/20'
                           : 'border-surface-200/80 dark:border-surface-700/60 hover:bg-surface-50 dark:hover:bg-surface-800'
                       }`}
                     >
@@ -545,7 +567,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                             setAgentForm({ ...agentForm, enabledSkillIds: (agentForm.enabledSkillIds ?? []).filter((id) => id !== skill.dirPath) })
                           }
                         }}
-                        className="rounded accent-amber-500"
+                        className="rounded accent-500"
                       />
                       <div>
                         <span className="text-sm font-mono font-medium">{skill.name}</span>
@@ -579,7 +601,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                     value={s.value}
                     checked={agentForm.planningStrategy === s.value}
                     onChange={() => setAgentForm({ ...agentForm, planningStrategy: s.value })}
-                    className="mt-0.5 accent-accent-500"
+                    className="mt-0.5 accent-500"
                   />
                   <div>
                     <span className="text-sm font-medium">{s.label}</span>
@@ -611,7 +633,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       memoryConfig: { ...agentForm.memoryConfig, historyTurns: parseInt(e.target.value) }
                     })
                   }
-                  className="w-full accent-accent-500"
+                  className="w-full accent-500"
                 />
               </div>
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
@@ -679,7 +701,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       termination: { ...agentForm.termination, maxSteps: parseInt(e.target.value) }
                     })
                   }
-                  className="w-full accent-accent-500"
+                  className="w-full accent-500"
                 />
               </div>
               <div>
@@ -698,7 +720,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       termination: { ...agentForm.termination, timeoutSeconds: parseInt(e.target.value) }
                     })
                   }
-                  className="w-full accent-accent-500"
+                  className="w-full accent-500"
                 />
               </div>
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
@@ -874,7 +896,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       },
                     })
                   }
-                  className="accent-accent-500"
+                  className="accent-500"
                 />
                 自动批准读操作
               </label>
@@ -891,7 +913,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       },
                     })
                   }
-                  className="accent-accent-500"
+                  className="accent-500"
                 />
                 自动批准写操作
               </label>
@@ -911,7 +933,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               onChange={(e) =>
                 setAgentForm({ ...agentForm, maxParallelSubtasks: parseInt(e.target.value) })
               }
-              className="w-full accent-accent-500"
+              className="w-full accent-500"
             />
           </div>
 
@@ -932,22 +954,14 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           />
         </div>
 
-        {/* 底部按钮 */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleSaveAgent}
-            disabled={!agentForm.name.trim()}
-            className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-xl hover:bg-accent-600 disabled:opacity-50 transition-colors text-sm"
-          >
-            <Save size={14} /> 保存
-          </button>
-          <button
-            onClick={() => setIsCreating(false)}
-            className="px-4 py-2 text-sm text-muted border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-          >
-            取消
-          </button>
-        </div>
+        {/* Sticky 底部保存栏 — 替代原来埋在底部的按钮 */}
+        <SettingsSaveBar
+          onSave={handleSaveAgent}
+          isDirty={agentForm.name.trim().length > 0}
+          saveLabel={editingAgent ? '保存修改' : '创建 Agent'}
+          onReset={() => handleCloseEditor()}
+          resetLabel="取消"
+        />
       </div>
     )
   }
@@ -957,61 +971,58 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   return (
     <div className="space-y-6">
       {/* 标题 + 操作栏 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            {isWorkspaceMode ? <FolderOpen size={20} className="text-amber-500" /> : <Bot size={20} className="text-accent-500" />}
-            {isWorkspaceMode ? '工作区 Agent' : 'Agent 管理'}
-          </h2>
-          <p className="text-sm text-muted mt-1">
-            {isWorkspaceMode
-              ? '管理工作区独立 Agent，可提升为全局 Agent'
-              : '创建和管理 AI Agent，配置其行为、工具和记忆策略'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isWorkspaceMode && (
+      <SettingsHeader
+        icon={isWorkspaceMode ? FolderOpen : Bot}
+        title={isWorkspaceMode ? '工作区 Agent' : 'Agent 管理'}
+        description={isWorkspaceMode
+          ? '管理工作区独立 Agent，可提升为全局 Agent'
+          : '创建和管理 AI Agent，配置其行为、工具和记忆策略'}
+        actions={
+          <>
+            {!isWorkspaceMode && (
+              <button
+                onClick={handleResetAllDefaults}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-accent-300 dark:border-accent-700 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
+                title="恢复所有预设 Agent 到默认状态"
+              >
+                <Sparkles size={14} /> 恢复默认
+              </button>
+            )}
             <button
-              onClick={handleResetAllDefaults}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
-              title="恢复所有预设 Agent 到默认状态"
+              onClick={handleCreateAgent}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent-500 text-white rounded-xl hover:bg-accent-600 transition-colors"
             >
-              <Sparkles size={14} /> 恢复默认
+              <Plus size={14} /> 新建 Agent
             </button>
-          )}
-          <button
-            onClick={handleCreateAgent}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent-500 text-white rounded-xl hover:bg-accent-600 transition-colors"
-          >
-            <Plus size={14} /> 新建 Agent
-          </button>
-          {!isWorkspaceMode && (
-            <>
-              <button
-                onClick={handleImportAgents}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-              >
-                <Upload size={14} /> 导入
-              </button>
-              <button
-                onClick={handleExportAgents}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-              >
-                <Download size={14} /> 导出
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+            {!isWorkspaceMode && (
+              <>
+                <button
+                  onClick={handleImportAgents}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+                >
+                  <Upload size={14} /> 导入
+                </button>
+                <button
+                  onClick={handleExportAgents}
+                  className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+                >
+                  <Download size={14} /> 导出
+                </button>
+              </>
+            )}
+          </>
+        }
+      />
 
       {/* Agent 列表（按分类分组：预设 / 工作区专属 / 自定义） */}
       {agents.length === 0 ? (
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8">
-          <div className="text-center text-muted">
-            <Bot size={36} className="mx-auto mb-3" />
-            <p>暂无 Agent</p>
-            <p className="text-sm mt-1">点击"新建 Agent"创建你的第一个智能助手</p>
-          </div>
+          <SettingsEmptyState
+            icon={Bot}
+            title="暂无 Agent"
+            description={'点击"新建 Agent"创建你的第一个智能助手'}
+            iconSize={36}
+          />
         </div>
       ) : (
         <div className="space-y-4">
@@ -1067,7 +1078,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                         {!isWorkspaceMode && isDefaultAgent(agent.id) && (
                           <button
                             onClick={() => handleResetAgentToDefault(agent.id)}
-                            className="p-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-500"
+                            className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/30 text-accent-500"
                             title="恢复为默认 Agent"
                           >
                             <Sparkles size={14} />
@@ -1123,6 +1134,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           })}
         </div>
       )}
+      <Dialog />
     </div>
   )
 }

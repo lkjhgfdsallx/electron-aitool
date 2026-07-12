@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useSkillStore } from '../../stores/skill-store'
 import { SkillEditor } from './SkillEditor'
+import { useConfirmDialog, SettingsEmptyState, StatusFeedback } from './ui'
 import type { Skill, SkillCreateInput } from '../../types'
 
 type LocationFilter = 'all' | 'global' | 'project'
@@ -34,6 +35,7 @@ export function SkillManager() {
     exportToZip,
     refresh,
   } = useSkillStore()
+  const { confirm, Dialog } = useConfirmDialog()
 
   // ==================== 列表状态 ====================
   const [searchQuery, setSearchQuery] = useState('')
@@ -255,7 +257,7 @@ export function SkillManager() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
-            <Zap size={22} className="text-amber-500" />
+            <Zap size={22} className="text-accent-500" />
             Skills 管理
           </h2>
           <p className="text-sm text-surface-500 mt-1">
@@ -304,7 +306,7 @@ export function SkillManager() {
           </button>
           <button
             onClick={handleCreate}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-accent-500 hover:bg-accent-600 text-white shadow-sm transition-all"
           >
             <Plus size={14} />
             新建 Skill
@@ -314,16 +316,12 @@ export function SkillManager() {
 
       {/* 导入消息 */}
       {importMessage && (
-        <div
-          className={`mb-4 p-3 rounded-lg border text-sm whitespace-pre-wrap relative group ${
-            importMessageType === 'success'
-              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
-              : importMessageType === 'error'
-                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
-                : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
-          }`}
-        >
-          <pre className="font-mono text-xs leading-relaxed m-0 whitespace-pre-wrap break-all">{importMessage}</pre>
+        <div className="mb-4 relative group">
+          <StatusFeedback
+            type={importMessageType === 'success' ? 'success' : importMessageType === 'error' ? 'error' : 'info'}
+            message={importMessage}
+            className="whitespace-pre-wrap"
+          />
           <button
             onClick={() => navigator.clipboard.writeText(importMessage)}
             className="absolute top-2 right-2 px-2 py-1 text-[10px] rounded border opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-surface-800/80 hover:bg-white dark:hover:bg-surface-700 border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300"
@@ -343,7 +341,7 @@ export function SkillManager() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索 Skill 名称、描述或内容..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 text-sm bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 transition-all"
+            className="w-full pl-9 pr-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 text-sm bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-accent-500/40 transition-all"
           />
         </div>
 
@@ -359,7 +357,7 @@ export function SkillManager() {
               onClick={() => setLocationFilter(opt.key)}
               className={`px-3 py-1.5 text-xs font-medium transition-all ${
                 locationFilter === opt.key
-                  ? 'bg-amber-500 text-white'
+                  ? 'bg-accent-500 text-white'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700'
               }`}
             >
@@ -380,30 +378,29 @@ export function SkillManager() {
 
       {/* 技能卡片列表 */}
       {!loading && filteredSkills.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-surface-400">
-          <Zap size={40} className="mb-3 opacity-30" />
-          <p className="text-sm font-medium">
-            {skills.length === 0 ? '还没有发现任何 Skill' : '没有匹配的 Skill'}
-          </p>
-          <p className="text-xs mt-1">
-            {skills.length === 0
+        <SettingsEmptyState
+          icon={Zap}
+          title={skills.length === 0 ? '还没有发现任何 Skill' : '没有匹配的 Skill'}
+          description={
+            skills.length === 0
               ? '从 ZIP 文件导入，或从文件夹导入 Skill'
-              : '尝试调整搜索条件或过滤器'}
-          </p>
-        </div>
+              : '尝试调整搜索条件或过滤器'
+          }
+          iconSize={40}
+        />
       ) : (
         <div className="space-y-3">
           {filteredSkills.map((skill) => (
             <div
               key={skill.dirPath}
-              className="group relative rounded-xl border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/80 p-4 hover:border-amber-300 dark:hover:border-amber-700 hover:shadow-sm transition-all cursor-pointer"
+              className="group relative rounded-xl border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/80 p-4 hover:border-accent-300 dark:hover:border-accent-700 hover:shadow-sm transition-all cursor-pointer"
               onClick={() => handleView(skill)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   {/* 名称 + 状态 */}
                   <div className="flex items-center gap-2 mb-1">
-                    <Zap size={14} className="text-amber-500 flex-shrink-0" />
+                    <Zap size={14} className="text-accent-500 flex-shrink-0" />
                     <span className="text-sm font-semibold text-surface-800 dark:text-surface-100 font-mono truncate">
                       {skill.name}
                     </span>
@@ -442,7 +439,7 @@ export function SkillManager() {
                 >
                   <button
                     onClick={() => toggleSkill(skill.dirPath)}
-                    className="p-1.5 rounded-lg text-muted hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all"
+                    className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-all"
                     title={skill.enabled ? '禁用' : '启用'}
                   >
                     {skill.enabled ? <ToggleRight size={16} className="text-blue-500" /> : <ToggleLeft size={16} />}
@@ -455,9 +452,14 @@ export function SkillManager() {
                     <Edit2 size={14} />
                   </button>
                   <button
-                    onClick={() => {
-                      if (confirm(`确定删除 Skill "${skill.name}"？\n目录: ${skill.dirPath}`))
-                        handleDelete(skill.dirPath)
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: '删除 Skill',
+                        message: `确定删除 Skill "${skill.name}"？\n目录: ${skill.dirPath}`,
+                        confirmLabel: '删除',
+                        variant: 'danger',
+                      })
+                      if (ok) handleDelete(skill.dirPath)
                     }}
                     className="p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
                     title="删除"
@@ -477,6 +479,7 @@ export function SkillManager() {
           共 {skills.length} 个 Skill，{skills.filter((s) => s.enabled).length} 个已启用
         </div>
       )}
+      <Dialog />
     </div>
   )
 }

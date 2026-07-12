@@ -31,6 +31,7 @@ import {
   Hash,
   XCircle
 } from 'lucide-react'
+import { SettingsHeader, SettingsSaveBar, useConfirmDialog, SettingsEmptyState } from './ui'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import type { AIProvider, AIProviderCreateInput, AIModel, ProviderType, ConnectionStatus, ProviderRequestConfig, LocalModelConfig } from '../../types'
 
@@ -81,6 +82,7 @@ export function AIProviderManager() {
     updateRequestConfig,
     updateModel
   } = useAIProviderStore()
+  const { confirm, Dialog } = useConfirmDialog()
 
   const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null)
   const [form, setForm] = useState<AIProviderCreateInput>(EMPTY_PROVIDER)
@@ -306,8 +308,14 @@ export function AIProviderManager() {
     setFetchSuccess(null)
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('确定删除此 AI 源？关联的对话将回退到默认配置。')) {
+  const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: '删除 AI 源',
+      message: '确定删除此 AI 源？关联的对话将回退到默认配置。',
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
       deleteProvider(id)
     }
   }
@@ -366,21 +374,25 @@ export function AIProviderManager() {
 
   if (isCreating) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col h-full">
         {/* 标题 */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Globe size={20} className="text-accent-500" />
-            {editingProvider ? '编辑 AI 源' : '添加 AI 源'}
-          </h2>
-          <button
-            onClick={handleCancel}
-            className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-          >
-            <X size={18} />
-          </button>
+        <div className="flex-shrink-0 px-1 pb-4">
+          <SettingsHeader
+            icon={Globe}
+            title={editingProvider ? '编辑 AI 源' : '添加 AI 源'}
+            actions={
+              <button
+                onClick={handleCancel}
+                className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
+              >
+                <X size={18} />
+              </button>
+            }
+          />
         </div>
 
+        {/* 表单 — 可滚动区域 */}
+        <div className="flex-1 overflow-y-auto space-y-6 pr-1">
         {/* 快速预设 */}
         {!editingProvider && (
           <div className="flex flex-wrap gap-2">
@@ -860,22 +872,16 @@ export function AIProviderManager() {
           )}
         </div>
 
-        {/* 操作按钮 */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleSave}
-            disabled={!form.name.trim() || !form.baseUrl.trim()}
-            className="flex items-center gap-2 px-4 py-2 bg-accent-500 text-white rounded-xl hover:bg-accent-600 disabled:opacity-50 transition-colors text-sm"
-          >
-            <Save size={14} /> 保存
-          </button>
-          <button
-            onClick={handleCancel}
-            className="px-4 py-2 text-sm text-muted border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-          >
-            取消
-          </button>
         </div>
+
+        {/* Sticky 底部保存栏 */}
+        <SettingsSaveBar
+          onSave={handleSave}
+          isDirty={form.name.trim().length > 0 && form.baseUrl.trim().length > 0}
+          saveLabel={editingProvider ? '保存修改' : '添加 AI 源'}
+          onReset={handleCancel}
+          resetLabel="取消"
+        />
       </div>
     )
   }
@@ -885,39 +891,38 @@ export function AIProviderManager() {
   return (
     <div className="space-y-6">
       {/* 标题 + 操作栏 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Globe size={20} className="text-accent-500" />
-            AI 源管理
-          </h2>
-          <p className="text-sm text-muted mt-1">管理 AI 模型服务提供商的接入配置</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => checkAllConnections()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-            title="检测所有连接"
-          >
-            <Zap size={14} /> 全部检测
-          </button>
-          <button
-            onClick={handleCreate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
-          >
-            <Plus size={14} /> 添加 AI 源
-          </button>
-        </div>
-      </div>
+      <SettingsHeader
+        icon={Globe}
+        title="AI 源管理"
+        description="管理 AI 模型服务提供商的接入配置"
+        actions={
+          <>
+            <button
+              onClick={() => checkAllConnections()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+              title="检测所有连接"
+            >
+              <Zap size={14} /> 全部检测
+            </button>
+            <button
+              onClick={handleCreate}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
+            >
+              <Plus size={14} /> 添加 AI 源
+            </button>
+          </>
+        }
+      />
 
       {/* Provider 列表 */}
       {providers.length === 0 ? (
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8">
-          <div className="text-center text-muted">
-            <Globe size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">还没有配置 AI 源</p>
-            <p className="text-xs mt-1">点击"添加 AI 源"开始配置</p>
-          </div>
+          <SettingsEmptyState
+            icon={Globe}
+            title="还没有配置 AI 源"
+            description={'点击"添加 AI 源"开始配置'}
+            iconSize={40}
+          />
         </div>
       ) : (
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 divide-y divide-surface-200/80 dark:divide-surface-700/60">
@@ -1025,6 +1030,7 @@ export function AIProviderManager() {
           })}
         </div>
       )}
+      <Dialog />
     </div>
   )
 }

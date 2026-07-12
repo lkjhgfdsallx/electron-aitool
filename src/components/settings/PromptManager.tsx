@@ -18,6 +18,7 @@ import { PromptPlayground } from './PromptPlayground'
 import { VersionHistory } from './VersionHistory'
 import { PromptChainEditor } from './PromptChainEditor'
 import type { Prompt, PromptCreateInput } from '../../types'
+import { useConfirmDialog, SettingsEmptyState } from './ui'
 
 type DetailView = 'editor' | 'playground' | 'versions' | 'chains' | null
 
@@ -30,6 +31,8 @@ export function PromptManager() {
     duplicateAgent,
     createAgent,
   } = useAgentStore()
+
+  const { confirm, Dialog } = useConfirmDialog()
 
   // ==================== 列表状态 ====================
   const [searchQuery, setSearchQuery] = useState('')
@@ -105,8 +108,14 @@ export function PromptManager() {
   )
 
   const handleDelete = useCallback(
-    (id: string) => {
-      if (confirm('确定删除此提示词？')) {
+    async (id: string) => {
+      const ok = await confirm({
+        title: '删除提示词',
+        message: '确定删除此提示词？此操作不可撤销。',
+        confirmLabel: '删除',
+        variant: 'danger',
+      })
+      if (ok) {
         deletePrompt(id)
         if (selectedPrompt?.id === id) {
           setSelectedPrompt(null)
@@ -115,7 +124,7 @@ export function PromptManager() {
         }
       }
     },
-    [deletePrompt, selectedPrompt],
+    [deletePrompt, selectedPrompt, confirm],
   )
 
   const handleDuplicate = useCallback(
@@ -203,7 +212,7 @@ export function PromptManager() {
         <div className="px-4 pt-4 pb-3 border-b border-surface-200/80 dark:border-surface-700/60">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-              <FileText size={18} className="text-orange-500" />
+              <FileText size={18} className="text-accent-500" />
               提示词管理
             </h2>
             <div className="flex items-center gap-1">
@@ -299,20 +308,20 @@ export function PromptManager() {
         {/* 列表 */}
         <div className="flex-1 overflow-y-auto">
           {filteredPrompts.length === 0 ? (
-            <div className="px-4 py-8 text-center text-muted">
-              <FileText size={32} className="mx-auto mb-2 opacity-40" />
-              <p className="text-sm">
-                {searchQuery || selectedTag ? '没有匹配的提示词' : '暂无提示词'}
-              </p>
-              {!searchQuery && !selectedTag && (
-                <button
-                  onClick={handleCreate}
-                  className="text-xs text-accent-500 hover:text-accent-600 mt-1"
-                >
-                  创建第一个
-                </button>
-              )}
-            </div>
+            <SettingsEmptyState
+              icon={FileText}
+              title={searchQuery || selectedTag ? '没有匹配的提示词' : '暂无提示词'}
+              action={
+                !searchQuery && !selectedTag ? (
+                  <button
+                    onClick={handleCreate}
+                    className="text-xs text-accent-500 hover:text-accent-600"
+                  >
+                    创建第一个
+                  </button>
+                ) : undefined
+              }
+            />
           ) : (
             <div className="py-1">
               {filteredPrompts.map((prompt) => (
@@ -426,16 +435,15 @@ export function PromptManager() {
             onBack={() => setDetailView('editor')}
           />
         ) : (
-          /* 空状态 */
-          <div className="flex items-center justify-center h-full text-muted">
-            <div className="text-center">
-              <FileText size={48} className="mx-auto mb-3 opacity-20" />
-              <p className="text-sm">选择左侧提示词进行编辑</p>
-              <p className="text-xs mt-1">或点击 + 创建新提示词</p>
-            </div>
-          </div>
+          <SettingsEmptyState
+            icon={FileText}
+            title="选择左侧提示词进行编辑"
+            description="或点击 + 创建新提示词"
+            iconSize={48}
+          />
         )}
       </div>
+      <Dialog />
     </div>
   )
 }

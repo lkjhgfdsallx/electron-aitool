@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Palette, Type, Code2, Layout, Keyboard, Bell, PanelLeft,
-  Monitor, ChevronDown
+  Monitor
 } from 'lucide-react'
 import hljs from 'highlight.js'
 import { useSettingsStore, applyCSSVariables } from '../../stores/settings-store'
 import type { CodeHighlightTheme, MessageAlignment } from '../../types'
 import { isShortcutBindingSupported } from '../../types'
+import { SettingsToggle, SettingsSlider, SettingsSelect, SettingsHeader, SettingsSectionHeader, SettingsCard } from './ui'
 
 /** 动态加载 highlight.js 主题 CSS（与 MarkdownRenderer 保持一致） */
 const HLJS_THEME_MAP: Record<CodeHighlightTheme, () => Promise<unknown>> = {
@@ -80,112 +81,6 @@ const NOTIFICATION_SOUNDS = [
   { label: '无', value: 'none' },
 ]
 
-// ---- 子组件：分组标题 ----
-
-function SectionIcon({ icon: Icon, title, desc }: { icon: typeof Palette; title: string; desc: string }) {
-  return (
-    <div className="flex items-center justify-between mb-4">
-      <div>
-        <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
-          <Icon size={16} className="text-accent-500" />
-          {title}
-        </h3>
-        <p className="text-xs text-muted mt-0.5">{desc}</p>
-      </div>
-    </div>
-  )
-}
-
-// ---- 子组件：开关行 ----
-
-function ToggleRow({ label, desc, value, onChange }: {
-  label: string; desc: string; value: boolean; onChange: () => void
-}) {
-  return (
-    <div className="flex items-center justify-between py-3">
-      <div>
-        <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
-        <p className="text-xs text-muted mt-0.5">{desc}</p>
-      </div>
-      <button
-        onClick={onChange}
-        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-          value ? 'bg-accent-500' : 'bg-surface-300 dark:bg-surface-600'
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform shadow-sm ${
-            value ? 'translate-x-5' : ''
-          }`}
-        />
-      </button>
-    </div>
-  )
-}
-
-// ---- 子组件：滑块行 ----
-
-function SliderRow({ label, desc, value, min, max, step, unit, onChange }: {
-  label: string; desc: string; value: number; min: number; max: number; step: number; unit: string;
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="py-3">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
-          <p className="text-xs text-muted mt-0.5">{desc}</p>
-        </div>
-        <span className="text-xs font-mono text-accent-600 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/30 px-2 py-0.5 rounded-md">
-          {value}{unit}
-        </span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-surface-200 dark:bg-surface-700 accent-accent-500"
-      />
-      <div className="flex justify-between text-[10px] text-muted mt-1">
-        <span>{min}{unit}</span>
-        <span>{max}{unit}</span>
-      </div>
-    </div>
-  )
-}
-
-// ---- 子组件：下拉选择行 ----
-
-function SelectRow<T extends string>({ label, desc, value, options, onChange }: {
-  label: string; desc: string; value: T;
-  options: { label: string; value: T }[];
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="flex items-center justify-between py-3">
-      <div>
-        <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
-        <p className="text-xs text-muted mt-0.5">{desc}</p>
-      </div>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value as T)}
-          className="appearance-none bg-surface-100 dark:bg-surface-700/60 border border-surface-200 dark:border-surface-600 rounded-lg px-3 py-1.5 pr-8 text-xs text-surface-700 dark:text-surface-300 focus:outline-none focus:ring-2 focus:ring-accent-500/30 cursor-pointer"
-        >
-          {options.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-      </div>
-    </div>
-  )
-}
-
 // ---- 主组件 ----
 
 export function UIPreferencesSection() {
@@ -211,99 +106,98 @@ export function UIPreferencesSection() {
     applyCSSVariables(settings)
   }, [settings.fontFamily, settings.codeFontFamily, settings.fontSize, settings.codeFontSize, settings.sidebarWidth])
 
-  const toggleItems = [
+  const toggleItems: { label: string; desc: string; checked: boolean; onChange: () => void }[] = [
     {
       label: '显示 Token 用量',
       desc: '在消息气泡下方显示 Token 消耗信息',
-      value: settings.showTokenUsage,
+      checked: settings.showTokenUsage,
       onChange: () => settings.toggleTokenUsage()
     },
     {
       label: '显示时间戳',
       desc: '在消息气泡下方显示发送时间',
-      value: settings.showTimestamp,
+      checked: settings.showTimestamp,
       onChange: () => settings.toggleTimestamp()
     },
     {
       label: 'Enter 发送消息',
       desc: '按 Enter 键直接发送，Shift+Enter 换行',
-      value: settings.sendWithEnter,
+      checked: settings.sendWithEnter,
       onChange: () => settings.setSendWithEnter(!settings.sendWithEnter)
     },
     {
       label: '联网搜索',
       desc: '允许 AI 在回答时搜索互联网获取最新信息',
-      value: settings.webSearchEnabled,
+      checked: settings.webSearchEnabled,
       onChange: () => settings.toggleWebSearch()
     }
   ]
 
   return (
     <div className="space-y-8">
-      {/* 标题 */}
-      <div>
-        <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-          <Palette size={20} className="text-accent-500" />
-          界面偏好
-        </h2>
-        <p className="text-sm text-muted mt-1">
-          自定义界面显示方式、交互行为和快捷键
-        </p>
-      </div>
+      <SettingsHeader icon={Palette} title="界面偏好" description="自定义界面显示方式、交互行为和快捷键" />
 
       {/* ---- 1. 字体与排版 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={Type} title="字体与排版" desc="调节消息和代码的字体、字号" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Type} title="字体与排版" description="调节消息和代码的字体、字号" />
 
-        <SelectRow
+        <SettingsSelect
           label="消息字体"
-          desc="对话内容的字体族"
+          description="对话内容的字体族"
           value={settings.fontFamily}
           options={FONT_FAMILIES}
           onChange={(v) => settings.setFontFamily(v)}
+          layout="horizontal"
+          className="py-3"
         />
 
-        <SliderRow
+        <SettingsSlider
           label="消息字号"
-          desc="正文字体大小"
+          description="正文字体大小"
           value={settings.fontSize}
           min={FONT_SIZE_MIN}
           max={FONT_SIZE_MAX}
           step={1}
           unit="px"
           onChange={(v) => settings.setFontSize(v)}
+          className="py-3"
         />
 
-        <SelectRow
+        <SettingsSelect
           label="代码字体"
-          desc="代码块的等宽字体"
+          description="代码块的等宽字体"
           value={settings.codeFontFamily}
           options={CODE_FONT_FAMILIES}
           onChange={(v) => settings.setCodeFontFamily(v)}
+          layout="horizontal"
+          className="py-3"
         />
 
-        <SliderRow
+        <SettingsSlider
           label="代码字号"
-          desc="代码块字体大小"
+          description="代码块字体大小"
           value={settings.codeFontSize}
           min={CODE_FONT_SIZE_MIN}
           max={CODE_FONT_SIZE_MAX}
           step={1}
           unit="px"
           onChange={(v) => settings.setCodeFontSize(v)}
+          className="py-3"
         />
-      </div>
+      </SettingsCard>
 
       {/* ---- 2. 代码高亮主题 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={Code2} title="代码高亮" desc="选择代码块的语法高亮风格" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Code2} title="代码高亮" description="选择代码块的语法高亮风格" />
 
-        <SelectRow
+        <SettingsSelect
           label="高亮主题"
-          desc="代码块的 syntax highlight 风格"
+          description="代码块的 syntax highlight 风格"
           value={settings.codeHighlightTheme}
           options={CODE_HIGHLIGHT_THEMES}
           onChange={(v) => settings.setCodeHighlightTheme(v)}
+          layout="horizontal"
+          className="py-3"
         />
 
         {/* 主题预览 */}
@@ -316,11 +210,11 @@ export function UIPreferencesSection() {
             />
           </pre>
         </div>
-      </div>
+      </SettingsCard>
 
       {/* ---- 3. 消息布局 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={Layout} title="消息布局" desc="控制消息对齐方式和头像显示" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Layout} title="消息布局" description="控制消息对齐方式和头像显示" />
 
         <div className="py-3">
           <label className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-2 block">
@@ -345,62 +239,68 @@ export function UIPreferencesSection() {
           </div>
         </div>
 
-        <ToggleRow
+        <SettingsToggle
           label="显示头像"
-          desc="在消息旁显示用户/AI 头像图标"
-          value={settings.showAvatar}
+          description="在消息旁显示用户/AI 头像图标"
+          checked={settings.showAvatar}
           onChange={() => settings.toggleAvatar()}
+          className="py-3"
         />
-      </div>
+      </SettingsCard>
 
       {/* ---- 4. 侧边栏行为 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={PanelLeft} title="侧边栏" desc="调整侧边栏宽度和行为" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={PanelLeft} title="侧边栏" description="调整侧边栏宽度和行为" />
 
-        <SliderRow
+        <SettingsSlider
           label="侧边栏宽度"
-          desc="拖拽调节或在此精确设置"
+          description="拖拽调节或在此精确设置"
           value={settings.sidebarWidth}
           min={SIDEBAR_WIDTH_MIN}
           max={SIDEBAR_WIDTH_MAX}
           step={10}
           unit="px"
           onChange={(v) => settings.setSidebarWidth(v)}
+          className="py-3"
         />
-      </div>
+      </SettingsCard>
 
       {/* ---- 5. 通知设置 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={Bell} title="通知设置" desc="后台对话完成时的通知行为" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Bell} title="通知设置" description="后台对话完成时的通知行为" />
 
-        <ToggleRow
+        <SettingsToggle
           label="系统通知"
-          desc="后台对话完成时弹出系统通知"
-          value={settings.enableNotification}
+          description="后台对话完成时弹出系统通知"
+          checked={settings.enableNotification}
           onChange={() => settings.setEnableNotification(!settings.enableNotification)}
+          className="py-3"
         />
 
-        <ToggleRow
+        <SettingsToggle
           label="声音提示"
-          desc="通知时播放提示音"
-          value={settings.enableSound}
+          description="通知时播放提示音"
+          checked={settings.enableSound}
           onChange={() => settings.setEnableSound(!settings.enableSound)}
+          className="py-3"
         />
 
         {settings.enableSound && (
-          <SelectRow
+          <SettingsSelect
             label="提示音风格"
-            desc="选择提示音效"
+            description="选择提示音效"
             value={settings.notificationSound}
             options={NOTIFICATION_SOUNDS}
             onChange={(v) => settings.setNotificationSound(v)}
+            layout="horizontal"
+            className="py-3"
           />
         )}
-      </div>
+      </SettingsCard>
 
       {/* ---- 6. 快捷键自定义 ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={Keyboard} title="快捷键" desc="自定义键盘快捷键绑定" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Keyboard} title="快捷键" description="自定义键盘快捷键绑定" />
 
         <ShortcutRow
           label="新建对话"
@@ -432,15 +332,15 @@ export function UIPreferencesSection() {
           binding={settings.shortcuts.switchPrevAgent}
           onChange={(b) => settings.setShortcut('switchPrevAgent', b)}
         />
-      </div>
+      </SettingsCard>
 
       {/* ---- 7. 基础开关（保留原有） ---- */}
-      <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SectionIcon icon={Monitor} title="显示选项" desc="基础显示和交互开关" />
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Monitor} title="显示选项" description="基础显示和交互开关" />
         {toggleItems.map((item) => (
-          <ToggleRow key={item.label} {...item} />
+          <SettingsToggle key={item.label} {...item} className="py-3" />
         ))}
-      </div>
+      </SettingsCard>
 
       {/* ---- 重置按钮 ---- */}
       <div className="flex justify-end">

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import type { PromptChain, PromptChainNode, Prompt } from '../../types'
+import { useConfirmDialog, SettingsEmptyState } from './ui'
 
 // ==================== 编辑器面板 ====================
 
@@ -160,10 +161,11 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
           </div>
 
           {nodes.length === 0 ? (
-            <div className="text-center py-8 text-muted">
-              <Link2 size={32} className="mx-auto mb-2 opacity-20" />
-              <p className="text-sm">暂无节点，点击上方添加</p>
-            </div>
+            <SettingsEmptyState
+              icon={Link2}
+              title="暂无节点，点击上方添加"
+              iconSize={32}
+            />
           ) : (
             <div className="space-y-3">
               {nodes.map((node, idx) => (
@@ -426,6 +428,8 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
     deletePromptChain,
   } = useAgentStore()
 
+  const { confirm, Dialog } = useConfirmDialog()
+
   const [selectedChain, setSelectedChain] = useState<PromptChain | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
@@ -439,15 +443,21 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
     setIsCreating(false)
   }, [])
 
-  const handleDelete = useCallback((id: string) => {
-    if (confirm('确定删除该提示词链？')) {
+  const handleDelete = useCallback(async (id: string) => {
+    const ok = await confirm({
+      title: '删除提示词链',
+      message: '确定删除该提示词链？此操作不可撤销。',
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
       deletePromptChain(id)
       if (selectedChain?.id === id) {
         setSelectedChain(null)
         setIsCreating(false)
       }
     }
-  }, [deletePromptChain, selectedChain])
+  }, [deletePromptChain, selectedChain, confirm])
 
   const handleSave = useCallback(
     (data: Omit<PromptChain, 'id' | 'createdAt' | 'updatedAt'> | (Partial<PromptChain> & { id: string })) => {
@@ -494,11 +504,12 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
 
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {promptChains.length === 0 ? (
-            <div className="text-center py-12 text-muted">
-              <Link2 size={32} className="mx-auto mb-2 opacity-20" />
-              <p className="text-xs">暂无提示词链</p>
-              <p className="text-[10px] mt-1">点击 + 创建</p>
-            </div>
+            <SettingsEmptyState
+              icon={Link2}
+              title="暂无提示词链"
+              description="点击 + 创建"
+              iconSize={32}
+            />
           ) : (
             promptChains.map((chain) => (
               <div
@@ -555,6 +566,7 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
           </div>
         )}
       </div>
+      <Dialog />
     </div>
   )
 }

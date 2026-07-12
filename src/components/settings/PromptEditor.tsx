@@ -33,6 +33,7 @@ import type {
   PromptSectionType,
 } from '../../types'
 import { SECTION_TYPE_META } from '../../types'
+import { SettingsTabs, SettingsEmptyState } from './ui'
 
 interface PromptEditorProps {
   prompt: Prompt | null
@@ -450,31 +451,14 @@ export function PromptEditor({
 
         {/* 编辑模式切换 */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('content')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-              activeTab === 'content'
-                ? 'bg-accent-500 text-white'
-                : 'bg-surface-100 dark:bg-surface-800 text-muted hover:text-surface-700 dark:hover:text-surface-300'
-            }`}
-          >
-            <FileText size={13} /> 内容编辑
-          </button>
-          <button
-            onClick={() => setActiveTab('variables')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors ${
-              activeTab === 'variables'
-                ? 'bg-accent-500 text-white'
-                : 'bg-surface-100 dark:bg-surface-800 text-muted hover:text-surface-700 dark:hover:text-surface-300'
-            }`}
-          >
-            <Variable size={13} /> 变量管理
-            {syncedVariables.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0 bg-white/20 rounded text-[10px]">
-                {syncedVariables.length}
-              </span>
-            )}
-          </button>
+          <SettingsTabs
+            activeTab={activeTab}
+            onTabChange={(key) => setActiveTab(key as EditorTab)}
+            tabs={[
+              { key: 'content', label: '内容编辑', icon: FileText },
+              { key: 'variables', label: '变量管理', icon: Variable, badge: syncedVariables.length > 0 ? syncedVariables.length : undefined },
+            ]}
+          />
           <div className="flex-1" />
           <label className="flex items-center gap-1.5 text-xs text-muted cursor-pointer">
             <input
@@ -580,11 +564,12 @@ export function PromptEditor({
 
             {/* 用户变量列表 */}
             {syncedVariables.length === 0 ? (
-              <div className="text-center py-6 text-muted">
-                <Variable size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">暂无自定义变量</p>
-                <p className="text-xs mt-1">在内容中输入 {'{{variable_name}}'} 或手动添加</p>
-              </div>
+              <SettingsEmptyState
+                icon={Variable}
+                title="暂无自定义变量"
+                description={'在内容中输入 {{variable_name}} 或手动添加'}
+                iconSize={32}
+              />
             ) : (
               <div className="space-y-2">
                 {syncedVariables.map((v) => (

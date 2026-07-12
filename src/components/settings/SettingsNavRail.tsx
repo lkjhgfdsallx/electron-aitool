@@ -34,17 +34,17 @@ export const SETTINGS_SECTIONS: {
   icon: typeof Globe
   color: string
 }[] = [
-  { key: 'ai-providers', label: 'AI 源', icon: Globe, color: 'text-blue-500' },
+  { key: 'ai-providers', label: 'AI 源', icon: Globe, color: 'text-accent-500' },
   { key: 'agents', label: 'Agent', icon: Bot, color: 'text-accent-500' },
-  { key: 'prompts', label: '提示词', icon: FileText, color: 'text-orange-500' },
-  { key: 'skills', label: 'Skills', icon: Zap, color: 'text-amber-500' },
-  { key: 'mcp', label: 'MCP', icon: Plug, color: 'text-emerald-500' },
-  { key: 'tools', label: '工具', icon: Wrench, color: 'text-indigo-500' },
-  { key: 'workspace', label: '工作区', icon: Briefcase, color: 'text-teal-500' },
-  { key: 'knowledge-base', label: '知识库', icon: Database, color: 'text-violet-500' },
-  { key: 'model-params', label: '模型', icon: Cpu, color: 'text-cyan-500' },
-  { key: 'ui-prefs', label: '界面', icon: Palette, color: 'text-pink-500' },
-  { key: 'data-mgmt', label: '数据', icon: HardDrive, color: 'text-amber-500' }
+  { key: 'prompts', label: '提示词', icon: FileText, color: 'text-accent-500' },
+  { key: 'skills', label: 'Skills', icon: Zap, color: 'text-accent-500' },
+  { key: 'mcp', label: 'MCP', icon: Plug, color: 'text-accent-500' },
+  { key: 'tools', label: '工具', icon: Wrench, color: 'text-accent-500' },
+  { key: 'workspace', label: '工作区', icon: Briefcase, color: 'text-accent-500' },
+  { key: 'knowledge-base', label: '知识库', icon: Database, color: 'text-accent-500' },
+  { key: 'model-params', label: '模型', icon: Cpu, color: 'text-accent-500' },
+  { key: 'ui-prefs', label: '界面', icon: Palette, color: 'text-accent-500' },
+  { key: 'data-mgmt', label: '数据', icon: HardDrive, color: 'text-accent-500' }
 ]
 
 interface SettingsNavRailProps {

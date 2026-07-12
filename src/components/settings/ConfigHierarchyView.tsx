@@ -94,19 +94,19 @@ export function ConfigHierarchyView() {
   // 来源颜色映射
   const sourceColors: Record<OverrideSource, { bg: string; text: string; border: string }> = {
     global: {
-      bg: 'bg-blue-50 dark:bg-blue-900/20',
-      text: 'text-blue-600 dark:text-blue-400',
-      border: 'border-blue-200 dark:border-blue-800/40',
+      bg: 'bg-accent-50 dark:bg-accent-900/20',
+      text: 'text-accent-600 dark:text-accent-400',
+      border: 'border-accent-200 dark:border-accent-800/40',
     },
     provider: {
-      bg: 'bg-orange-50 dark:bg-orange-900/20',
-      text: 'text-orange-600 dark:text-orange-400',
-      border: 'border-orange-200 dark:border-orange-800/40',
+      bg: 'bg-accent-50 dark:bg-accent-900/20',
+      text: 'text-accent-600 dark:text-accent-400',
+      border: 'border-accent-200 dark:border-accent-800/40',
     },
     agent: {
-      bg: 'bg-violet-50 dark:bg-violet-900/20',
-      text: 'text-violet-600 dark:text-violet-400',
-      border: 'border-violet-200 dark:border-violet-800/40',
+      bg: 'bg-accent-50 dark:bg-accent-900/20',
+      text: 'text-accent-600 dark:text-accent-400',
+      border: 'border-accent-200 dark:border-accent-800/40',
     },
   }
 
@@ -124,7 +124,7 @@ export function ConfigHierarchyView() {
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-50 dark:hover:bg-surface-700/20 transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-500/20 to-violet-500/20 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent-500/20 to-accent-600/20 flex items-center justify-center">
             <Layers size={16} className="text-accent-500" />
           </div>
           <div className="text-left">
@@ -168,12 +168,12 @@ export function ConfigHierarchyView() {
           {/* 层级图 */}
           <div className="space-y-2">
             {/* 全局层 */}
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-200/60 dark:border-blue-800/30 bg-blue-50/50 dark:bg-blue-900/10">
-              <div className="w-7 h-7 rounded-md bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Globe size={14} className="text-blue-500" />
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-accent-200/60 dark:border-accent-800/30 bg-accent-50/50 dark:bg-accent-900/10">
+              <div className="w-7 h-7 rounded-md bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Globe size={14} className="text-accent-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-1.5">全局默认</div>
+                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">全局默认</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                   <span className="text-[11px] text-muted">AI 源: <span className="text-surface-600 dark:text-surface-400">{providers.find(p => p.id === globalConfig.activeProviderId)?.name || '未设置'}</span></span>
                   <span className="text-[11px] text-muted">模型: <span className="text-surface-600 dark:text-surface-400">{globalConfig.defaultModel || '未设置'}</span></span>
@@ -189,12 +189,12 @@ export function ConfigHierarchyView() {
             </div>
 
             {/* Provider 层 */}
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-orange-200/60 dark:border-orange-800/30 bg-orange-50/50 dark:bg-orange-900/10">
-              <div className="w-7 h-7 rounded-md bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Server size={14} className="text-orange-500" />
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-accent-200/60 dark:border-accent-800/30 bg-accent-50/50 dark:bg-accent-900/10">
+              <div className="w-7 h-7 rounded-md bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Server size={14} className="text-accent-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-orange-700 dark:text-orange-400 mb-1.5">Provider 层</div>
+                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">Provider 层</div>
                 {providers.length === 0 ? (
                   <span className="text-[11px] text-muted">暂无配置的 AI 源</span>
                 ) : (
@@ -202,11 +202,11 @@ export function ConfigHierarchyView() {
                     {providers.map((p) => (
                       <div key={p.id} className="flex items-center gap-2 text-[11px]">
                         {p.isDefault && (
-                          <span className="w-4 h-4 rounded-full bg-orange-200 dark:bg-orange-800/40 flex items-center justify-center flex-shrink-0">
-                            <Check size={10} className="text-orange-600 dark:text-orange-400" />
+                          <span className="w-4 h-4 rounded-full bg-accent-200 dark:bg-accent-800/40 flex items-center justify-center flex-shrink-0">
+                            <Check size={10} className="text-accent-600 dark:text-accent-400" />
                           </span>
                         )}
-                        <span className={`${p.isDefault ? 'font-medium text-orange-700 dark:text-orange-300' : 'text-muted'}`}>
+                        <span className={`${p.isDefault ? 'font-medium text-accent-700 dark:text-accent-300' : 'text-muted'}`}>
                           {p.name}
                         </span>
                         <span className="text-surface-400 dark:text-surface-500">→</span>
@@ -214,7 +214,7 @@ export function ConfigHierarchyView() {
                           {p.defaultModelId || '未选模型'}
                         </span>
                         {p.id === globalConfig.activeProviderId && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">当前激活</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">当前激活</span>
                         )}
                       </div>
                     ))}
@@ -229,12 +229,12 @@ export function ConfigHierarchyView() {
             </div>
 
             {/* Agent 层 */}
-            <div className="flex items-start gap-3 p-3 rounded-lg border border-violet-200/60 dark:border-violet-800/30 bg-violet-50/50 dark:bg-violet-900/10">
-              <div className="w-7 h-7 rounded-md bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Bot size={14} className="text-violet-500" />
+            <div className="flex items-start gap-3 p-3 rounded-lg border border-accent-200/60 dark:border-accent-800/30 bg-accent-50/50 dark:bg-accent-900/10">
+              <div className="w-7 h-7 rounded-md bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Bot size={14} className="text-accent-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-violet-700 dark:text-violet-400 mb-1.5">Agent 层</div>
+                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">Agent 层</div>
                 {agents.length === 0 ? (
                   <span className="text-[11px] text-muted">暂无 Agent 配置</span>
                 ) : (
@@ -244,28 +244,28 @@ export function ConfigHierarchyView() {
                       const hasOverride = !!(mc?.providerId || mc?.modelId || mc?.temperature !== undefined || mc?.maxTokens !== undefined)
                       return (
                         <div key={agent.id} className="flex items-center gap-2 text-[11px]">
-                          <span className={`${selectedAgentId === agent.id ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-muted'}`}>
+                          <span className={`${selectedAgentId === agent.id ? 'font-medium text-accent-700 dark:text-accent-300' : 'text-muted'}`}>
                             {agent.avatar} {agent.name}
                           </span>
                           {hasOverride ? (
                             <div className="flex items-center gap-1 flex-wrap">
                               {mc?.providerId && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">
                                   源: {providers.find(p => p.id === mc.providerId)?.name || mc.providerId}
                                 </span>
                               )}
                               {mc?.modelId && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">
                                   模型: {mc.modelId}
                                 </span>
                               )}
                               {mc?.temperature !== undefined && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">
                                   T: {mc.temperature}
                                 </span>
                               )}
                               {mc?.maxTokens !== undefined && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">
                                   MT: {mc.maxTokens}
                                 </span>
                               )}

@@ -128,7 +128,7 @@ export function PromptPlayground({ prompt, onBack }: PromptPlaygroundProps) {
         </button>
         <div>
           <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Zap size={16} className="text-amber-500" />
+            <Zap size={16} className="text-accent-500" />
             Playground 测试
           </h3>
           <p className="text-xs text-muted">{prompt.name}</p>

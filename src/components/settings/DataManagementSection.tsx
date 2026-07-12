@@ -51,29 +51,13 @@ import {
   type SensitiveDataSummary,
   type TimeRange
 } from '../../services/privacy-service'
+import { SettingsHeader, useConfirmDialog, DangerZone, StatusFeedback } from './ui'
 
-// ==================== 状态通知组件 ====================
+// ==================== 状态消息类型 ====================
 
 interface StatusMessage {
   type: 'success' | 'error' | 'info'
   text: string
-}
-
-function StatusBanner({ message, onClose }: { message: StatusMessage; onClose: () => void }) {
-  const colors = {
-    success: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300',
-    error: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300',
-    info: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/60 text-blue-700 dark:text-blue-300'
-  }
-  const Icon = message.type === 'success' ? CheckCircle2 : message.type === 'error' ? AlertCircle : AlertCircle
-
-  return (
-    <div className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm ${colors[message.type]} animate-fade-in`}>
-      <Icon size={16} />
-      <span className="flex-1">{message.text}</span>
-      <button onClick={onClose} className="opacity-60 hover:opacity-100">✕</button>
-    </div>
-  )
 }
 
 // ==================== 通用卡片包装 ====================
@@ -163,7 +147,13 @@ function ExportSection() {
         </div>
       </div>
 
-      {status && <StatusBanner message={status} onClose={() => setStatus(null)} />}
+      {status && (
+        <StatusFeedback
+          type={status.type}
+          message={status.text}
+          onClose={() => setStatus(null)}
+        />
+      )}
 
       {/* 格式选择 */}
       <div className="flex gap-2 mt-3 mb-3">
@@ -244,6 +234,7 @@ function BackupSection() {
   const [restoring, setRestoring] = useState(false)
   const [progress, setProgress] = useState('')
   const [status, setStatus] = useState<StatusMessage | null>(null)
+  const { confirm, Dialog } = useConfirmDialog()
 
   const handleBackup = async () => {
     setBacking(true)
@@ -296,15 +287,19 @@ function BackupSection() {
         return
       }
 
-      const confirmed = confirm(
-        `即将从备份恢复数据：\n\n` +
-        `备份时间: ${summary.exportedAt}\n` +
-        `版本: ${summary.version}\n` +
-        `包含数据: ${summary.localStorageKeys.join(', ')}\n\n` +
-        `此操作会覆盖当前数据，确定继续吗？`
-      )
+      const ok = await confirm({
+        title: '恢复备份',
+        message:
+          `即将从备份恢复数据。\n\n` +
+          `备份时间: ${summary.exportedAt}\n` +
+          `版本: ${summary.version}\n` +
+          `包含数据: ${summary.localStorageKeys.join(', ')}\n\n` +
+          `此操作会覆盖当前数据，确定继续吗？`,
+        confirmLabel: '恢复',
+        variant: 'warning',
+      })
 
-      if (!confirmed) {
+      if (!ok) {
         setRestoring(false)
         setProgress('')
         return
@@ -330,14 +325,20 @@ function BackupSection() {
   return (
     <SectionCard>
       <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2 mb-1">
-        <HardDrive size={16} className="text-violet-500" />
+        <HardDrive size={16} className="text-accent-500" />
         完整备份与恢复
       </h3>
       <p className="text-xs text-muted mb-4">
         打包所有设置、Agent、提示词、知识库数据为 .zip 文件，支持完整恢复
       </p>
 
-      {status && <StatusBanner message={status} onClose={() => setStatus(null)} />}
+      {status && (
+        <StatusFeedback
+          type={status.type}
+          message={status.text}
+          onClose={() => setStatus(null)}
+        />
+      )}
 
       {progress && (
         <div className="flex items-center gap-2 px-3 py-2 mb-3 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
@@ -350,7 +351,7 @@ function BackupSection() {
         <button
           onClick={handleBackup}
           disabled={backing}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-violet-200 dark:border-violet-800/60 text-violet-600 dark:text-violet-400 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/30 disabled:opacity-50 transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-accent-200 dark:border-accent-800/60 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 disabled:opacity-50 transition-colors"
         >
           {backing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           创建备份
@@ -358,12 +359,13 @@ function BackupSection() {
         <button
           onClick={handleRestore}
           disabled={restoring}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-violet-200 dark:border-violet-800/60 text-violet-600 dark:text-violet-400 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/30 disabled:opacity-50 transition-colors"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-accent-200 dark:border-accent-800/60 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 disabled:opacity-50 transition-colors"
         >
           {restoring ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
           恢复备份
         </button>
       </div>
+      <Dialog />
     </SectionCard>
   )
 }
@@ -377,6 +379,7 @@ function CacheSection() {
   const [status, setStatus] = useState<StatusMessage | null>(null)
   const [storageEstimate, setStorageEstimate] = useState<{ usage: number; quota: number } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const { confirm, Dialog } = useConfirmDialog()
 
   const loadStats = useCallback(async () => {
     // 取消上一次未完成的流式加载
@@ -416,12 +419,16 @@ function CacheSection() {
   }, [loadStats])
 
   const handleClear = async (region: CacheRegion) => {
-    const confirmed = confirm(
-      `确定要清除「${region.name}」吗？\n\n` +
-      `当前占用: ${formatBytes(region.sizeBytes)} · ${region.recordCount} 条记录\n` +
-      `此操作不可恢复。`
-    )
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '清除缓存',
+      message:
+        `确定要清除「${region.name}」吗？\n\n` +
+        `当前占用: ${formatBytes(region.sizeBytes)} · ${region.recordCount} 条记录\n` +
+        `此操作不可恢复。`,
+      confirmLabel: '清除',
+      variant: 'warning',
+    })
+    if (!ok) return
 
     setClearing(region.key)
     try {
@@ -441,7 +448,7 @@ function CacheSection() {
     <SectionCard>
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
-          <Database size={16} className="text-amber-500" />
+          <Database size={16} className="text-accent-500" />
           缓存管理
         </h3>
         <button
@@ -468,7 +475,13 @@ function CacheSection() {
         )}
       </div>
 
-      {status && <StatusBanner message={status} onClose={() => setStatus(null)} />}
+      {status && (
+        <StatusFeedback
+          type={status.type}
+          message={status.text}
+          onClose={() => setStatus(null)}
+        />
+      )}
 
       {/* 缓存区域列表 */}
       <div className="space-y-2 mt-3">
@@ -520,6 +533,7 @@ function CacheSection() {
           </div>
         )}
       </div>
+      <Dialog />
     </SectionCard>
   )
 }
@@ -533,6 +547,7 @@ function PrivacySection() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [rangePreview, setRangePreview] = useState<Array<{ id: string; title: string; createdAt: number; messageCount: number }>>([])
+  const { confirm, Dialog } = useConfirmDialog()
 
   // 加载敏感数据摘要
   const loadSummary = useCallback(async () => {
@@ -543,19 +558,23 @@ function PrivacySection() {
   useEffect(() => { loadSummary() }, [loadSummary])
 
   // 清除 API Key
-  const handleClearApiKeys = () => {
+  const handleClearApiKeys = async () => {
     const count = (summary?.providersWithKey ?? 0) + (summary?.hasGlobalApiKey ? 1 : 0)
     if (count === 0) {
       setStatus({ type: 'info', text: '没有发现 API Key' })
       return
     }
-    const confirmed = confirm(
-      `将清除以下位置的 API Key：\n\n` +
-      `- 全局配置${summary?.hasGlobalApiKey ? ' (已设置)' : ''}\n` +
-      `- ${summary?.providersWithKey ?? 0} 个 AI Provider\n\n` +
-      `确定继续吗？`
-    )
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '清除 API Key',
+      message:
+        `将清除以下位置的 API Key：\n\n` +
+        `- 全局配置${summary?.hasGlobalApiKey ? ' (已设置)' : ''}\n` +
+        `- ${summary?.providersWithKey ?? 0} 个 AI Provider\n\n` +
+        `确定继续吗？`,
+      confirmLabel: '清除',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     const cleared = clearAllApiKeys()
     setStatus({ type: 'success', text: `已清除 ${cleared} 个 API Key` })
@@ -563,13 +582,18 @@ function PrivacySection() {
   }
 
   // 清除 MCP 凭据
-  const handleClearMCP = () => {
+  const handleClearMCP = async () => {
     if (!summary?.mcpServerCount) {
       setStatus({ type: 'info', text: '没有 MCP 服务器配置' })
       return
     }
-    const confirmed = confirm(`将清除 ${summary.mcpServerCount} 个 MCP 服务器的认证凭据，确定吗？`)
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '清除 MCP 凭据',
+      message: `将清除 ${summary.mcpServerCount} 个 MCP 服务器的认证凭据，确定吗？`,
+      confirmLabel: '清除',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     const cleared = clearMCPCredentials()
     setStatus({ type: 'success', text: `已清除 ${cleared} 个 MCP 凭据字段` })
@@ -601,10 +625,13 @@ function PrivacySection() {
       return
     }
 
-    const confirmed = confirm(
-      `将删除 ${startDate} 至 ${endDate} 期间的 ${rangePreview.length} 个对话，此操作不可恢复，确定吗？`
-    )
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '删除对话',
+      message: `将删除 ${startDate} 至 ${endDate} 期间的 ${rangePreview.length} 个对话，此操作不可恢复，确定吗？`,
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     const range: TimeRange = {
       start: new Date(startDate).getTime(),
@@ -622,14 +649,23 @@ function PrivacySection() {
       setStatus({ type: 'info', text: '没有对话记录' })
       return
     }
-    const confirmed = confirm(
-      `将删除全部 ${summary.totalConversations} 个对话（${summary.totalMessages} 条消息），此操作不可恢复！\n\n确定继续吗？`
-    )
-    if (!confirmed) return
+    const ok = await confirm({
+      title: '删除所有对话',
+      message:
+        `将删除全部 ${summary.totalConversations} 个对话（${summary.totalMessages} 条消息），此操作不可恢复！`,
+      confirmLabel: '继续',
+      variant: 'danger',
+    })
+    if (!ok) return
 
     // 二次确认
-    const confirmed2 = confirm('最终确认：真的要删除所有对话吗？')
-    if (!confirmed2) return
+    const ok2 = await confirm({
+      title: '最终确认',
+      message: '真的要删除所有对话吗？此操作无法撤销。',
+      confirmLabel: '确认删除',
+      variant: 'danger',
+    })
+    if (!ok2) return
 
     const deleted = await deleteAllConversations()
     setStatus({ type: 'success', text: `已删除 ${deleted} 个对话` })
@@ -645,16 +681,22 @@ function PrivacySection() {
   }, [])
 
   return (
-    <SectionCard className="border-danger-200/40 dark:border-danger-800/20">
-      <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2 mb-1">
-        <Shield size={16} className="text-red-500" />
-        隐私清洗
-      </h3>
-      <p className="text-xs text-muted mb-4">
-        一键清除敏感信息，保护您的隐私安全
-      </p>
+    <DangerZone
+      title="隐私清洗"
+      description="一键清除敏感信息，保护您的隐私安全"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <Shield size={16} className="text-danger-500" />
+        <span className="text-xs text-muted">管理敏感数据与对话记录</span>
+      </div>
 
-      {status && <StatusBanner message={status} onClose={() => setStatus(null)} />}
+      {status && (
+        <StatusFeedback
+          type={status.type}
+          message={status.text}
+          onClose={() => setStatus(null)}
+        />
+      )}
 
       {/* 敏感数据概览 */}
       {summary && (
@@ -684,7 +726,7 @@ function PrivacySection() {
         </div>
         <button
           onClick={handleClearApiKeys}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-500 border border-red-200 dark:border-red-800/60 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
           <EyeOff size={12} /> 清除
         </button>
@@ -698,7 +740,7 @@ function PrivacySection() {
         </div>
         <button
           onClick={handleClearMCP}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-500 border border-red-200 dark:border-red-800/60 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
           <EyeOff size={12} /> 清除
         </button>
@@ -742,7 +784,7 @@ function PrivacySection() {
               {rangePreview.length > 0 && (
                 <button
                   onClick={handleDeleteByRange}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-red-500 border border-red-200 dark:border-red-800/60 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
                 >
                   <Trash2 size={12} /> 删除 {rangePreview.length} 个对话
                 </button>
@@ -776,7 +818,8 @@ function PrivacySection() {
           <Trash2 size={12} /> 清除全部
         </button>
       </div>
-    </SectionCard>
+      <Dialog />
+    </DangerZone>
   )
 }
 
@@ -790,15 +833,7 @@ export function DataManagementSection({ onNavigateToSection }: DataManagementSec
   return (
     <div className="space-y-6">
       {/* 标题 */}
-      <div>
-        <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-          <Database size={20} className="text-accent-500" />
-          数据管理
-        </h2>
-        <p className="text-sm text-muted mt-1">
-          管理应用数据，包括对话导出、备份恢复、缓存清理和隐私保护
-        </p>
-      </div>
+      <SettingsHeader icon={Database} title="数据管理" description="管理应用数据，包括对话导出、备份恢复、缓存清理和隐私保护" />
 
       {/* 知识库快捷入口 */}
       <SectionCard>
@@ -809,7 +844,7 @@ export function DataManagementSection({ onNavigateToSection }: DataManagementSec
           </div>
           <button
             onClick={() => onNavigateToSection?.('knowledge-base')}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-violet-600 dark:text-violet-400 border border-violet-200 dark:border-violet-800/60 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800/60 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
           >
             <Database size={14} /> 管理知识库
           </button>
@@ -821,14 +856,14 @@ export function DataManagementSection({ onNavigateToSection }: DataManagementSec
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Zap size={14} className="text-amber-500" />
+              <Zap size={14} className="text-accent-500" />
               Skills 技能管理
             </h3>
             <p className="text-xs text-muted mt-0.5">管理已导入的 Skills 技能包，数据存储在 IndexedDB 中</p>
           </div>
           <button
             onClick={() => onNavigateToSection?.('skills')}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800/60 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
           >
             <Zap size={14} /> 管理 Skills
           </button>

@@ -13,6 +13,7 @@ import { useSettingsStore } from '../../stores/settings-store'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { toolService } from '../../services/tool-service'
 import type { Tool } from '../../types'
+import { SettingsHeader, SettingsTabs, useConfirmDialog, SettingsEmptyState } from './ui'
 
 // ==================== 默认 JS 代码模板 ====================
 const DEFAULT_CODE_TEMPLATE = `// 自定义工具函数
@@ -55,6 +56,7 @@ function getBuiltinType(tool: Tool): BuiltinType | null {
 
 // ==================== 主组件 ====================
 export function ToolEditor() {
+  const { confirm, Dialog } = useConfirmDialog()
   const { customTools, addTool, updateTool, deleteTool, toggleTool } = useCustomToolStore()
   const mcpTools = useMCPToolStore((s) => s.mcpTools)
   const disabledIds = useSettingsStore((s) => s.disabledBuiltinToolIds)
@@ -112,8 +114,14 @@ export function ToolEditor() {
     setSelectedTool(null)
   }
 
-  const handleDelete = (id: string) => {
-    if (confirm('确定删除此工具？')) {
+  const handleDelete = async (id: string) => {
+    const ok = await confirm({
+      title: '删除工具',
+      message: '确定删除此工具？此操作不可撤销。',
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
       deleteTool(id)
       if (selectedTool?.id === id) {
         handleBack()
@@ -144,36 +152,36 @@ export function ToolEditor() {
       key: 'general' as const,
       title: '通用内置工具',
       description: '搜索引擎、网页抓取、时间查询等基础工具',
-      icon: <Wrench size={14} className="text-indigo-500" />,
+      icon: <Wrench size={14} className="text-accent-500" />,
       badge: '内置',
-      badgeClass: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
+      badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.general,
     },
     {
       key: 'agent' as const,
       title: 'Agent 协议工具',
       description: 'Agent 记忆管理、状态协调等协议工具（基础设施）',
-      icon: <Cpu size={14} className="text-violet-500" />,
+      icon: <Cpu size={14} className="text-accent-500" />,
       badge: '基础设施',
-      badgeClass: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400',
+      badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.agent,
     },
     {
       key: 'workspace' as const,
       title: '工作区工具',
       description: '文件操作、终端命令、工作区管理等工作区工具（基础设施）',
-      icon: <Layers size={14} className="text-teal-500" />,
+      icon: <Layers size={14} className="text-accent-500" />,
       badge: '基础设施',
-      badgeClass: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400',
+      badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.workspace,
     },
     {
       key: 'mcp' as const,
       title: 'MCP 工具',
       description: '通过 MCP 服务器注册的工具（只读展示，可测试）',
-      icon: <Server size={14} className="text-amber-500" />,
+      icon: <Server size={14} className="text-accent-500" />,
       badge: 'MCP',
-      badgeClass: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
+      badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.mcp,
     },
     {
@@ -190,23 +198,19 @@ export function ToolEditor() {
   return (
     <div className="space-y-6">
       {/* 标题 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Wrench size={20} className="text-indigo-500" />
-            工具管理
-          </h2>
-          <p className="text-sm text-muted">
-            管理 AI 可使用的工具，包括内置工具、MCP 工具和自定义工具
-          </p>
-        </div>
-        <button
-          onClick={handleCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
-        >
-          <Plus size={14} /> 新建自定义工具
-        </button>
-      </div>
+      <SettingsHeader
+        icon={Wrench}
+        title="工具管理"
+        description="管理 AI 可使用的工具，包括内置工具、MCP 工具和自定义工具"
+        actions={
+          <button
+            onClick={handleCreate}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
+          >
+            <Plus size={14} /> 新建自定义工具
+          </button>
+        }
+      />
 
       {/* 工具区域 */}
       {regionConfig.map((region) => (
@@ -247,10 +251,13 @@ export function ToolEditor() {
                 ))}
               </div>
             ) : (
-              <div className="text-center text-muted py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
-                <Code2 size={24} className="mx-auto mb-1 opacity-30" />
-                <p className="text-xs">暂无自定义工具</p>
-                <p className="text-[10px] mt-1">点击上方"新建自定义工具"开始创建</p>
+              <div className="py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
+                <SettingsEmptyState
+                  icon={Code2}
+                  title="暂无自定义工具"
+                  description={'点击上方"新建自定义工具"开始创建'}
+                  iconSize={24}
+                />
               </div>
             )
           ) : region.tools.length > 0 ? (
@@ -282,13 +289,17 @@ export function ToolEditor() {
               })}
             </div>
           ) : (
-            <div className="text-center text-muted py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
-              <Code2 size={24} className="mx-auto mb-1 opacity-30" />
-              <p className="text-xs">暂无工具</p>
+            <div className="py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
+              <SettingsEmptyState
+                icon={Code2}
+                title="暂无工具"
+                iconSize={24}
+              />
             </div>
           )}
         </div>
       ))}
+      <Dialog />
     </div>
   )
 }
@@ -340,34 +351,16 @@ function ToolListItem({
 
   // 获取图标样式
   const iconStyle = useMemo(() => {
-    if (builtinType === 'general') {
+    if (builtinType === 'general' || builtinType === 'agent' || builtinType === 'workspace' || isMcp) {
       return {
-        bg: 'bg-indigo-100 dark:bg-indigo-900/30',
-        text: 'text-indigo-600 dark:text-indigo-400'
-      }
-    }
-    if (builtinType === 'agent') {
-      return {
-        bg: 'bg-violet-100 dark:bg-violet-900/30',
-        text: 'text-violet-600 dark:text-violet-400'
-      }
-    }
-    if (builtinType === 'workspace') {
-      return {
-        bg: 'bg-teal-100 dark:bg-teal-900/30',
-        text: 'text-teal-600 dark:text-teal-400'
-      }
-    }
-    if (isMcp) {
-      return {
-        bg: 'bg-amber-100 dark:bg-amber-900/30',
-        text: 'text-amber-600 dark:text-amber-400'
+        bg: 'bg-accent-100 dark:bg-accent-900/30',
+        text: 'text-accent-600 dark:text-accent-400'
       }
     }
     // 自定义工具
     return {
-      bg: hasCode ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-amber-100 dark:bg-amber-900/30',
-      text: hasCode ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+      bg: hasCode ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-accent-100 dark:bg-accent-900/30',
+      text: hasCode ? 'text-emerald-600 dark:text-emerald-400' : 'text-accent-600 dark:text-accent-400'
     }
   }, [builtinType, isMcp, hasCode])
 
@@ -394,15 +387,9 @@ function ToolListItem({
           </span>
           {builtinLabel && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-              builtinType === 'general'
-                ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                : builtinType === 'agent'
-                  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
-                  : builtinType === 'workspace'
-                    ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
-                    : isMcp
-                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                      : 'bg-surface-100 dark:bg-surface-800 text-muted'
+              builtinType || isMcp
+                ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400'
+                : 'bg-surface-100 dark:bg-surface-800 text-muted'
             }`}>
               {builtinLabel}
             </span>
@@ -516,7 +503,7 @@ function ToolDetailView({
           </button>
           <div>
             <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-              <Wrench size={18} className="text-indigo-500" />
+              <Wrench size={18} className="text-accent-500" />
               {tool.name || '新工具'}
             </h2>
             <p className="text-xs text-muted">{tool.description}</p>
@@ -525,33 +512,15 @@ function ToolDetailView({
       </div>
 
       {/* Tab 导航 */}
-      <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 p-1 rounded-xl">
-        {/* 编辑 tab：仅自定义工具显示 */}
-        {!isBuiltIn && (
-          <TabButton
-            active={activeTab === 'edit'}
-            onClick={() => onTabChange('edit')}
-            icon={<Edit2 size={14} />}
-            label="编辑"
-          />
-        )}
-        {/* 测试 tab：基础设施工具（Agent 协议/工作区）显示灰色提示 */}
-        <TabButton
-          active={activeTab === 'test'}
-          onClick={() => {
-            if (!isInfrastructure) onTabChange('test')
-          }}
-          icon={<Play size={14} />}
-          label={isInfrastructure ? '测试 (需上下文)' : '测试'}
-          disabled={isInfrastructure}
-        />
-        <TabButton
-          active={activeTab === 'stats'}
-          onClick={() => onTabChange('stats')}
-          icon={<BarChart3 size={14} />}
-          label="统计"
-        />
-      </div>
+      <SettingsTabs
+        activeTab={activeTab}
+        onTabChange={(key) => onTabChange(key as DetailTab)}
+        tabs={[
+          ...(!isBuiltIn ? [{ key: 'edit', label: '编辑', icon: Edit2 }] : []),
+          { key: 'test', label: isInfrastructure ? '测试 (需上下文)' : '测试', icon: Play, disabled: isInfrastructure },
+          { key: 'stats', label: '统计', icon: BarChart3 },
+        ]}
+      />
 
       {/* Tab 内容 */}
       {activeTab === 'edit' && !isBuiltIn && (
@@ -562,36 +531,6 @@ function ToolDetailView({
       )}
       {activeTab === 'stats' && <ToolStatsPanel toolName={tool.name} />}
     </div>
-  )
-}
-
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label,
-  disabled = false
-}: {
-  active: boolean
-  onClick: () => void
-  icon: React.ReactNode
-  label: string
-  disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-        disabled
-          ? 'text-muted/50 cursor-not-allowed'
-          : active
-            ? 'bg-white dark:bg-surface-700 text-accent-600 dark:text-accent-400 shadow-sm'
-            : 'text-muted hover:text-surface-700 dark:hover:text-surface-300'
-      }`}
-    >
-      {icon} {label}
-    </button>
   )
 }
 
@@ -966,6 +905,19 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
 function ToolStatsPanel({ toolName }: { toolName: string }) {
   const stats = useToolStatsStore((s) => s.stats[toolName])
   const resetStats = useToolStatsStore((s) => s.resetStats)
+  const { confirm, Dialog } = useConfirmDialog()
+
+  const handleReset = useCallback(async () => {
+    const ok = await confirm({
+      title: '重置统计',
+      message: '确定重置此工具的使用统计？此操作不可撤销。',
+      confirmLabel: '重置',
+      variant: 'warning',
+    })
+    if (ok) {
+      resetStats(toolName)
+    }
+  }, [confirm, resetStats, toolName])
 
   if (!stats || stats.callCount === 0) {
     return (
@@ -1011,16 +963,13 @@ function ToolStatsPanel({ toolName }: { toolName: string }) {
       {/* 重置按钮 */}
       <div className="flex justify-end">
         <button
-          onClick={() => {
-            if (confirm('确定重置此工具的使用统计？')) {
-              resetStats(toolName)
-            }
-          }}
+          onClick={handleReset}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted hover:text-danger-500 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-all"
         >
           <RotateCcw size={12} /> 重置统计
         </button>
       </div>
+      <Dialog />
     </div>
   )
 }

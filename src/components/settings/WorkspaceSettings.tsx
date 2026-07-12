@@ -19,6 +19,7 @@ import {
   Play,
   ArrowLeft,
 } from 'lucide-react'
+import { SettingsSaveBar, SettingsSectionHeader, useConfirmDialog, SettingsEmptyState } from './ui'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
@@ -56,12 +57,12 @@ function WorkspaceCard({
 }) {
   return (
     <div
-      className="group relative p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 hover:border-teal-300 dark:hover:border-teal-700 hover:shadow-md transition-all cursor-pointer"
+      className="group relative p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 hover:border-accent-300 dark:hover:border-accent-700 hover:shadow-md transition-all cursor-pointer"
       onClick={onSelect}
     >
       <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-teal-500/15 flex items-center justify-center shrink-0">
-          <Briefcase size={18} className="text-teal-600 dark:text-teal-400" />
+        <div className="w-10 h-10 rounded-lg bg-accent-500/15 flex items-center justify-center shrink-0">
+          <Briefcase size={18} className="text-accent-600 dark:text-accent-400" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200 truncate">
@@ -88,7 +89,7 @@ function WorkspaceCard({
             </span>
           </div>
         </div>
-        <ChevronRight size={16} className="text-surface-300 dark:text-surface-600 shrink-0 group-hover:text-teal-500 transition-colors" />
+        <ChevronRight size={16} className="text-surface-300 dark:text-surface-600 shrink-0 group-hover:text-accent-500 transition-colors" />
       </div>
 
       {/* 删除按钮 */}
@@ -99,18 +100,6 @@ function WorkspaceCard({
       >
         <Trash2 size={14} />
       </button>
-    </div>
-  )
-}
-
-// ---- 设置区块标题 ----
-
-function SectionTitle({ icon: Icon, title, description }: { icon: typeof Briefcase; title: string; description?: string }) {
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <Icon size={16} className="text-teal-500" />
-      <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">{title}</h3>
-      {description && <span className="text-xs text-surface-400 dark:text-surface-500">— {description}</span>}
     </div>
   )
 }
@@ -158,6 +147,7 @@ function WorkspaceEditForm({
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const deleteWorkspace = useWorkspaceStore((s) => s.deleteWorkspace)
   const activateWorkspace = useWorkspaceStore((s) => s.activateWorkspace)
+  const { confirm, Dialog } = useConfirmDialog()
   const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
   const loadWorkspaceAgents = useWorkspaceAgentStore((s) => s.loadWorkspaceAgents)
   const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
@@ -245,12 +235,18 @@ function WorkspaceEditForm({
     }
   }, [updateField])
 
-  const handleDelete = useCallback(() => {
-    if (confirm(`确定删除工作区「${workspace.name}」？此操作不会删除文件系统中的文件。`)) {
+  const handleDelete = useCallback(async () => {
+    const ok = await confirm({
+      title: '删除工作区',
+      message: `确定删除工作区「${workspace.name}」？此操作不会删除文件系统中的文件。`,
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
       deleteWorkspace(workspace.id)
       onBack()
     }
-  }, [workspace, deleteWorkspace, onBack])
+  }, [workspace, deleteWorkspace, onBack, confirm])
 
   const handleActivate = useCallback(() => {
     activateWorkspace(workspace.id)
@@ -281,13 +277,13 @@ function WorkspaceEditForm({
         <div className="ml-auto flex gap-2">
           <button
             onClick={handleActivate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-teal-500 text-white hover:bg-teal-600 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
           >
             <Play size={12} /> 进入工作区
           </button>
           <button
             onClick={handleDelete}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-danger-300 dark:border-danger-800 text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
           >
             <Trash2 size={12} /> 删除
           </button>
@@ -296,14 +292,14 @@ function WorkspaceEditForm({
 
       {/* 基本信息 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
-        <SectionTitle icon={Briefcase} title="基本信息" />
+        <SettingsSectionHeader icon={Briefcase} title="基本信息" />
         <div>
           <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">名称</label>
           <input
             type="text"
             value={form.name}
             onChange={(e) => updateField('name', e.target.value)}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50"
           />
         </div>
         <div>
@@ -312,18 +308,18 @@ function WorkspaceEditForm({
             value={form.description}
             onChange={(e) => updateField('description', e.target.value)}
             rows={2}
-            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 resize-none"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50 resize-none"
           />
         </div>
       </div>
 
       {/* AI 领导 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
-        <SectionTitle icon={Bot} title="AI 领导配置" description="选择负责协调工作区任务的 Agent" />
+        <SettingsSectionHeader icon={Bot} title="AI 领导配置" description="选择负责协调工作区任务的 Agent" />
         <select
           value={form.leaderAgentId ?? ''}
           onChange={(e) => updateField('leaderAgentId', e.target.value || undefined)}
-          className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50"
         >
           <option value="">不指定</option>
           {workspaceAgents.map((a) => (
@@ -335,14 +331,14 @@ function WorkspaceEditForm({
             type="checkbox"
             checked={form.allowDynamicAgents}
             onChange={(e) => updateField('allowDynamicAgents', e.target.checked)}
-            className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
+            className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-accent-500 focus:ring-accent-500/50"
           />
           <span className="text-xs text-surface-600 dark:text-surface-400">允许 AI 领导动态创建临时 Agent</span>
         </label>
         {form.leaderAgentId && (
           <button
             onClick={handleOpenPromptEditor}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-teal-300 dark:border-teal-700 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-accent-300 dark:border-accent-700 text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-colors"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -360,7 +356,7 @@ function WorkspaceEditForm({
 
       {/* 工作文件夹 + 存档策略 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
-        <SectionTitle icon={FolderOpen} title="工作文件夹与存档策略" />
+        <SettingsSectionHeader icon={FolderOpen} title="工作文件夹与存档策略" />
         <div className="flex gap-2">
           <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-surface-50 dark:bg-surface-800/80 min-w-0">
             <FolderOpen size={14} className="text-surface-400 shrink-0" />
@@ -396,7 +392,7 @@ function WorkspaceEditForm({
 
       {/* 命令执行策略 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
-        <SectionTitle icon={Terminal} title="命令执行策略" description="控制 AI Agent 执行 shell 命令的权限" />
+        <SettingsSectionHeader icon={Terminal} title="命令执行策略" description="控制 AI Agent 执行 shell 命令的权限" />
         <div className="divide-y divide-surface-100 dark:divide-surface-700/60">
           <SettingFieldRenderer
             item={workspaceSetting('workspace.commandExecutionEnabled')}
@@ -421,7 +417,7 @@ function WorkspaceEditForm({
                 value={form.safeCommandWhitelist.join('\n')}
                 onChange={(e) => updateField('safeCommandWhitelist', e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))}
                 rows={3}
-                className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 resize-none"
+                className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50 resize-none"
               />
             </div>
             <div>
@@ -432,7 +428,7 @@ function WorkspaceEditForm({
                 value={form.commandBlacklist.join('\n')}
                 onChange={(e) => updateField('commandBlacklist', e.target.value.split('\n').map((s) => s.trim()).filter(Boolean))}
                 rows={3}
-                className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-teal-500/50 resize-none"
+                className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50 resize-none"
               />
             </div>
           </>
@@ -441,7 +437,7 @@ function WorkspaceEditForm({
 
       {/* 上下文管理 */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
-        <SectionTitle icon={Database} title="上下文管理" description="控制对话上下文压缩行为" />
+        <SettingsSectionHeader icon={Database} title="上下文管理" description="控制对话上下文压缩行为" />
         <div className="divide-y divide-surface-100 dark:divide-surface-700/60">
           {[
             'workspace.contextConfig.maxTokens',
@@ -467,16 +463,15 @@ function WorkspaceEditForm({
         <AgentManager isWorkspaceMode folderPath={workspace.folderPath} />
       </div>
 
-      {/* 保存按钮 */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="px-5 py-2 text-sm font-medium rounded-lg bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-50 transition-colors"
-        >
-          {isSaving ? '保存中...' : '保存设置'}
-        </button>
-      </div>
+      {/* Sticky 底部保存栏 */}
+      <SettingsSaveBar
+        onSave={handleSave}
+        isDirty={true}
+        isSaving={isSaving}
+        saveLabel="保存设置"
+        shortcut="Ctrl+S"
+      />
+      <Dialog />
     </div>
   )
 }
@@ -486,8 +481,21 @@ function WorkspaceEditForm({
 export function WorkspaceSettings({ onOpenWorkspace }: { onOpenWorkspace: () => void }) {
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const agents = useAgentStore((s) => s.agents)
+  const { confirm: confirmDelete, Dialog: DeleteDialog } = useConfirmDialog()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+
+  const handleDeleteWorkspace = useCallback(async (ws: Workspace) => {
+    const ok = await confirmDelete({
+      title: '删除工作区',
+      message: `确定删除工作区「${ws.name}」？`,
+      confirmLabel: '删除',
+      variant: 'danger',
+    })
+    if (ok) {
+      useWorkspaceStore.getState().deleteWorkspace(ws.id)
+    }
+  }, [confirmDelete])
 
   const selectedWorkspace = selectedId ? workspaces.find((w) => w.id === selectedId) : null
 
@@ -507,7 +515,7 @@ export function WorkspaceSettings({ onOpenWorkspace }: { onOpenWorkspace: () => 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
-            <Briefcase size={18} className="text-teal-500" />
+            <Briefcase size={18} className="text-accent-500" />
             工作区管理
           </h2>
           <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
@@ -518,11 +526,12 @@ export function WorkspaceSettings({ onOpenWorkspace }: { onOpenWorkspace: () => 
 
       {/* 工作区列表 */}
       {workspaces.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-surface-400 dark:text-surface-500">
-          <Briefcase size={40} strokeWidth={1.5} />
-          <p className="text-sm mt-3">暂无工作区</p>
-          <p className="text-xs mt-1">通过侧边栏的工作区选择器创建工作区</p>
-        </div>
+        <SettingsEmptyState
+          icon={Briefcase}
+          title="暂无工作区"
+          description="通过侧边栏的工作区选择器创建工作区"
+          iconSize={40}
+        />
       ) : (
         <div className="grid gap-3">
           {workspaces.map((ws) => {
@@ -535,16 +544,13 @@ export function WorkspaceSettings({ onOpenWorkspace }: { onOpenWorkspace: () => 
                 workspace={ws}
                 agentName={agentName}
                 onSelect={() => setSelectedId(ws.id)}
-                onDelete={() => {
-                  if (confirm(`确定删除工作区「${ws.name}」？`)) {
-                    useWorkspaceStore.getState().deleteWorkspace(ws.id)
-                  }
-                }}
+                onDelete={() => handleDeleteWorkspace(ws)}
               />
             )
           })}
         </div>
       )}
+      <DeleteDialog />
     </div>
   )
 }

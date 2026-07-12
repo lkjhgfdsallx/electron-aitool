@@ -11,6 +11,7 @@ import {
 import { useAgentStore } from '../../stores/agent-store'
 import { PromptVersionService } from '../../services/prompt-version-service'
 import type { Prompt, PromptVersion, DiffResult, DiffLine } from '../../types'
+import { useConfirmDialog, SettingsEmptyState } from './ui'
 
 interface VersionHistoryProps {
   prompt: Prompt
@@ -19,6 +20,7 @@ interface VersionHistoryProps {
 
 export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
   const { savePromptVersion, rollbackPromptVersion } = useAgentStore()
+  const { confirm, Dialog } = useConfirmDialog()
 
   const [selectedV1, setSelectedV1] = useState<string | null>(null)
   const [selectedV2, setSelectedV2] = useState<string | null>(null)
@@ -46,12 +48,18 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
   }, [prompt.id, versionLabel, savePromptVersion])
 
   const handleRollback = useCallback(
-    (versionId: string) => {
-      if (confirm('确定回滚到此版本？当前内容将被覆盖。')) {
+    async (versionId: string) => {
+      const ok = await confirm({
+        title: '回滚版本',
+        message: '确定回滚到此版本？当前内容将被覆盖。',
+        confirmLabel: '回滚',
+        variant: 'warning',
+      })
+      if (ok) {
         rollbackPromptVersion(prompt.id, versionId)
       }
     },
-    [prompt.id, rollbackPromptVersion],
+    [prompt.id, rollbackPromptVersion, confirm],
   )
 
   const formatTime = (ts: number) => {
@@ -121,10 +129,13 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
         {/* 左侧：版本列表 */}
         <div className="w-64 flex-shrink-0 border-r border-surface-200/80 dark:border-surface-700/60 overflow-y-auto">
           {sortedVersions.length === 0 ? (
-            <div className="px-4 py-8 text-center text-muted">
-              <GitBranch size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">暂无版本记录</p>
-              <p className="text-xs mt-1">点击"保存版本"创建快照</p>
+            <div className="px-4 py-8">
+              <SettingsEmptyState
+                icon={GitBranch}
+                title="暂无版本记录"
+                description={'点击"保存版本"创建快照'}
+                iconSize={32}
+              />
             </div>
           ) : (
             <div className="py-1">
@@ -159,6 +170,7 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
           ) : null}
         </div>
       </div>
+      <Dialog />
     </div>
   )
 }
@@ -232,7 +244,7 @@ function VersionItem({
           </button>
           <button
             onClick={onRollback}
-            className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-muted hover:text-amber-500"
+            className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-muted hover:text-accent-500"
             title="回滚到此版本"
           >
             <RotateCcw size={12} />
