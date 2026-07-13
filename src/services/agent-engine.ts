@@ -1203,13 +1203,17 @@ export async function runAgent(
     // 这样 LLM 能看到已有的上下文，避免重复执行相同的工具调用
     if (resumeOptions?.existingSteps && resumeOptions.existingSteps.length > 0) {
       const existingSteps = resumeOptions.existingSteps
-      // 记录已出现的 toolCallId（用于去重）
+      // 记录已出现的 action toolCallId 与 observation toolResultId（用于去重）
       const existingToolCallIds = new Set<string>()
+      const existingToolResultIds = new Set<string>()
       for (const m of messages) {
         if (m.toolCalls) {
           for (const tc of m.toolCalls) {
             existingToolCallIds.add(tc.id)
           }
+        }
+        if (m.role === 'tool' && m.toolCallId) {
+          existingToolResultIds.add(m.toolCallId)
         }
       }
 
@@ -1219,6 +1223,10 @@ export async function runAgent(
         if (step.type === 'action' && step.toolCall) {
           // 检查这个 action 是否已经在 messages 中
           if (existingToolCallIds.has(step.id)) {
+            // action 已存在时，同步标记紧随其后的 observation，避免后续再添加
+            if (i + 1 < existingSteps.length && existingSteps[i + 1].type === 'observation') {
+              existingToolResultIds.add(existingSteps[i + 1].id)
+            }
             continue
           }
           // action 步骤作为带 tool_calls 的 assistant 消息
@@ -1231,16 +1239,18 @@ export async function runAgent(
               arguments: JSON.stringify(step.toolCall.arguments)
             }]
           })
+          existingToolCallIds.add(step.id)
           // 如果下一步是 observation，也添加它
           if (i + 1 < existingSteps.length && existingSteps[i + 1].type === 'observation') {
             const obsStep = existingSteps[i + 1]
-            if (obsStep.toolResult) {
+            if (obsStep.toolResult && !existingToolResultIds.has(obsStep.id)) {
               messages.push({
                 role: 'tool',
                 content: obsStep.toolResult.data || obsStep.toolResult.error || '',
                 toolCallId: obsStep.id,
                 toolName: step.toolCall.name
               })
+              existingToolResultIds.add(obsStep.id)
             }
           }
         } else if (step.type === 'thinking' && step.content) {
@@ -1248,8 +1258,8 @@ export async function runAgent(
           messages.push({ role: 'assistant', content: step.content })
         } else if (step.type === 'observation' && step.toolResult) {
           // observation 步骤（如果没有对应的 action 被添加）
-          // 检查是否已经添加过
-          if (existingToolCallIds.has(step.id)) {
+          // 检查是否已经添加过（可能在 action 分支中已配对添加）
+          if (existingToolResultIds.has(step.id) || existingToolCallIds.has(step.id)) {
             continue
           }
           messages.push({
@@ -1258,6 +1268,7 @@ export async function runAgent(
             toolCallId: step.id,
             toolName: existingSteps[i - 1]?.toolCall?.name || 'unknown'
           })
+          existingToolResultIds.add(step.id)
         } else if (step.type === 'human_input') {
           // human_input 步骤：问题作为 assistant 消息，用户回复作为 user 消息
           if (step.humanChoice) {

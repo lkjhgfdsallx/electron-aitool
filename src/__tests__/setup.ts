@@ -1,3 +1,4 @@
+/// <reference path="./jest-types.d.ts" />
 /**
  * Jest 全局测试环境 setup
  *

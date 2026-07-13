@@ -47,7 +47,7 @@ function filterWebTools(tools: Tool[]): Tool[] {
  */
 function filterDisabledBuiltinTools(tools: Tool[]): Tool[] {
   const disabledIds = useSettingsStore.getState().disabledBuiltinToolIds
-  if (disabledIds.length === 0) return tools
+  if (!disabledIds || disabledIds.length === 0) return tools
   return tools.map((t) =>
     disabledIds.includes(t.id) ? { ...t, enabled: false } : t
   )
