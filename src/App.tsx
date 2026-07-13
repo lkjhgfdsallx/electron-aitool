@@ -7,6 +7,7 @@ import { FileActionApprovalDialog } from './components/workspace/FileActionAppro
 import { initMCPSync } from './stores/mcp-tool-store'
 import { useWorkspaceStore } from './stores/workspace-store'
 import { useConversationStore } from './stores/conversation-store'
+import { useSkillStore } from './stores/skill-store'
 import { useShortcuts } from './hooks/use-shortcuts'
 import type { ViewMode, SettingsSection } from './components/settings/SettingsNavRail'
 
@@ -23,6 +24,11 @@ export default function App() {
   // ⚡ 应用启动时初始化消息数据（localStorage→IDB 迁移 + 加载当前对话消息）
   useEffect(() => {
     useConversationStore.getState().initializeMessages()
+  }, [])
+
+  // ⚡ 应用启动时从 IndexedDB 预加载 Skills，避免 list_skills 在未打开设置页时返回空列表
+  useEffect(() => {
+    void useSkillStore.getState().ensureSkillsLoaded()
   }, [])
 
   // 安全保障：当不在工作区模式时，确保 currentConversationId 不指向工作区对话

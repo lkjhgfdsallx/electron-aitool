@@ -428,6 +428,8 @@ export const toolService = {
 
       case 'list_skills': {
         try {
+          // 兜底：确保已从 IndexedDB 加载，避免仅内存空态导致 skills_count=0
+          await useSkillStore.getState().ensureSkillsLoaded()
           const enabledSkills = useSkillStore.getState().getAllEnabledSkills()
           const skillsList = enabledSkills.map((s) => ({
             name: s.name,
@@ -453,6 +455,7 @@ export const toolService = {
           if (!skillName) {
             return { success: false, data: '', error: 'use_skill 需要 skill_name 参数' }
           }
+          await useSkillStore.getState().ensureSkillsLoaded()
           const skills = useSkillStore.getState().skills
           const skill = skills.find(
             (s) => s.name === skillName && s.enabled

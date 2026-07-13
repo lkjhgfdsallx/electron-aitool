@@ -199,10 +199,20 @@ interface SkillStore {
   skills: Skill[]
   /** 是否正在加载 */
   loading: boolean
+  /**
+   * 是否已至少完成一次从 IndexedDB 的加载。
+   * 用于避免 list_skills / use_skill 在应用启动后、设置页尚未打开时读到空内存态。
+   */
+  loaded: boolean
 
   // ---- 初始化 ----
   /** 从 IndexedDB 加载所有 Skills */
   loadSkills: () => Promise<void>
+  /**
+   * 确保 Skills 已从 IndexedDB 加载到内存。
+   * 若已加载则直接返回；若正在加载则复用同一 Promise，避免并发重复请求。
+   */
+  ensureSkillsLoaded: () => Promise<void>
 
   // ---- CRUD ----
   /** 创建新技能 */
@@ -248,22 +258,48 @@ interface SkillStore {
   refresh: () => Promise<void>
 }
 
+/** 进行中的 loadSkills Promise，用于 ensureSkillsLoaded 去重 */
+let skillsLoadPromise: Promise<void> | null = null
+
 export const useSkillStore = create<SkillStore>()((set, get) => ({
   skills: [],
   loading: false,
+  loaded: false,
 
   // ==================== 初始化 ====================
 
   loadSkills: async () => {
-    set({ loading: true })
-
-    try {
-      const skills = await dbService.getAllSkills()
-      set({ skills, loading: false })
-    } catch (e) {
-      console.error('[SkillStore] 加载 Skills 失败:', e)
-      set({ loading: false })
+    // 若已有加载进行中，先等待其完成，再发起一次新的读取。
+    // 这样 import/refresh 不会与启动预加载共用旧结果而漏掉刚写入 IndexedDB 的技能。
+    if (skillsLoadPromise) {
+      await skillsLoadPromise
     }
+
+    const current = (async () => {
+      set({ loading: true })
+      try {
+        const skills = await dbService.getAllSkills()
+        set({ skills, loading: false, loaded: true })
+      } catch (e) {
+        console.error('[SkillStore] 加载 Skills 失败:', e)
+        // 标记 loaded，避免工具侧在失败后无限重试；用户可手动 refresh
+        set({ loading: false, loaded: true })
+      }
+    })()
+
+    skillsLoadPromise = current
+    try {
+      await current
+    } finally {
+      if (skillsLoadPromise === current) {
+        skillsLoadPromise = null
+      }
+    }
+  },
+
+  ensureSkillsLoaded: async () => {
+    if (get().loaded) return
+    await get().loadSkills()
   },
 
   // ==================== CRUD ====================

@@ -180,12 +180,16 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
 
   const { providers } = useAIProviderStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { skills } = useSkillStore()
+  const { skills, ensureSkillsLoaded } = useSkillStore()
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
 
   useEffect(() => {
     loadCollections()
   }, [loadCollections])
+
+  useEffect(() => {
+    void ensureSkillsLoaded()
+  }, [ensureSkillsLoaded])
 
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null)
   const [agentForm, setAgentForm] = useState<AgentProfileCreateInput>(() => createEmptyAgentInput(isWorkspaceMode))

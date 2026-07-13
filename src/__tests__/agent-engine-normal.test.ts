@@ -183,7 +183,13 @@ jest.mock('../constants/default-agents', () => ({
 }))
 
 jest.mock('../stores/skill-store', () => ({
-  useSkillStore: { getState: () => ({ skills: [], getAllEnabledSkills: () => [] }) },
+  useSkillStore: {
+    getState: () => ({
+      skills: [],
+      getAllEnabledSkills: () => [],
+      ensureSkillsLoaded: async () => {},
+    }),
+  },
 }))
 
 jest.mock('../services/agent', () => ({

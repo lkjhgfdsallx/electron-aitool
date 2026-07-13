@@ -45,10 +45,15 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
   )
 
   const allSkills = useSkillStore((s) => s.skills)
+  const ensureSkillsLoaded = useSkillStore((s) => s.ensureSkillsLoaded)
   const projectSkills = useMemo(
     () => allSkills.filter((s) => s.location === 'project' && s.projectWorkspaceId === workspace.id),
     [allSkills, workspace.id]
   )
+
+  useEffect(() => {
+    void ensureSkillsLoaded()
+  }, [ensureSkillsLoaded])
 
   const tabs: { key: ExplorerTab; label: string; icon: typeof FileText; count?: number }[] = [
     { key: 'files', label: '文件', icon: FileText },

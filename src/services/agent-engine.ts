@@ -439,9 +439,12 @@ function buildAgentSystemPrompt(
 
   // 添加可用 Skills 信息（按 Agent 绑定的 enabledSkillIds 过滤）
   // 工具调用指引仅在 list_skills / use_skill 实际启用时注入
+  // 注意：此处为同步拼装；调用方应在 runAgent 前 ensureSkillsLoaded，避免读到空内存态
   if (agent.enabledSkillIds && agent.enabledSkillIds.length > 0) {
     const allSkills = useSkillStore.getState().getAllEnabledSkills()
-    const boundSkills = allSkills.filter((s) => agent.enabledSkillIds!.includes(s.dirPath))
+    const boundSkills = allSkills.filter(
+      (s) => agent.enabledSkillIds!.includes(s.dirPath) || agent.enabledSkillIds!.includes(s.id)
+    )
     if (boundSkills.length > 0) {
       prompt += `\n\n## 可用专业技能（Skills）\n`
       prompt += `你有以下专业技能可供使用，这些技能为你提供了特定领域的专家知识：\n`
@@ -1348,6 +1351,9 @@ export async function runAgent(
 
   // Phase 2: 启动 EventBus 运行
   agentEventBus.startRun(runId, agent.id)
+
+  // 确保 Skills 已从 IndexedDB 加载，供系统提示词与 list_skills/use_skill 使用
+  await useSkillStore.getState().ensureSkillsLoaded()
 
   const startTime = Date.now()
   let stepIndex = 0
