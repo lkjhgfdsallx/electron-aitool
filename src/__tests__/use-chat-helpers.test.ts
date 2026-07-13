@@ -292,7 +292,7 @@ describe('use-chat 内部辅助函数（真实模块）', () => {
   })
 
   describe('filterWebTools - 通过工具定义传递验证', () => {
-    it('webSearchEnabled=true 时联网工具应传递给 aiService', async () => {
+    it('webSearchEnabled=true 时普通模式仅暴露搜索类工具', async () => {
       mockSettingsState.webSearchEnabled = true
       const callbacksPromise = captureStreamChatCallbacks()
       const { result } = renderHook(() => useChat())
@@ -305,12 +305,14 @@ describe('use-chat 内部辅助函数（真实模块）', () => {
       // streamChat 第 4 参数为 toolDefs
       const toolDefsArg = mockStreamChat.mock.calls[0][3] as Array<{ function: { name: string } }>
       const toolNames = toolDefsArg.map((t) => t.function.name)
-      expect(toolNames).toContain('web_search')
-      expect(toolNames).toContain('fetch_webpage')
-      expect(toolNames).toContain('calculator')
+      expect(toolNames).toEqual(expect.arrayContaining(['web_search', 'fetch_webpage']))
+      // 普通模式不得暴露非搜索工具
+      expect(toolNames).not.toContain('calculator')
+      expect(toolNames).not.toContain('create_plan')
+      expect(toolNames).toHaveLength(2)
     })
 
-    it('webSearchEnabled=false 时应过滤掉联网工具', async () => {
+    it('webSearchEnabled=false 时普通模式不暴露任何工具', async () => {
       mockSettingsState.webSearchEnabled = false
       const callbacksPromise = captureStreamChatCallbacks()
       const { result } = renderHook(() => useChat())
@@ -322,11 +324,11 @@ describe('use-chat 内部辅助函数（真实模块）', () => {
 
       const toolDefsArg = mockStreamChat.mock.calls[0][3] as Array<{ function: { name: string } }>
       const toolNames = toolDefsArg.map((t) => t.function.name)
-      // 联网工具被过滤
+      // 联网关闭后普通模式无搜索工具，也不应残留其他工具
       expect(toolNames).not.toContain('web_search')
       expect(toolNames).not.toContain('fetch_webpage')
-      // 非联网工具保留
-      expect(toolNames).toContain('calculator')
+      expect(toolNames).not.toContain('calculator')
+      expect(toolNames).toHaveLength(0)
     })
 
     it('getAvailableTools（Agent 模式）也应受联网开关影响', async () => {

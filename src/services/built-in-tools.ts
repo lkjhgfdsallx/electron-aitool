@@ -639,7 +639,7 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
   {
     id: 'agent-builtin:create_plan',
     name: 'create_plan',
-    description: '创建结构化任务计划。将复杂任务拆解为有序子任务列表，每个任务可指定依赖关系和分派目标。计划创建后状态为 draft（草稿），在 plan-and-execute 策略下需用户确认后才执行。使用此工具能让任务执行更有条理、可跟踪。',
+    description: '创建结构化任务计划。将复杂任务拆解为有序子任务列表，每个任务可指定依赖关系和分派目标。创建后返回每个任务的 id，后续用 update_task 工具传入任务 id 来推进任务状态。使用此工具能让任务执行更有条理、可跟踪。',
     parameters: {
       type: 'object',
       properties: {
@@ -690,7 +690,7 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
       properties: {
         taskId: {
           type: 'string',
-          description: '要更新的任务 ID（create_plan 返回的任务 id）'
+          description: '要更新的任务 ID。必须是 create_plan 工具返回值中标注的任务 id（格式如 task-xxxxxxxx）。不要使用序号或自行编造。'
         },
         status: {
           type: 'string',
@@ -730,7 +730,7 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
 
 /**
  * 工作区专用工具（需要工作区上下文才能执行）
- * 当对话关联了工作区时，这些工具会自动注入到 Agent 的可用工具列表中
+ * 仅当 Agent 的 enabledToolIds 勾选了对应工具 ID，且运行时存在 workspaceContext 时才会加入可用列表
  */
 export const WORKSPACE_TOOLS: Tool[] = [
   {

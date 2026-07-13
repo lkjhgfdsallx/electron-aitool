@@ -51,6 +51,10 @@ const TASK_DECOMPOSITION_EXECUTOR_TOOL_IDS = [
   'agent-builtin:review_requirements',
   'agent-builtin:list_skills',
   'agent-builtin:use_skill',
+  // 结构化任务规划（plan-and-execute 必需）
+  'agent-builtin:create_plan',
+  'agent-builtin:update_task',
+  'agent-builtin:get_plan',
 ]
 
 const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 'systemPrompt' | 'createdAt' | 'updatedAt'> = {
@@ -158,12 +162,26 @@ function createTaskDecompositionExecutor(): AgentProfile {
         },
         decompose: {
           label: '任务拆解',
-          allowedTools: ['agent-builtin:ask_self', 'builtin:knowledge_search', 'builtin:web_search', 'builtin:fetch_webpage', 'agent-builtin:remember', 'agent-builtin:define_requirement'],
-          systemPromptSection: '你正处于[任务拆解]阶段。你的任务是将大任务拆解为可执行的子任务。使用 knowledge_search/web_search/fetch_webpage 搜索参考资料，使用 remember 记录拆解结果。拆解完成后输出清晰的子任务列表。',
+          allowedTools: [
+            'agent-builtin:ask_self',
+            'builtin:knowledge_search',
+            'builtin:web_search',
+            'builtin:fetch_webpage',
+            'agent-builtin:remember',
+            'agent-builtin:define_requirement',
+            // plan-and-execute：拆解阶段必须能调用 create_plan
+            'agent-builtin:create_plan',
+            'agent-builtin:get_plan',
+          ],
+          systemPromptSection: '你正处于[任务拆解]阶段。你的任务是将大任务拆解为可执行的子任务。使用 knowledge_search/web_search/fetch_webpage 搜索参考资料，使用 remember 记录拆解结果。**必须调用 create_plan 工具**将拆解结果写入结构化计划（含依赖关系）。创建计划后声明"子任务确认启动"。',
           transitions: [
             {
               to: 'execute',
-              when: [{ type: 'message_contains', keyword: '子任务确认启动' }]
+              when: [
+                { type: 'message_contains', keyword: '子任务确认启动' },
+                // 调用 create_plan 成功后也可进入执行阶段
+                { type: 'tool_called', toolName: 'create_plan' },
+              ]
             }
           ]
         },
@@ -172,9 +190,13 @@ function createTaskDecompositionExecutor(): AgentProfile {
           allowedTools: [
             'builtin:web_search', 'builtin:fetch_webpage', 'builtin:get_current_time', 'builtin:calculate', 'builtin:knowledge_search',
             'agent-builtin:remember', 'agent-builtin:recall', 'agent-builtin:ask_self', 'agent-builtin:ask_human',
-            'agent-builtin:define_requirement', 'agent-builtin:review_requirements', 'agent-builtin:list_skills', 'agent-builtin:use_skill'
+            'agent-builtin:define_requirement', 'agent-builtin:review_requirements', 'agent-builtin:list_skills', 'agent-builtin:use_skill',
+            // plan-and-execute：执行阶段用 update_task / get_plan 跟踪进度
+            'agent-builtin:update_task',
+            'agent-builtin:get_plan',
+            'agent-builtin:create_plan',
           ],
-          systemPromptSection: '你正处于[逐步执行]阶段。根据拆解计划，当前只专注于执行一个子任务。执行过程中主动利用搜索工具收集信息，使用 remember 记录进展。完成后声明"当前子任务完成"。',
+          systemPromptSection: '你正处于[逐步执行]阶段。根据 create_plan 产出的计划，当前只专注于执行一个子任务。执行前用 update_task 将该任务标为 in_progress（taskId 必须用 create_plan 返回的 id），完成后标为 completed。执行过程中主动利用搜索工具收集信息，使用 remember 记录进展。完成后声明"当前子任务完成"。',
           transitions: [
             {
               to: 'verify',
@@ -696,6 +718,22 @@ export const useAgentStore = create<AgentStore>()(
             ...agent,
             scope: agent.scope ?? 'global',
           }))
+        }
+        if (version < 5) {
+          // v5: 任务拆解执行师启用 plan-and-execute 规划工具 + 更新工作流白名单
+          // 旧版本该 Agent 提示词要求调用 create_plan，但 enabledToolIds/workflow.allowedTools 未包含该工具
+          const freshExecutor = createTaskDecompositionExecutor()
+          state.agents = state.agents.map((agent) => {
+            if (agent.id !== TASK_DECOMPOSITION_EXECUTOR_AGENT_ID) return agent
+            return {
+              ...agent,
+              enabledToolIds: [...TASK_DECOMPOSITION_EXECUTOR_TOOL_IDS],
+              planningStrategy: 'plan-and-execute',
+              // 用最新工作流定义覆盖，确保 decompose/execute 阶段可调用 create_plan/update_task
+              workflow: freshExecutor.workflow,
+              updatedAt: Date.now(),
+            }
+          })
         }
         return state
       },

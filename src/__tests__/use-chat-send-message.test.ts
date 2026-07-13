@@ -45,6 +45,8 @@ jest.mock('../services/tool-service', () => ({
 
 jest.mock('../services/built-in-tools', () => ({
   BUILT_IN_TOOLS: [
+    { id: 'tool-web-search', name: 'web_search', description: '联网搜索', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'tool-fetch-webpage', name: 'fetch_webpage', description: '抓取网页', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
     { id: 'tool-calc', name: 'calculator', description: '计算器', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
   ],
   AGENT_BUILTIN_TOOLS: [
@@ -638,7 +640,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
     expect(cb).not.toBeNull()
 
     await act(async () => {
-      cb!.onToolCalls([{ id: 'tc1', name: 'calculator', arguments: '{"expr":"1+1"}' }])
+      cb!.onToolCalls([{ id: 'tc1', name: 'web_search', arguments: '{"query":"test"}' }])
       cb!.onDone('stop')
       // 等待异步工具执行
       await new Promise((r) => setTimeout(r, 50))
@@ -646,7 +648,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
 
     expect(mockExecuteTool).toHaveBeenCalled()
     const toolCallArgs = mockExecuteTool.mock.calls[0]
-    expect(toolCallArgs[0]).toBe('calculator')
+    expect(toolCallArgs[0]).toBe('web_search')
   })
 
   it('工具执行成功后应添加 tool 结果消息', async () => {
@@ -654,7 +656,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
     const cb = capturedCb()
 
     await act(async () => {
-      cb!.onToolCalls([{ id: 'tc1', name: 'calculator', arguments: '{}' }])
+      cb!.onToolCalls([{ id: 'tc1', name: 'web_search', arguments: '{}' }])
       cb!.onDone('stop')
       await new Promise((r) => setTimeout(r, 50))
     })
@@ -688,7 +690,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
     const cb = capturedCb()
 
     await act(async () => {
-      cb!.onToolCalls([{ id: 'tc1', name: 'calculator', arguments: '{}' }])
+      cb!.onToolCalls([{ id: 'tc1', name: 'web_search', arguments: '{}' }])
       cb!.onDone('stop')
       await new Promise((r) => setTimeout(r, 50))
     })
@@ -715,7 +717,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
       }
 
       if (streamCallCount <= 31) {
-        callbacks.onToolCalls?.([{ id: `loop-${streamCallCount}`, name: 'calculator', arguments: '{}' }])
+        callbacks.onToolCalls?.([{ id: `loop-${streamCallCount}`, name: 'web_search', arguments: '{}' }])
         await callbacks.onDone?.('stop')
         return
       }
@@ -731,7 +733,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
 
     await act(async () => {
       await result.current.sendMessage('循环调用工具', 'conv-plain')
-      await initialCallbacks?.onToolCalls?.([{ id: 'initial-tc', name: 'calculator', arguments: '{}' }])
+      await initialCallbacks?.onToolCalls?.([{ id: 'initial-tc', name: 'web_search', arguments: '{}' }])
       await initialCallbacks?.onDone?.('stop')
     })
 
@@ -778,7 +780,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
       }
 
       if (streamCallCount <= 31) {
-        callbacks.onToolCalls?.([{ id: `loop-${streamCallCount}`, name: 'calculator', arguments: '{}' }])
+        callbacks.onToolCalls?.([{ id: `loop-${streamCallCount}`, name: 'web_search', arguments: '{}' }])
         await callbacks.onDone?.('stop')
         return
       }
@@ -794,7 +796,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
 
     await act(async () => {
       await result.current.sendMessage('循环调用工具', 'conv-plain')
-      await initialCallbacks?.onToolCalls?.([{ id: 'initial-tc', name: 'calculator', arguments: '{}' }])
+      await initialCallbacks?.onToolCalls?.([{ id: 'initial-tc', name: 'web_search', arguments: '{}' }])
       await initialCallbacks?.onDone?.('stop')
     })
 
@@ -835,7 +837,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
 
       if (streamCallCount === 1) {
         // 第一次：触发工具调用
-        callbacks.onToolCalls?.([{ id: 'tc1', name: 'calculator', arguments: '{"expr":"1+1"}' }])
+        callbacks.onToolCalls?.([{ id: 'tc1', name: 'web_search', arguments: '{"query":"test"}' }])
         callbacks.onDone?.('stop')
         return
       }
@@ -886,7 +888,7 @@ describe('handleToolCalls（普通模式工具调用循环）', () => {
 
       if (streamCallCount === 1) {
         // 第一次：触发工具调用
-        callbacks.onToolCalls?.([{ id: 'tc1', name: 'calculator', arguments: '{}' }])
+        callbacks.onToolCalls?.([{ id: 'tc1', name: 'web_search', arguments: '{}' }])
         callbacks.onDone?.('stop')
         return
       }

@@ -16,6 +16,7 @@ import type { AgentWorkflow } from '../types/agent-workflow'
 
 // ===== Mock 依赖模块 =====
 let capturedStreamMessages: Message[] | null = null
+let capturedSystemPrompt: string | null = null
 let streamCallCount = 0
 let shouldReturnToolCalls = false
 let shouldReturnTextToolCalls = false
@@ -26,7 +27,7 @@ jest.mock('../services/ai-service', () => ({
     streamChat: jest.fn(async (
       messages: Message[],
       _config: ResolvedAIConfig,
-      _systemPrompt: string | null,
+      systemPrompt: string | null,
       _tools: unknown[],
       _signal: AbortSignal,
       callbacks: {
@@ -39,6 +40,7 @@ jest.mock('../services/ai-service', () => ({
     ) => {
       streamCallCount++
       capturedStreamMessages = messages
+      capturedSystemPrompt = systemPrompt
 
       if (shouldThrowError) {
         callbacks.onError?.('模拟 API 错误')
@@ -58,8 +60,8 @@ jest.mock('../services/ai-service', () => ({
       }
 
       if (shouldReturnTextToolCalls) {
-        // 模拟文本格式工具调用
-        callbacks.onToken?.('让我调用工具\n```tool_call\n{"name":"text_tool","arguments":{"key":"val"}}\n```')
+        // 模拟文本格式工具调用（工具名需与 enabledToolIds / tools 白名单一致）
+        callbacks.onToken?.('让我调用工具\n```tool_call\n{"name":"test_tool","arguments":{"key":"val"}}\n```')
         callbacks.onDone?.('stop')
         return
       }
@@ -159,6 +161,21 @@ jest.mock('../services/built-in-tools', () => ({
   get WORKSPACE_TOOLS() {
     return mockWorkspaceTools
   },
+  // 供 buildAgentSystemPrompt 脱敏逻辑识别已知工具名
+  BUILT_IN_TOOLS: [
+    { id: 'builtin:web_search', name: 'web_search' },
+    { id: 'builtin:fetch_webpage', name: 'fetch_webpage' },
+    { id: 'builtin:create_plan_alias_unused', name: 'calculate' },
+  ],
+  AGENT_BUILTIN_TOOLS: [
+    { id: 'agent-builtin:create_plan', name: 'create_plan' },
+    { id: 'agent-builtin:update_task', name: 'update_task' },
+    { id: 'agent-builtin:get_plan', name: 'get_plan' },
+    { id: 'agent-builtin:list_skills', name: 'list_skills' },
+    { id: 'agent-builtin:use_skill', name: 'use_skill' },
+    { id: 'agent-builtin:remember', name: 'remember' },
+    { id: 'agent-builtin:recall', name: 'recall' },
+  ],
 }))
 
 jest.mock('../constants/default-agents', () => ({
@@ -173,7 +190,7 @@ jest.mock('../services/agent', () => ({
   toolExecutorRegistry: {
     createSessionBundle: jest.fn(() => ({
       resolve: jest.fn((name: string) => {
-        if (name === 'test_tool' || name === 'text_tool') {
+        if (name === 'test_tool' || name === 'text_tool' || name === 'workspace_write_file') {
           return {
             executor: {
               execute: mockToolExecute.mockResolvedValue({
@@ -296,6 +313,7 @@ describe('runAgent - 正常模式', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     capturedStreamMessages = null
+    capturedSystemPrompt = null
     streamCallCount = 0
     shouldReturnToolCalls = false
     shouldReturnTextToolCalls = false
@@ -594,6 +612,115 @@ describe('runAgent - 正常模式', () => {
 
       // 验证文本格式工具调用被解析和执行
       expect(mockToolExecute).toHaveBeenCalled()
+    })
+
+    it('不应执行未勾选的工具（即使模型发起了调用）', async () => {
+      shouldReturnToolCalls = true
+      // agent 未启用 test-tool
+      const agent = createMockAgent({
+        enabledToolIds: [],
+        termination: { maxSteps: 3, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const tools = createMockTools()
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+
+      await runAgent(
+        agent,
+        '调用未授权工具',
+        [],
+        tools,
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+      )
+
+      // 白名单拦截后不应真正执行工具
+      expect(mockToolExecute).not.toHaveBeenCalled()
+      // 应产生 observation 错误步骤
+      const observationSteps = callbacks.onStep.mock.calls
+        .map((call) => call[0] as AgentStep)
+        .filter((s) => s.type === 'observation')
+      expect(observationSteps.length).toBeGreaterThan(0)
+      expect(observationSteps[0].toolResult?.success).toBe(false)
+      expect(observationSteps[0].toolResult?.error).toContain('未在当前 Agent 的启用列表中')
+    })
+
+    it('工作区场景下不应强制注入未勾选的工作区工具', async () => {
+      // 仅勾选 list_files，不勾选 write_file
+      const agent = createMockAgent({
+        enabledToolIds: ['workspace:list_files'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+      }
+
+      // 捕获传给 LLM 的 tools
+      const { toolService } = require('../services/tool-service')
+      const toToolDefsSpy = toolService.toToolDefinitions as jest.Mock
+
+      await runAgent(
+        agent,
+        '列出文件',
+        [],
+        [], // allTools 为空，仅依赖 resolveAgentTools 从 WORKSPACE_TOOLS 补充已勾选工具
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext,
+      )
+
+      expect(toToolDefsSpy).toHaveBeenCalled()
+      const passedTools = toToolDefsSpy.mock.calls[0][0] as Tool[]
+      const ids = passedTools.map((t) => t.id)
+      expect(ids).toContain('workspace:list_files')
+      expect(ids).not.toContain('workspace:write_file')
+      expect(ids).not.toContain('workspace:execute_command')
+    })
+
+    it('系统提示词不应暴露未勾选的工具名（含默认 systemPrompt 硬编码）', async () => {
+      const agent = createMockAgent({
+        // systemPrompt 故意硬编码未启用工具，引擎应脱敏
+        systemPrompt: '你可以使用 `workspace_write_file` 和 create_plan，以及 list_skills。',
+        planningStrategy: 'plan-and-execute',
+        enabledToolIds: ['workspace:list_files'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+      }
+
+      await runAgent(
+        agent,
+        '仅列出文件',
+        [],
+        [],
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext,
+      )
+
+      expect(capturedSystemPrompt).toBeTruthy()
+      const prompt = capturedSystemPrompt as string
+      // 未启用工具名不得出现在系统提示中
+      expect(prompt).not.toContain('workspace_write_file')
+      expect(prompt).not.toContain('workspace_read_file')
+      expect(prompt).not.toContain('workspace_execute_command')
+      expect(prompt).not.toContain('create_plan')
+      expect(prompt).not.toContain('update_task')
+      expect(prompt).not.toContain('list_skills')
+      // 已启用工具应出现
+      expect(prompt).toContain('workspace_list_files')
     })
   })
 

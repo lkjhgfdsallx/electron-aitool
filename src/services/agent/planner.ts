@@ -146,16 +146,17 @@ export class PlannerToolExecutor implements ToolExecutor {
     void agentSessionCtx // 标记参数已使用（runId 在事件中由 EventBus 自动填充）
 
     // 构建返回给 LLM 的信息
+    // ⚠️ 关键修复：必须返回每个任务的 id，否则 update_task 无法指定 taskId
     const taskSummary = createdTasks.map((t, i) => {
       const deps = t.dependsOn.map((d) => createdTasks.findIndex((x) => x.id === d))
       const depStr = deps.length > 0 ? `（依赖: ${deps.map((d) => d + 1).join(', ')}）` : ''
       const assigneeStr = t.assigneeId ? ` [→ ${t.assigneeId}]` : ''
-      return `${i + 1}. ${t.title}${depStr}${assigneeStr}`
+      return `${i + 1}. [id: ${t.id}] ${t.title}${depStr}${assigneeStr}`
     }).join('\n')
 
     return {
       success: true,
-      data: `计划已创建（状态: draft，等待确认）\n\n目标: ${goal}\n\n任务列表 (${createdTasks.length}个):\n${taskSummary}\n\n⚠️ 当前计划为草稿状态。如果是 plan-and-execute 策略，计划需要用户确认后才会执行。你可以继续完善计划，或等待用户确认。`,
+      data: `计划已创建\n\n目标: ${goal}\n\n任务列表 (${createdTasks.length}个):\n${taskSummary}\n\n💡 后续操作：\n- 执行任务时使用 \`update_task\` 工具，传入上面方括号中的任务 id（如 ${createdTasks[0]?.id ?? 'task-xxxx'}），将状态设为 in_progress\n- 完成后将状态设为 completed\n- 使用 \`get_plan\` 查看整体进度`,
     }
   }
 
@@ -214,7 +215,8 @@ export class PlannerToolExecutor implements ToolExecutor {
     // 更新计划整体状态
     const plan = ctx.currentPlan
     plan.updatedAt = Date.now()
-    if (plan.status === 'draft') {
+    // draft 和 approved 都应在首次执行时进入 executing 状态
+    if (plan.status === 'draft' || plan.status === 'approved') {
       plan.status = 'executing'
     }
     if (isPlanDone(plan)) {

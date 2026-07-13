@@ -53,6 +53,17 @@ function filterDisabledBuiltinTools(tools: Tool[]): Tool[] {
   )
 }
 
+/**
+ * 普通对话允许的工具：仅搜索类（web_search / fetch_webpage）。
+ * 不暴露计算器、知识库检索、MCP、Agent 内置等任何其他工具，
+ * 避免模型在非 Agent 场景“知道”或尝试调用它们。
+ * 仍受 webSearchEnabled 与 disabledBuiltinToolIds 约束。
+ */
+function getNormalModeTools(): Tool[] {
+  const searchOnly = BUILT_IN_TOOLS.filter((t) => WEB_TOOL_NAMES.has(t.name))
+  return filterWebTools(filterDisabledBuiltinTools(searchOnly))
+}
+
 /** 将进度事件类型映射到阶段 */
 /** 检查通知设置并在 AI 回复完成时发送系统通知和播放提示音 */
 function notifyIfReady(title: string, body: string): void {
@@ -1019,9 +1030,8 @@ export function useChat() {
       // 获取对话历史
       const history = getMessages(convId)
 
-      // 普通模式使用内置工具 + MCP 工具（联网工具根据开关过滤）
-      const mcpTools = useMCPToolStore.getState().mcpTools
-      const normalModeTools = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools])
+      // 普通模式仅暴露搜索类工具，模型不应感知其他工具
+      const normalModeTools = getNormalModeTools()
       const toolDefs = toolService.toToolDefinitions(normalModeTools)
 
       // 创建 assistant 消息（流式更新）
@@ -1102,8 +1112,7 @@ export function useChat() {
                   status: 'pending' as const
                 }))
               })
-              const mcpTools3 = useMCPToolStore.getState().mcpTools
-              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpTools3]), currentBranchIdx)
+              await handleToolCalls(convId, assistantMsg.id, pendingToolCalls, getNormalModeTools(), currentBranchIdx)
             } else {
               const notice = getFinishNotice(finishReason)
               const finalContent = notice ? fullContent + notice : fullContent
@@ -1333,9 +1342,8 @@ export function useChat() {
       }
       updateMessage(assistantMsgId, { toolCalls: [...updatedToolCalls] })
 
-      // 构建工具定义（保持工具可用，支持后续轮次继续调用，联网工具根据开关过滤）
-      const mcpTools2 = useMCPToolStore.getState().mcpTools
-      const normalModeTools2 = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools2])
+      // 构建工具定义：普通模式仅保留搜索类工具，支持后续轮次继续调用
+      const normalModeTools2 = getNormalModeTools()
       const toolDefs = toolService.toToolDefinitions(normalModeTools2)
       const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
 
@@ -1634,9 +1642,8 @@ export function useChat() {
       } else {
         // 普通模式重新生成
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        // 普通模式使用内置工具 + MCP 工具（联网工具根据开关过滤）
-        const mcpTools4 = useMCPToolStore.getState().mcpTools
-        const normalModeTools4 = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools4])
+        // 普通模式仅暴露搜索类工具
+        const normalModeTools4 = getNormalModeTools()
         const toolDefs = toolService.toToolDefinitions(normalModeTools4)
 
         const assistantMsg = addMessage(currentConversationId, {
@@ -1683,8 +1690,7 @@ export function useChat() {
                   isStreaming: false,
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
-                const mcpTools5 = useMCPToolStore.getState().mcpTools
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpTools5]), currentBranchIdx)
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, getNormalModeTools(), currentBranchIdx)
               } else {
                 const notice = getFinishNotice(finishReason)
                 updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })
@@ -1963,9 +1969,8 @@ export function useChat() {
       } else {
         // 普通模式
         const prompt = selectedPromptId ? getPrompt(selectedPromptId) : null
-        // 普通模式使用内置工具 + MCP 工具（联网工具根据开关过滤）
-        const mcpTools6 = useMCPToolStore.getState().mcpTools
-        const normalModeTools6 = filterWebTools([...BUILT_IN_TOOLS, ...mcpTools6])
+        // 普通模式仅暴露搜索类工具
+        const normalModeTools6 = getNormalModeTools()
         const toolDefs = toolService.toToolDefinitions(normalModeTools6)
 
         const assistantMsg = addMessage(currentConversationId, {
@@ -2012,8 +2017,7 @@ export function useChat() {
                   isStreaming: false,
                   toolCalls: pendingToolCalls.map((tc) => ({ ...tc, arguments: tc.arguments, status: 'pending' as const }))
                 })
-                const mcpTools7 = useMCPToolStore.getState().mcpTools
-                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, filterWebTools([...BUILT_IN_TOOLS, ...mcpTools7]), newBranchIndex)
+                await handleToolCalls(currentConversationId, assistantMsg.id, pendingToolCalls, getNormalModeTools(), newBranchIndex)
               } else {
                 const notice = getFinishNotice(finishReason)
                 updateMessage(assistantMsg.id, { content: notice ? fullContent + notice : fullContent, isStreaming: false, finishReason })

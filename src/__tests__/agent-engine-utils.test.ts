@@ -38,6 +38,8 @@ jest.mock('../services/knowledge-base-service', () => ({
 
 jest.mock('../services/built-in-tools', () => ({
   WORKSPACE_TOOLS: [],
+  BUILT_IN_TOOLS: [],
+  AGENT_BUILTIN_TOOLS: [],
 }))
 
 jest.mock('../constants/default-agents', () => ({

@@ -32,7 +32,7 @@ import { aiService } from './ai-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { knowledgeBaseService } from './knowledge-base-service'
-import { WORKSPACE_TOOLS } from './built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from './built-in-tools'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
 import { useSkillStore } from '../stores/skill-store'
 import { toolExecutorRegistry, agentEventBus } from './agent'
@@ -47,6 +47,7 @@ import {
 } from './agent/workflow-engine'
 import type { WorkflowRuntimeState } from '../types'
 import type { TransitionContext } from './agent/workflow-engine'
+import { isTerminalState } from '../types'
 
 /** Agent 引擎回调 */
 export interface AgentEngineCallbacks {
@@ -235,7 +236,54 @@ interface AgentMessage {
 
 /**
  * 构建 Agent 的系统提示词（含工具描述和记忆）
+ * 仅向模型暴露当前 tools 白名单中的工具名；默认/自定义 systemPrompt 中的未启用工具名会被脱敏。
  */
+
+/** 内置工具名全集（惰性构建，兼容测试 mock 未导出完整列表的情况） */
+function getAllKnownBuiltinToolNames(): string[] {
+  const lists = [BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS]
+  const names: string[] = []
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const t of list) {
+      if (t?.name) names.push(t.name)
+    }
+  }
+  return Array.from(new Set(names))
+}
+
+/**
+ * 从提示词中移除未启用工具的名称引用，避免模型“知道但用不了”从而污染上下文。
+ * 仅处理已知内置/工作区工具名；自定义/MCP 工具名若未出现在 tools 列表中也会被一并剥离。
+ */
+function redactDisabledToolMentions(
+  prompt: string,
+  availableToolNames: Set<string>,
+  extraKnownNames: string[] = [],
+): string {
+  const known = new Set([...getAllKnownBuiltinToolNames(), ...extraKnownNames])
+  // 长名称优先，避免短名先替换导致残留
+  const disabled = Array.from(known)
+    .filter((n) => n && !availableToolNames.has(n))
+    .sort((a, b) => b.length - a.length)
+
+  let result = prompt
+  for (const name of disabled) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    // 反引号包裹：`tool_name`
+    result = result.replace(new RegExp('`' + escaped + '`', 'g'), '（当前未启用）')
+    // 标识符边界：workspace_write_file / create_plan 等
+    result = result.replace(new RegExp('(?<![A-Za-z0-9_])' + escaped + '(?![A-Za-z0-9_])', 'g'), '（当前未启用）')
+  }
+
+  // 清理连续占位与空路径说明
+  result = result
+    .replace(/(（当前未启用）[、/|\\s]*){2,}/g, '（当前未启用）')
+    .replace(/（当前未启用）/g, '（当前未启用）')
+
+  return result
+}
+
 function buildAgentSystemPrompt(
   agent: AgentProfile,
   tools: Tool[],
@@ -249,6 +297,12 @@ function buildAgentSystemPrompt(
   // 判断是否为 Leader Agent（纯指挥者模式）：通过标签判断，不再依赖固定 ID
   const isLeader = agent.tags?.includes('leader') ?? false
 
+  // 仅允许在系统提示中引用「当前实际可用」的工具名，避免模型感知未勾选工具
+  const availableToolNames = new Set(tools.map((t) => t.name))
+  const hasTool = (name: string): boolean => availableToolNames.has(name)
+  const formatToolList = (names: string[]): string =>
+    names.filter((n) => hasTool(n)).map((n) => `\`${n}\``).join('、')
+
   // 注入工作区上下文（文件夹路径 + 团队成员信息 + 工作流程指引）
   if (workspaceContext) {
     prompt += `\n\n## 工作区信息\n`
@@ -257,23 +311,41 @@ function buildAgentSystemPrompt(
 
     if (workspaceContext.teamAgents.length > 0) {
       prompt += `\n### 团队成员\n你有以下团队成员可以分派任务：\n`
-      for (const agent of workspaceContext.teamAgents) {
-        prompt += `\n- **${agent.name}**（ID: \`${agent.id}\`）${agent.avatar}：${agent.description}\n`
+      for (const teamAgent of workspaceContext.teamAgents) {
+        prompt += `\n- **${teamAgent.name}**（ID: \`${teamAgent.id}\`）${teamAgent.avatar}：${teamAgent.description}\n`
       }
-      prompt += `\n使用 \`workspace_dispatch_task\` 工具将子任务分派给团队成员。分派时请提供详细的任务描述和足够的上下文信息。\n`
+      if (hasTool('workspace_dispatch_task')) {
+        prompt += `\n使用 \`workspace_dispatch_task\` 工具将子任务分派给团队成员。分派时请提供详细的任务描述和足够的上下文信息。\n`
+      } else if (hasTool('workspace_dispatch_parallel')) {
+        prompt += `\n使用 \`workspace_dispatch_parallel\` 工具将子任务分派给团队成员。分派时请提供详细的任务描述和足够的上下文信息。\n`
+      }
     }
-    if (workspaceContext.createAgent) {
-      prompt += `\n如果现有团队成员无法胜任某项任务，你可以使用 \`workspace_create_agent\` 工具创建新的工作区专属 Agent（仅存储在当前工作区，不会污染全局 Agent 列表），然后通过 \`workspace_dispatch_task\` 将任务分派给它。\n`
+    if (workspaceContext.createAgent && hasTool('workspace_create_agent')) {
+      const dispatchHint = hasTool('workspace_dispatch_task')
+        ? '，然后通过 `workspace_dispatch_task` 将任务分派给它'
+        : hasTool('workspace_dispatch_parallel')
+          ? '，然后通过 `workspace_dispatch_parallel` 将任务分派给它'
+          : ''
+      prompt += `\n如果现有团队成员无法胜任某项任务，你可以使用 \`workspace_create_agent\` 工具创建新的工作区专属 Agent（仅存储在当前工作区，不会污染全局 Agent 列表）${dispatchHint}。\n`
     }
 
     if (isLeader) {
-      // Leader Agent 的指挥者规则（强化指挥者身份）
+      // Leader Agent 的指挥者规则（强化指挥者身份）——只正向描述已启用工具
       prompt += `\n### 🔴 指挥者准则\n`
       prompt += `0. **获取到用户指令后，不要立即工作，先查看自己的手下，看看有没有可以安排任务的。** \n`
-      prompt += `1. **你绝不亲自编写代码、创建文件或执行命令。** 所有实际工作必须通过 \`workspace_dispatch_task\` 分派给团队成员完成。\n`
+      if (hasTool('workspace_dispatch_task') || hasTool('workspace_dispatch_parallel')) {
+        const dispatchTools = formatToolList(['workspace_dispatch_task', 'workspace_dispatch_parallel'])
+        prompt += `1. **你绝不亲自编写代码、创建文件或执行命令。** 所有实际工作必须通过 ${dispatchTools} 分派给团队成员完成。\n`
+      } else {
+        prompt += `1. **你绝不亲自编写代码、创建文件或执行命令。** 你只做分析、规划与协调，实际工作交给团队成员。\n`
+      }
       prompt += `2. **绝对禁止在回复中输出代码块（\`\`\`）。** 你的回复只包含分析、计划、说明和指挥指令。\n`
-      prompt += `3. **绝对禁止使用 \`workspace_write_file\`、\`workspace_read_file\`、\`workspace_execute_command\` 等执行工具。** 这些工具只留给被分派任务的 Agent 使用。\n`
-      prompt += `4. 需要了解文件内容或目录结构时，使用 \`workspace_list_files\` 浏览，或派一个 Agent 去读取并汇报。\n`
+      prompt += `3. **只使用「可用工具」中列出的工具。** 不要假设或尝试任何未列出的工具。\n`
+      if (hasTool('workspace_list_files')) {
+        prompt += `4. 需要了解文件内容或目录结构时，使用 \`workspace_list_files\` 浏览，或派一个 Agent 去读取并汇报。\n`
+      } else {
+        prompt += `4. 需要了解文件内容或目录结构时，派一个 Agent 去读取并汇报。\n`
+      }
       prompt += `5. 收到执行结果后，检查质量，不达标的重新分派并补充更详细的指导。\n`
       prompt += `\n违反以上准则会导致任务失败。你的价值在于优秀的规划和协调能力，而非直接动手。\n`
 
@@ -302,29 +374,54 @@ function buildAgentSystemPrompt(
         prompt += `**⚠️ 绝对禁止：跳过需求分析直接分派开发任务。违反此流程会导致开发结果不符合用户预期。**\n`
       }
     } else {
-      // 子 Agent 的工具使用强制规则（对实际执行工作的 Agent 适用）
+      // 子 Agent：仅对已启用的工作区工具写强制规则，不提未启用工具名
+      const workspaceRules: string[] = []
+      workspaceRules.push(`1. **绝对禁止**在你的回复中输出代码块（\`\`\`）。你的回复只包含分析、计划和说明文字。`)
+      let ruleNo = 2
+      if (hasTool('workspace_write_file')) {
+        workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_write_file\` 工具来创建或修改文件。代码只能通过此工具写入工作区文件系统。`)
+        ruleNo++
+      }
+      if (hasTool('workspace_read_file')) {
+        workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_read_file\` 来读取现有文件内容，不要凭记忆猜测。`)
+        ruleNo++
+      }
+      if (hasTool('workspace_list_files')) {
+        workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_list_files\` 来了解项目结构，不要假设目录结构。`)
+        ruleNo++
+      }
+      if (hasTool('workspace_execute_command')) {
+        workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_execute_command\` 来运行构建、测试等命令。`)
+        ruleNo++
+      }
+      workspaceRules.push(`${ruleNo}. **只使用「可用工具」中列出的工具**，不要假设或尝试任何未列出的工具。`)
+
       prompt += `\n### ⚠️ 工具使用强制规则\n`
-      prompt += `1. **绝对禁止**在你的回复中输出代码块（\`\`\`）。你的回复只包含分析、计划和说明文字。\n`
-      prompt += `2. **必须使用** \`workspace_write_file\` 工具来创建或修改文件。代码只能通过此工具写入工作区文件系统。\n`
-      prompt += `3. **必须使用** \`workspace_read_file\` 来读取现有文件内容，不要凭记忆猜测。\n`
-      prompt += `4. **必须使用** \`workspace_list_files\` 来了解项目结构，不要假设目录结构。\n`
-      prompt += `5. **必须使用** \`workspace_execute_command\` 来运行构建、测试等命令。\n`
-      prompt += `\n违反以上规则会导致任务失败。用户期望在工作区文件系统中看到实际的代码文件，而不是对话中的 Markdown 文本。\n`
+      prompt += workspaceRules.join('\n')
+      prompt += `\n\n违反以上规则会导致任务失败。用户期望在工作区文件系统中看到实际的工作成果，而不是对话中的 Markdown 文本。\n`
     }
   }
 
-  // 添加工具描述
+  // 添加工具描述（仅当前 effectiveTools）
   if (tools.length > 0) {
     prompt += '\n\n## 可用工具\n你可以使用以下工具来完成任务：\n'
     for (const tool of tools) {
       prompt += `\n### ${tool.name}\n描述：${tool.description}\n参数：${JSON.stringify(tool.parameters, null, 2)}\n`
     }
     prompt += `\n要调用工具，请使用提供的 function calling 功能。\n`
+    prompt += `\n**重要：你只能使用上方「可用工具」中列出的工具。不要假设、编造或尝试调用任何未列出的工具。**\n`
     if (isLeader) {
-      // Leader 的指挥者工具使用规则
+      // Leader：仅正向列举已启用工具，不点名未启用的执行类工具
+      const commandTools = formatToolList(['workspace_dispatch_task', 'workspace_create_agent', 'workspace_dispatch_parallel'])
+      const scoutTools = formatToolList(['workspace_list_files', 'web_search', 'fetch_webpage', 'remember', 'recall'])
       prompt += `\n### 重要：指挥者工具使用规则\n`
-      prompt += `- 你只使用指挥类工具（\`workspace_dispatch_task\`、\`workspace_create_agent\`）和侦察类工具（\`workspace_list_files\`、搜索、记忆）。\n`
-      prompt += `- **绝不使用**执行类工具（\`workspace_write_file\`、\`workspace_read_file\`、\`workspace_execute_command\`）。\n`
+      if (commandTools) {
+        prompt += `- 优先使用指挥类工具：${commandTools}。\n`
+      }
+      if (scoutTools) {
+        prompt += `- 侦察/辅助类可用工具：${scoutTools}。\n`
+      }
+      prompt += `- 只使用「可用工具」中列出的工具，不要尝试任何未列出的工具。\n`
       prompt += `- 收到分派结果后，检查质量。不达标的重新分派并补充更详细的指导。\n`
       prompt += `- 所有子任务都完成后，向用户总结执行结果。\n`
     } else {
@@ -341,6 +438,7 @@ function buildAgentSystemPrompt(
   }
 
   // 添加可用 Skills 信息（按 Agent 绑定的 enabledSkillIds 过滤）
+  // 工具调用指引仅在 list_skills / use_skill 实际启用时注入
   if (agent.enabledSkillIds && agent.enabledSkillIds.length > 0) {
     const allSkills = useSkillStore.getState().getAllEnabledSkills()
     const boundSkills = allSkills.filter((s) => agent.enabledSkillIds!.includes(s.dirPath))
@@ -350,10 +448,19 @@ function buildAgentSystemPrompt(
       for (const skill of boundSkills) {
         prompt += `\n- **${skill.name}**：${skill.description}\n`
       }
-      prompt += `\n### 如何使用 Skills\n`
-      prompt += `- 使用 \`list_skills\` 工具查看所有可用技能的详细列表\n`
-      prompt += `- 使用 \`use_skill\` 工具加载特定技能的完整内容。加载后，技能的知识将注入到你的上下文中，指导你按照专家方式完成任务\n`
-      prompt += `- 当用户的请求涉及某个技能的领域时，你应该主动加载该技能以获取专业指导\n`
+      const skillUsageLines: string[] = []
+      if (hasTool('list_skills')) {
+        skillUsageLines.push(`- 使用 \`list_skills\` 工具查看所有可用技能的详细列表`)
+      }
+      if (hasTool('use_skill')) {
+        skillUsageLines.push(`- 使用 \`use_skill\` 工具加载特定技能的完整内容。加载后，技能的知识将注入到你的上下文中，指导你按照专家方式完成任务`)
+        skillUsageLines.push(`- 当用户的请求涉及某个技能的领域时，你应该主动加载该技能以获取专业指导`)
+      }
+      if (skillUsageLines.length > 0) {
+        prompt += `\n### 如何使用 Skills\n`
+        prompt += skillUsageLines.join('\n')
+        prompt += '\n'
+      }
     }
   }
 
@@ -372,19 +479,41 @@ function buildAgentSystemPrompt(
           || desc.includes('需求分析') || desc.includes('需求规格') || desc.includes('requirement')
     })
 
-    // Leader 专用的指挥策略（覆盖 agent.planningStrategy）
+    // Leader 专用的指挥策略（覆盖 agent.planningStrategy）——工具名按启用情况写入
     prompt += '\n\n## 指挥策略\n请按以下方式工作：\n'
-    prompt += '1. **侦察**：使用 \`workspace_list_files\` 了解工作区结构，分析用户需求\n'
+    if (hasTool('workspace_list_files')) {
+      prompt += '1. **侦察**：使用 `workspace_list_files` 了解工作区结构，分析用户需求\n'
+    } else {
+      prompt += '1. **侦察**：了解工作区结构与用户需求\n'
+    }
     prompt += '2. **规划**：将大任务拆解为多个可独立执行的子任务\n'
     if (hasAnalystInTeam) {
       prompt += '3. **需求分析（必须首先执行）**：将用户原始需求分派给团队中的需求分析 Agent，等待其输出结构化需求规格文档\n'
       prompt += '4. **审查需求**：审阅需求规格文档，确认完整、清晰、无歧义，如有遗漏则要求补充\n'
-      prompt += '5. **组建团队**：检查现有团队成员能力，必要时使用 \`workspace_create_agent\` 创建新 Agent\n'
-      prompt += '6. **分派开发任务**：将需求规格文档作为上下文分派给开发类 Agent，每个功能点独立分派\n'
+      if (hasTool('workspace_create_agent')) {
+        prompt += '5. **组建团队**：检查现有团队成员能力，必要时使用 `workspace_create_agent` 创建新 Agent\n'
+      } else {
+        prompt += '5. **组建团队**：检查现有团队成员能力并合理分配角色\n'
+      }
+      if (hasTool('workspace_dispatch_task') || hasTool('workspace_dispatch_parallel')) {
+        const dispatchTools = formatToolList(['workspace_dispatch_task', 'workspace_dispatch_parallel'])
+        prompt += `6. **分派开发任务**：使用 ${dispatchTools} 将需求规格文档作为上下文分派给开发类 Agent，每个功能点独立分派\n`
+      } else {
+        prompt += '6. **分派开发任务**：将需求规格文档作为上下文分派给开发类 Agent，每个功能点独立分派\n'
+      }
       prompt += '7. **监控与整合**：收到结果后检查质量，不达标的重新分派；全部完成后向用户总结\n'
     } else {
-      prompt += '3. **组建团队**：检查现有团队成员能力，必要时使用 \`workspace_create_agent\` 创建新 Agent\n'
-      prompt += '4. **分派任务**：使用 \`workspace_dispatch_task\` 将子任务分派给对应 Agent\n'
+      if (hasTool('workspace_create_agent')) {
+        prompt += '3. **组建团队**：检查现有团队成员能力，必要时使用 `workspace_create_agent` 创建新 Agent\n'
+      } else {
+        prompt += '3. **组建团队**：检查现有团队成员能力并合理分配角色\n'
+      }
+      if (hasTool('workspace_dispatch_task') || hasTool('workspace_dispatch_parallel')) {
+        const dispatchTools = formatToolList(['workspace_dispatch_task', 'workspace_dispatch_parallel'])
+        prompt += `4. **分派任务**：使用 ${dispatchTools} 将子任务分派给对应 Agent\n`
+      } else {
+        prompt += '4. **分派任务**：将子任务分派给对应 Agent\n'
+      }
       prompt += '5. **监控与整合**：收到结果后检查质量，不达标的重新分派；全部完成后向用户总结\n'
     }
     prompt += '在整个过程中，你绝不亲自编写代码或执行技术操作。\n'
@@ -393,24 +522,58 @@ function buildAgentSystemPrompt(
       case 'react':
         prompt += '\n\n## 执行策略（ReAct）\n请按照"思考-行动-观察"的模式逐步解决问题：\n'
         prompt += '1. **思考**：分析当前情况，决定下一步行动\n'
-        prompt += '2. **行动**：调用合适的工具执行操作\n'
-        prompt += '3. **观察**：分析工具返回的结果\n'
+        if (tools.length > 0) {
+          prompt += '2. **行动**：仅调用「可用工具」中合适的工具执行操作\n'
+        } else {
+          prompt += '2. **行动**：基于分析采取合适的下一步（当前无可用工具时直接推理回答）\n'
+        }
+        prompt += '3. **观察**：分析行动/工具返回的结果\n'
         prompt += '4. **循环**：如果任务未完成，回到步骤1继续\n'
         prompt += '只有当所有必要步骤都执行完毕后，才给出最终回答。\n'
         break
-      case 'plan-and-execute':
+      case 'plan-and-execute': {
+        const hasCreatePlan = hasTool('create_plan')
+        const hasUpdateTask = hasTool('update_task')
+        const hasGetPlan = hasTool('get_plan')
+        const hasDispatchParallel = hasTool('workspace_dispatch_parallel')
+
         prompt += '\n\n## 执行策略（Plan-and-Execute）\n请严格按以下方式工作：\n'
-        prompt += '1. **规划阶段**：首先调用 `create_plan` 工具，将任务拆解为结构化子任务列表（含依赖关系）\n'
-        prompt += '2. **等待确认**：计划创建后状态为 draft（草稿），此时**停止调用其他工具**，等待用户在 Todo 面板确认计划\n'
-        prompt += '3. **执行阶段**：用户确认后，使用 `update_task` 将任务标记为 in_progress 再开始执行，完成后标记 completed\n'
-        prompt += '4. **并行派发**：对于无依赖的子任务，使用 `workspace_dispatch_parallel` 工具并行分派给团队成员\n'
-        prompt += '5. **根据结果调整**：根据每步执行结果调整后续计划，可用 `get_plan` 查看当前进度\n'
-        prompt += '6. **最终回答**：所有子任务完成后才给出最终回答\n'
-        prompt += '\n⚠️ 重要：创建计划后必须等待用户确认，不要在 draft 状态直接执行任务。\n'
+        if (hasCreatePlan) {
+          prompt += '1. **规划阶段**：首先调用 `create_plan` 工具，将任务拆解为结构化子任务列表（含依赖关系）。`create_plan` 会返回每个任务的 **id**，请记下这些 id。\n'
+        } else {
+          prompt += '1. **规划阶段**：先将任务拆解为有序子任务列表（可在回复中列出），再按序执行。\n'
+        }
+        if (hasUpdateTask) {
+          prompt += '2. **执行阶段**：逐个执行任务。对每个任务，使用 `update_task` 工具，传入该任务的 **id**（来自 create_plan 的返回值），将状态设为 `in_progress` 后开始执行，完成后设为 `completed`。\n'
+        } else {
+          prompt += '2. **执行阶段**：逐个执行子任务，完成一步后再进入下一步。\n'
+        }
+
+        let step = 3
+        if (workspaceContext && hasDispatchParallel) {
+          prompt += `${step}. **并行派发**：对于无依赖的子任务，可使用 \`workspace_dispatch_parallel\` 工具并行分派给团队成员执行\n`
+          step++
+        }
+        if (hasGetPlan) {
+          prompt += `${step}. **根据结果调整**：根据每步执行结果调整后续计划，可用 \`get_plan\` 查看当前进度\n`
+        } else {
+          prompt += `${step}. **根据结果调整**：根据每步执行结果调整后续计划\n`
+        }
+        step++
+        prompt += `${step}. **最终回答**：所有子任务完成后才给出最终回答\n`
+
+        if (hasCreatePlan && hasUpdateTask) {
+          prompt += '\n⚠️ 重要：`update_task` 的 `taskId` 参数必须使用 `create_plan` 返回的任务 id（格式如 task-xxxxxxxx），不要自行编造 id。\n'
+        }
         break
+      }
       case 'trial-and-error':
         prompt += '\n\n## 执行策略（Trial-and-Error）\n请大胆尝试：\n'
-        prompt += '1. 尝试使用工具解决问题\n'
+        if (tools.length > 0) {
+          prompt += '1. 尝试使用「可用工具」中的工具解决问题\n'
+        } else {
+          prompt += '1. 尝试多种推理路径解决问题\n'
+        }
         prompt += '2. 如果某条路径行不通，分析错误原因\n'
         prompt += '3. 回退并尝试其他方法\n'
         prompt += '4. 持续尝试直到任务完成\n'
@@ -431,7 +594,10 @@ function buildAgentSystemPrompt(
     prompt += `\n\n## 当前阶段指引\n${extraPromptSection}`
   }
 
-  return prompt
+  // 最终脱敏：剥离 agent.systemPrompt / 工作流段落中对未启用工具的硬编码引用
+  //（引擎生成的段落已按 hasTool 条件写入，此处主要覆盖用户自定义与默认 Agent 提示词）
+  const extraKnownFromTools = tools.map((t) => t.name)
+  return redactDisabledToolMentions(prompt, availableToolNames, extraKnownFromTools)
 }
 
 /**
@@ -452,36 +618,50 @@ function renderPromptSections(sections: AgentProfile['promptSections']): string 
 /**
  * 过滤出 Agent 启用的工具
  *
- * 统一过滤逻辑：enabledToolIds 控制 + 工作区工具注入。
+ * 统一过滤逻辑：严格以 enabledToolIds 为白名单。
+ * 工作区场景下，仅补充「已勾选且尚未在 allTools 中的」工作区工具定义
+ *（因为 getAvailableTools 通常不包含 WORKSPACE_TOOLS）。
+ * Leader 额外限制：即使勾选了执行类工作区工具，也只允许指挥/侦察类。
  */
 function resolveAgentTools(
   agent: AgentProfile,
   allTools: Tool[],
   workspaceContext?: WorkspaceContext,
 ): Tool[] {
+  const enabledSet = new Set(agent.enabledToolIds ?? [])
   let agentTools = allTools.filter(
-    (t) => agent.enabledToolIds.includes(t.id) && t.enabled
+    (t) => enabledSet.has(t.id) && t.enabled
   )
+
   if (workspaceContext) {
     const isLeaderAgent = agent.tags?.includes('leader') ?? false
-    if (isLeaderAgent) {
-      const leaderAllowedToolIds = [
-        'workspace:list_files',
-        'workspace:dispatch_task',
-        'workspace:create_agent'
-      ]
-      const leaderTools = WORKSPACE_TOOLS.filter(
-        (wt) => leaderAllowedToolIds.includes(wt.id) && !agentTools.some((at) => at.id === wt.id)
-      )
-      agentTools = [...agentTools, ...leaderTools]
-    } else {
-      const workspaceToolsToAdd = WORKSPACE_TOOLS.filter(
-        (wt) => !agentTools.some((at) => at.id === wt.id)
-      )
-      agentTools = [...agentTools, ...workspaceToolsToAdd]
-    }
+    // Leader 仅允许指挥/侦察类工作区工具（即使 enabledToolIds 勾选了执行类工具也不暴露）
+    const leaderAllowedToolIds = new Set([
+      'workspace:list_files',
+      'workspace:dispatch_task',
+      'workspace:create_agent',
+      'workspace:dispatch_parallel',
+    ])
+
+    const workspaceToolsToAdd = WORKSPACE_TOOLS.filter((wt) => {
+      if (!wt.enabled) return false
+      // 必须在 Agent 勾选列表中，禁止强制注入未勾选工具
+      if (!enabledSet.has(wt.id)) return false
+      if (isLeaderAgent && !leaderAllowedToolIds.has(wt.id)) return false
+      if (agentTools.some((at) => at.id === wt.id)) return false
+      return true
+    })
+    agentTools = [...agentTools, ...workspaceToolsToAdd]
   }
+
   return agentTools
+}
+
+/**
+ * 判断工具名是否在当前可用工具白名单中（按 name 或 id 匹配）
+ */
+function isToolAllowedByList(toolName: string, tools: Tool[]): boolean {
+  return tools.some((t) => t.name === toolName || t.id === toolName)
 }
 
 /**
@@ -878,13 +1058,22 @@ async function agentLoopBody(
         steps.push(actionStep)
         callbacks.onStep(actionStep)
 
-        // 执行工具（Phase 1：通过 registry 分发，取代 if-else 链）
-        const resolved = sessionBundle.resolve(tc.name)
+        // 执行前校验：仅允许当前轮 effectiveTools 白名单内的工具
         let result: ToolExecuteResult
-        if (resolved) {
-          result = await resolved.executor.execute(tc.name, args, resolved.sessionCtx, agentSessionCtx)
+        if (!isToolAllowedByList(tc.name, effectiveTools)) {
+          result = {
+            success: false,
+            data: '',
+            error: `工具 "${tc.name}" 未在当前 Agent 的启用列表中，已拒绝执行`,
+          }
         } else {
-          result = { success: false, data: '', error: `未找到工具 "${tc.name}" 的执行器` }
+          // 执行工具（Phase 1：通过 registry 分发，取代 if-else 链）
+          const resolved = sessionBundle.resolve(tc.name)
+          if (resolved) {
+            result = await resolved.executor.execute(tc.name, args, resolved.sessionCtx, agentSessionCtx)
+          } else {
+            result = { success: false, data: '', error: `未找到工具 "${tc.name}" 的执行器` }
+          }
         }
 
         // 记录观察步骤
@@ -930,7 +1119,68 @@ async function agentLoopBody(
     const toolCalls = parseToolCalls(fullContent)
 
     if (toolCalls.length === 0) {
-      // 没有工具调用 → 这是最终回复
+      // ========== Phase 4 修复: 无工具调用时先检查工作流状态推进 ==========
+      // 当 Agent 输出包含 message_contains 关键字（如"需求理解完成"）时，
+      // 引擎不应将其视为 final_answer 直接退出，而应推进状态机并继续循环。
+      const hasWorkflow = workflowRuntime && agent.workflow
+
+      if (hasWorkflow) {
+        // 利用本轮 assistantContent 尝试推进工作流状态
+        const advanced = advanceWorkflowState(
+          agent,
+          workflowRuntime!,
+          undefined, // 无工具调用时 lastToolName 为 undefined
+          fullContent,
+          sessionBundle,
+        )
+        if (advanced !== workflowRuntime) {
+          // 工作流状态已推进
+          workflowRuntime = advanced
+
+          // 记录当前状态的思考步骤（但不标记为 final_answer）
+          const contentToRecord = fullContent || reasoningContent || ''
+          const thinkStep: AgentStep = {
+            id: crypto.randomUUID(),
+            type: 'thinking',
+            content: contentToRecord,
+            stepIndex: agentSessionCtx.stepCounter.value++,
+            timestamp: Date.now()
+          }
+          steps.push(thinkStep)
+          callbacks.onStep(thinkStep)
+
+          // 如果新状态是终止状态 → 真正结束
+          if (isTerminalState(agent.workflow!, advanced!.currentState)) {
+            const finalStep: AgentStep = {
+              id: crypto.randomUUID(),
+              type: 'final_answer',
+              content: contentToRecord,
+              stepIndex: agentSessionCtx.stepCounter.value++,
+              timestamp: Date.now()
+            }
+            steps.push(finalStep)
+            callbacks.onStep(finalStep)
+            if (streamFinishReason === 'abort') {
+              callbacks.onStatusChange('stopped')
+            } else {
+              callbacks.onStatusChange('completed')
+            }
+            callbacks.onDone(contentToRecord)
+            return
+          }
+
+          // 非终止状态：将本轮输出追加为 assistant 消息，继续循环
+          messages.push({
+            role: 'assistant',
+            content: fullContent || '',
+          })
+
+          // 状态推进后的下一个循环将使用新的工具白名单 + promptSection
+          continue
+        }
+      }
+
+      // 没有工作流 OR 工作流状态未推进 → 这是真正的最终回复
       // 如果 fullContent 为空但有推理内容，使用推理内容作为最终回答
       let finalText = fullContent || reasoningContent || ''
 
@@ -985,13 +1235,22 @@ async function agentLoopBody(
       steps.push(actionStep)
       callbacks.onStep(actionStep)
 
-      // 执行工具（Phase 1：通过 registry 分发，取代 if-else 链）
-      const resolved = sessionBundle.resolve(tc.name)
+      // 执行前校验：仅允许当前轮 effectiveTools 白名单内的工具
       let result: ToolExecuteResult
-      if (resolved) {
-        result = await resolved.executor.execute(tc.name, tc.arguments, resolved.sessionCtx, agentSessionCtx)
+      if (!isToolAllowedByList(tc.name, effectiveTools)) {
+        result = {
+          success: false,
+          data: '',
+          error: `工具 "${tc.name}" 未在当前 Agent 的启用列表中，已拒绝执行`,
+        }
       } else {
-        result = { success: false, data: '', error: `未找到工具 "${tc.name}" 的执行器` }
+        // 执行工具（Phase 1：通过 registry 分发，取代 if-else 链）
+        const resolved = sessionBundle.resolve(tc.name)
+        if (resolved) {
+          result = await resolved.executor.execute(tc.name, tc.arguments, resolved.sessionCtx, agentSessionCtx)
+        } else {
+          result = { success: false, data: '', error: `未找到工具 "${tc.name}" 的执行器` }
+        }
       }
 
       // 记录观察步骤

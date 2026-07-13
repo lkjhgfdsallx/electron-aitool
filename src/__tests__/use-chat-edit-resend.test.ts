@@ -49,6 +49,8 @@ jest.mock('../services/tool-service', () => ({
 
 jest.mock('../services/built-in-tools', () => ({
   BUILT_IN_TOOLS: [
+    { id: 'tool-web-search', name: 'web_search', description: '联网搜索', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'tool-fetch-webpage', name: 'fetch_webpage', description: '抓取网页', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
     { id: 'tool-calc', name: 'calculator', description: '计算器', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
   ],
   AGENT_BUILTIN_TOOLS: [
@@ -620,7 +622,7 @@ describe('editAndResend', () => {
       await act(async () => {
         await result.current.editAndResend('msg-user', '帮我计算')
         const callbacks = await captured
-        callbacks.onToolCalls?.([{ id: 'tc-1', name: 'calculator', arguments: '{}' }])
+        callbacks.onToolCalls?.([{ id: 'tc-1', name: 'web_search', arguments: '{}' }])
         await callbacks.onDone?.('tool_calls')
       })
 
