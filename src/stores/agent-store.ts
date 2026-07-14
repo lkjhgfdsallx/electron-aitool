@@ -144,7 +144,7 @@ function createTaskDecompositionExecutor(): AgentProfile {
       autoStopOnGoal: true
     },
     scope: 'global',
-    // ===== Phase 4 高级策略扩展 =====
+    // ===== 高级策略扩展 =====
     workflow: {
       initial: 'clarify',
       terminals: ['summarize'],
@@ -714,7 +714,6 @@ export const useAgentStore = create<AgentStore>()(
           // v2: 已废弃 —— Leader Agent 不再存于全局 agent-store，迁移由 workspace-agent-store 负责
         }
         if (version < 3) {
-          // v3 (Phase 4): 为旧 AgentProfile 补充 Phase 4 新增字段的默认值
           // 新增可选字段：promptSections / promptTemplateId / variables / workflow
           //              contextPolicy / approvalPolicy / maxParallelSubtasks
           // 这些均为可选字段，引擎在缺失时使用默认逻辑；此处仅防御性填充数值类字段
@@ -724,14 +723,13 @@ export const useAgentStore = create<AgentStore>()(
           }))
         }
         if (version < 4) {
-          // v4 (Phase 6): 补充 Agent 作用域，旧数据默认视为全局 Agent。
           state.agents = state.agents.map((agent) => ({
             ...agent,
             scope: agent.scope ?? 'global',
           }))
         }
         if (version < 5) {
-          // v5: 任务拆解执行师启用 plan-and-execute 规划工具 + 更新工作流白名单
+          // 任务拆解执行师启用 plan-and-execute 规划工具 + 更新工作流白名单
           // 旧版本该 Agent 提示词要求调用 create_plan，但 enabledToolIds/workflow.allowedTools 未包含该工具
           const freshExecutor = createTaskDecompositionExecutor()
           state.agents = state.agents.map((agent) => {

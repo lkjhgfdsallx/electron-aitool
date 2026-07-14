@@ -84,7 +84,6 @@ function createEmptyAgentInput(isWorkspaceMode: boolean): AgentProfileCreateInpu
     knowledgeBaseIds: [],
     enabledSkillIds: [],
     enabled: true,
-    // Phase 4 新增字段默认值
     promptSections: [],
     maxParallelSubtasks: 3,
     contextPolicy: undefined,
@@ -217,7 +216,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
       modelConfig: { ...agent.modelConfig },
       knowledgeBaseIds: agent.knowledgeBaseIds ? [...agent.knowledgeBaseIds] : [],
       enabled: agent.enabled,
-      // Phase 4 字段
+
       promptSections: agent.promptSections ? agent.promptSections.map((s) => ({ ...s })) : [],
       maxParallelSubtasks: agent.maxParallelSubtasks ?? 3,
       contextPolicy: agent.contextPolicy ? { ...agent.contextPolicy } : undefined,
@@ -1143,7 +1142,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   )
 }
 
-// ==================== PromptSectionsEditor 子组件（Phase 4） ====================
+// ==================== PromptSectionsEditor 子组件 ====================
 
 interface PromptSectionsEditorProps {
   sections: PromptSection[]

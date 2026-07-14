@@ -17,7 +17,7 @@ export type {
 } from './agent'
 export { SYSTEM_AGENT_TAGS } from './agent'
 
-// Phase 4: Agent 工作流状态机
+// Agent 工作流状态机
 export type {
   AgentWorkflow,
   WorkflowState,
@@ -28,7 +28,7 @@ export type {
 } from './agent-workflow'
 export { isTerminalState, validateWorkflow } from './agent-workflow'
 
-// Phase 3: 结构化任务规划
+// 结构化任务规划
 export type {
   AgentTaskStatus,
   AgentPlanStatus,

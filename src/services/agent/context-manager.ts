@@ -1,5 +1,5 @@
 /**
- * ContextManager - 上下文压缩管理器（Phase 4 / §4.3）
+ * ContextManager - 上下文压缩管理器
  *
  * 监控 Agent 消息列表的 token 估算，超过阈值时触发摘要压缩：
  * 1. 保留最近 N 轮原始消息（keepRecentTurns）

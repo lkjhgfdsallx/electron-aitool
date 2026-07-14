@@ -1,5 +1,5 @@
 /**
- * WorkflowEngine - 工作流状态机引擎（Phase 4 / §5.2）
+ * WorkflowEngine - 工作流状态机引擎
  *
  * 在 Agent 循环的每一轮中：
  * 1. 根据当前状态过滤工具列表（allowedTools 白名单覆盖 enabledToolIds）

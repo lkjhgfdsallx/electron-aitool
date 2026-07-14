@@ -11,17 +11,6 @@
  * │  终端 & 审批 (底栏，可折叠)                            │
  * └─────────────────────────────────────────────────────┘
  *
- * Phase B 更新：
- * - 集成 FilePreview（文件预览叠加层）
- * - 集成文件变化跟踪（B8：changedFiles 传递给 FileTree）
- * - 集成文件监控启动（B10：进入工作区时启动 watcher）
- * - 集成 WorkspaceSettingsPopover（B7）
- *
- * Phase C 更新：
- * - C1: 多工作区 Tab 标签栏
- * - C5: 工作区导出按钮
- * - C6: 上下文时间线入口
- * - C7: 默认工作区标记
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
@@ -109,7 +98,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     startWatcher()
 
     // 监听文件变更事件，更新 changedFiles
-    const unsubscribe = window.electronAPI.workspace.watcher.onChange((data) => {
+    const unsubscribe = window.electronAPI.workspace.watcher.onChange((data:any) => {
       const events = data.events as Array<{ eventType: string; filePath: string; timestamp: number }>
       if (events.length > 0) {
         setChangedFiles((prev) => {

@@ -1,10 +1,4 @@
 /**
- * Agent 引擎重构 - Phase 0 脚手架
- *
- * 定义插件化工具执行器的核心接口。
- * 取代 agent-engine.ts 内的 if-else 硬编码工具分发。
- *
- * 设计要点：
  * - 引擎只负责"调用模型 → 解析工具调用 → 分发执行 → 反馈结果"循环
  * - 每个领域工具实现 ToolExecutor 接口，通过 toolExecutorRegistry 注册
  * - 工具的会话级状态（如 collectedRequirements、activeTaskId）收进各自的 ToolSessionContext
@@ -57,13 +51,6 @@ export type ToolSessionContext = Record<string, unknown>
 
 /**
  * 工具执行器接口 —— 所有工具统一实现此接口
- *
- * 取代 agent-engine.ts 中 30+ 个 if-else 分支：
- *   if (tc.name === 'remember') { result = handleRememberTool(args) }
- *   else if (tc.name === 'recall') { ... }
- *   ...
- *
- * 现在引擎只需：
  *   const executor = registry.resolve(toolName)
  *   const result = await executor.execute(toolName, args, sessionCtx)
  */

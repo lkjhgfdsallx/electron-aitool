@@ -1,5 +1,5 @@
 /**
- * PlannerToolExecutor - 结构化任务规划工具执行器（Phase 3）
+ * PlannerToolExecutor - 结构化任务规划工具执行器
  *
  * 处理三个规划工具：
  * - create_plan：LLM 产出结构化任务列表，引擎写入 Plan，发布 plan_created 事件

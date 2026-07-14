@@ -56,7 +56,7 @@ export const workspaceFileWatcher = {
       this._watchedPath = folderPath
 
       // 注册文件变更回调
-      this._unsubscribe = api().workspace.watcher.onChange((data) => {
+      this._unsubscribe = api().workspace.watcher.onChange((data: { folderPath: string; events: unknown[]; timestamp: number }) => {
         this._handleFileChange(data as WatcherChangeData, policy)
       })
 

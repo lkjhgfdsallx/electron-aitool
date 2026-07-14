@@ -29,11 +29,11 @@ interface AgentStepDisplayProps {
   onHumanInput?: (stepId: string, value: string | string[]) => void
   /** 消息是否处于错误状态 */
   isError?: boolean
-  /** Phase 3: 结构化执行计划（plan-and-execute 策略产出） */
+  /** 结构化执行计划（plan-and-execute 策略产出） */
   plan?: AgentPlan
-  /** Phase 3: 用户确认计划回调（接受后开始执行） */
+  /** 用户确认计划回调（接受后开始执行） */
   onApprovePlan?: (plan: AgentPlan) => void
-  /** Phase 3: 用户拒绝计划回调（要求重新规划） */
+  /** 用户拒绝计划回调（要求重新规划） */
   onRejectPlan?: (plan: AgentPlan, reason?: string) => void
 }
 
@@ -289,7 +289,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
         </button>
       </div>
 
-      {/* Phase 3: 结构化执行计划面板（plan-and-execute 策略） */}
+      {/* 结构化执行计划面板（plan-and-execute 策略） */}
       {plan && (
         <AgentTodoPanel
           plan={plan}

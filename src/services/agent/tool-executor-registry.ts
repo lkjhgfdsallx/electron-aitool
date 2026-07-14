@@ -1,9 +1,4 @@
 /**
- * Agent 引擎重构 - Phase 0/1
- *
- * 工具执行器注册表
- *
- * 取代 agent-engine.ts 内 30+ 个 if-else 分支的工具分发。
  * 引擎通过 resolve(toolName) 获取执行器，每次运行创建独立的 session bundle。
  */
 

@@ -632,7 +632,7 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
     enabled: true
   },
 
-  // ==================== 结构化任务规划工具（Phase 3） ====================
+  // ==================== 结构化任务规划工具 ====================
   // 让 LLM 通过 function calling 产出结构化 Plan，引擎写入并发布事件
   // UI（AgentTodoPanel）展示任务列表，用户可查看/确认计划
 
@@ -959,7 +959,7 @@ export const WORKSPACE_TOOLS: Tool[] = [
     enabled: true
   },
 
-  // ==================== 并行子任务派发工具（Phase 3） ====================
+  // ==================== 并行子任务派发工具 ====================
   // Leader Agent 一次输出多个子任务，引擎用 Promise.all 并行执行
   // 结合 Plan 的 dependsOn，引擎自动按拓扑序批量并行
 

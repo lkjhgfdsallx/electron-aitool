@@ -43,7 +43,7 @@ export class WorkspaceToolExecutor implements ToolExecutor {
     'workspace_execute_command',
     'workspace_dispatch_task',
     'workspace_create_agent',
-    'workspace_dispatch_parallel', // Phase 3: 并行子任务派发
+    'workspace_dispatch_parallel',
   ]
 
   createContext(_sessionCtx: AgentSessionContext): ToolSessionContext {
@@ -379,8 +379,6 @@ export class WorkspaceToolExecutor implements ToolExecutor {
   }
 
   /**
-   * Phase 3: 并行分派多个子任务
-   *
    * 利用 WorkspaceContext.dispatchTasks（由 use-chat.ts 注入的并行版本），
    * 一次分派多个子任务，引擎用 Promise.all 并行执行。
    * 支持依赖拓扑调度：dependsOnIndexes 指定的任务会等待前置完成后再执行。

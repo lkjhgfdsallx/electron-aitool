@@ -81,7 +81,7 @@ export interface Message {
   siteAnalyzerProgress?: SiteAnalyzerLiveProgress
   /** Agent 执行步骤（Agent 模式下的思考链、工具调用等） */
   agentSteps?: AgentStep[]
-  /** Agent 结构化执行计划（Phase 3：plan-and-execute 策略产出） */
+  /** Agent 结构化执行计划（plan-and-execute 策略产出） */
   agentPlan?: AgentPlan
   /** 关联的 Agent ID */
   agentId?: string

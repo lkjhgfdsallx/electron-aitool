@@ -597,7 +597,7 @@ describe('buildWorkspaceContext', () => {
       expect(createArg.enabledToolIds).toEqual(['tool-calc', 'tool-plan'])
     })
 
-    it('应支持 Phase 4 增强字段', async () => {
+    it('应支持增强字段', async () => {
       const wsCtxPromise = captureWsContext()
       const { result } = renderHook(() => useChat())
 

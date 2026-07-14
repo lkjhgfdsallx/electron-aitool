@@ -1,7 +1,5 @@
 /**
  * 项目浏览器组件 - 左栏
- *
- * Phase B：集成真实文件树、存档时间线、Agent 团队面板
  * - 文件标签页：FileTree 组件，支持点击预览
  * - 存档标签页：增强的 CheckpointTimeline，支持还原
  * - 团队标签页：AgentTeamPanel，显示真实 Agent 信息

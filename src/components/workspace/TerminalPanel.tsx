@@ -1,9 +1,7 @@
 /**
  * 终端 & 审批面板 - 底栏
- *
- * Phase B：
- * - B4: 实时终端输出（通过 workspace-command-executor 和 IPC 事件流）
- * - B5: 内嵌审批卡片（替代弹窗，终端区内直接显示审批流）
+ * - 实时终端输出（通过 workspace-command-executor 和 IPC 事件流）
+ * - 内嵌审批卡片（替代弹窗，终端区内直接显示审批流）
  * - 支持命令手动输入执行
  */
 
@@ -45,14 +43,14 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
 
   // B9: 监听命令实时输出事件
   useEffect(() => {
-    const unsubscribeOutput = window.electronAPI.workspace.command.onOutput((data) => {
+    const unsubscribeOutput = window.electronAPI.workspace.command.onOutput((data: { commandId: string; stream: string; chunk: string; timestamp: number }) => {
       addTerminalLog(workspace.id, {
         type: data.stream === 'stderr' ? 'stderr' : 'stdout',
         content: data.chunk,
       })
     })
 
-    const unsubscribeComplete = window.electronAPI.workspace.command.onComplete((data) => {
+    const unsubscribeComplete = window.electronAPI.workspace.command.onComplete((data: { commandId: string; exitCode: number | null; killed: boolean; timestamp: number }) => {
       addTerminalLog(workspace.id, {
         type: 'system',
         content: data.exitCode === 0

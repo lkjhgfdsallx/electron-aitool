@@ -1,5 +1,5 @@
 /**
- * @deprecated Phase 7: 终端日志已合并到 conversation-store。
+ * @deprecated 终端日志已合并到 conversation-store。
  *
  * 此文件仅保留兼容导出，旧调用方会代理到 useConversationStore。
  */

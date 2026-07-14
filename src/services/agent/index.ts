@@ -18,7 +18,6 @@ import { toolExecutorRegistry } from './tool-executor-registry'
 
 import type { ToolExecutorSessionBundle } from './tool-executor-registry'
 
-// ---- Phase 2 Event Bus ----
 import type {
   AgentEventType,
   AgentEvent,
@@ -77,7 +76,7 @@ export function registerAllExecutors(): void {
   toolExecutorRegistry.register(new SiteAnalyzerToolExecutor())
   toolExecutorRegistry.register(new WorkspaceToolExecutor())
   toolExecutorRegistry.register(new MathToolExecutor())
-  // Phase 3: 结构化任务规划执行器（create_plan / update_task / get_plan）
+  // 结构化任务规划执行器（create_plan / update_task / get_plan）
   toolExecutorRegistry.register(new PlannerToolExecutor())
 
   // 兜底执行器（处理 MCP / 自定义 / 其他未分类工具）

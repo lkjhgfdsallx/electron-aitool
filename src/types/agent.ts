@@ -99,7 +99,7 @@ export interface AgentProfile {
   /** 是否启用 */
   enabled: boolean
 
-  // ===== Phase 4 扩展字段（全部可选，向后兼容） =====
+  // ===== 扩展字段（全部可选，向后兼容） =====
 
   /** 复用提示词系统的段落（与 systemPrompt 组合或替代） */
   promptSections?: PromptSection[]
@@ -107,9 +107,9 @@ export interface AgentProfile {
   promptTemplateId?: string
   /** 变量定义（同 Prompt 系统） */
   variables?: PromptVariable[]
-  /** 行为编排（状态机定义，Phase 4 §5.2） */
+  /** 行为编排（状态机定义） */
   workflow?: AgentWorkflow
-  /** 上下文管理策略（Phase 4 §4.3） */
+  /** 上下文管理策略 */
   contextPolicy?: ContextPolicy
   /** 工具审批门槛覆盖 */
   approvalPolicy?: ApprovalPolicy
@@ -121,7 +121,7 @@ export interface AgentProfile {
 }
 
 /**
- * 上下文管理策略（Phase 4 §4.3）
+ * 上下文管理策略
  */
 export interface ContextPolicy {
   /** 策略：fixed=固定截断（丢弃早期），compress=摘要压缩 */

@@ -1,12 +1,3 @@
-/**
- * Agent 引擎重构 - Phase 2 完整实现
- *
- * 事件总线：引擎所有副作用改为发事件，UI 层 subscribe 事件自行处理。
- *
- * Phase 1 的 AgentEngineCallbacks 仍然保留，由 bridgeCallbacksToEventBus 桥接。
- * Phase 3 统一 AgentLoop 后，callbacks 将完全移除，UI 层直接 subscribe EventBus。
- */
-
 import type { AgentStep, AgentRunStatus } from '../../types'
 
 /** Agent 引擎事件类型 */
@@ -20,9 +11,9 @@ export type AgentEventType =
   | 'human_input'          // 需要人工输入
   | 'report_ready'         // 报告就绪
   | 'site_analyzer_progress' // 网站分析进度
-  | 'context_compressed'   // 上下文压缩（Phase 4）
-  | 'plan_created'         // 计划创建（Phase 3）
-  | 'task_updated'         // 任务更新（Phase 3）
+  | 'context_compressed'   // 上下文压缩
+  | 'plan_created'         // 计划创建
+  | 'task_updated'         // 任务更新
 
 /** Agent 事件 */
 export interface AgentEvent {

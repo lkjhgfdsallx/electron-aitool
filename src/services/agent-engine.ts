@@ -130,7 +130,6 @@ export interface SubAgentActivityEvent {
 /**
  * 创建 Agent 的输入参数（workspace_create_agent 工具 → WorkspaceContext.createAgent）
  *
- * 包含 Phase 4 增强字段，全部可选（向后兼容）。
  * 底层 createWorkspaceAgent 接受 AgentProfileCreateInput，已支持所有字段。
  */
 export interface CreateAgentInput {
@@ -143,7 +142,6 @@ export interface CreateAgentInput {
   enabledSkillIds?: string[]
   /** 是否启用 */
   enabled?: boolean
-  // ---- Phase 4 增强字段 ----
   /** 复用提示词系统的段落 */
   promptSections?: PromptSection[]
   /** 引用已有 Prompt 模板 id */
@@ -180,7 +178,7 @@ export interface WorkspaceContext {
   teamAgents: Array<{ id: string; name: string; description: string; avatar: string; enabledToolIds?: string[] }>
   /** 由上层注入的子任务分派函数（调用后会真正运行目标 Agent 并返回其最终输出） */
   dispatchSubTask?: (agentId: string, taskDescription: string, contextSummary?: string) => Promise<string>
-  /** Phase 3: 并行子任务分派函数（一次分派多个子任务，并行执行，结果按入参顺序返回） */
+  /**并行子任务分派函数（一次分派多个子任务，并行执行，结果按入参顺序返回） */
   dispatchTasks?: (tasks: Array<{ agentId: string; task: string; context?: string; dependsOnIndexes?: number[] }>) => Promise<string[]>
   /** 由上层注入的创建 Agent 函数（创建新 Agent 并加入工作区团队，返回 Agent ID） */
   createAgent?: (input: CreateAgentInput) => Promise<string>
@@ -342,7 +340,6 @@ function buildAgentSystemPrompt(
   tools: Tool[],
   memoryContext: string,
   workspaceContext?: WorkspaceContext,
-  /** Phase 4: 工作流当前状态的提示词片段（可选） */
   extraPromptSection?: string,
 ): string {
   let prompt = agent.systemPrompt
@@ -637,7 +634,7 @@ function buildAgentSystemPrompt(
     }
   }
 
-  // Phase 4: 拼接 promptSections（复用 Prompt 系统的段落）
+  // 拼接 promptSections（复用 Prompt 系统的段落）
   if (agent.promptSections && agent.promptSections.length > 0) {
     const sectionsText = renderPromptSections(agent.promptSections)
     if (sectionsText) {
@@ -645,19 +642,19 @@ function buildAgentSystemPrompt(
     }
   }
 
-  // Phase 4: 注入当前工作流状态的提示词片段（由调用方通过 extraPromptSection 传入）
+  // 注入当前工作流状态的提示词片段（由调用方通过 extraPromptSection 传入）
   if (extraPromptSection) {
     prompt += `\n\n## 当前阶段指引\n${extraPromptSection}`
   }
 
-  // 最终脱敏：剥离 agent.systemPrompt / 工作流段落中对未启用工具的硬编码引用
+  // 剥离 agent.systemPrompt / 工作流段落中对未启用工具的硬编码引用
   //（引擎生成的段落已按 hasTool 条件写入，此处主要覆盖用户自定义与默认 Agent 提示词）
   const extraKnownFromTools = tools.map((t) => t.name)
   return redactDisabledToolMentions(prompt, availableToolNames, extraKnownFromTools)
 }
 
 /**
- * Phase 4: 将 PromptSection[] 渲染为文本（复用 Prompt 系统段落格式）
+ * 将 PromptSection[] 渲染为文本（复用 Prompt 系统段落格式）
  *
  * 按 order 排序，仅渲染 enabled 的段落，每段以标题分组。
  */
@@ -912,7 +909,7 @@ async function agentLoopBody(
   // 确定最终使用的工作流定义（优先使用注入的工作流，其次是 agent 配置的工作流）
   const effectiveWorkflow = injectedWorkflow ?? agent.workflow
 
-  // Phase 4: 工作流状态机运行时（优先从 checkpoint 恢复，否则创建新的）
+  // 工作流状态机运行时（优先从 checkpoint 恢复，否则创建新的）
   let workflowRuntime: WorkflowRuntimeState | null = null
   if (initialWorkflowRuntime) {
     // 从 checkpoint 恢复工作流状态
@@ -952,7 +949,7 @@ async function agentLoopBody(
       return
     }
 
-    // ========== Phase 4: 工作流状态机 + 上下文压缩（每轮开始时应用，使用共享函数） ==========
+    // ========== 工作流状态机 + 上下文压缩（每轮开始时应用，使用共享函数） ==========
     // 1) 工作流：按当前状态过滤工具
     const effectiveTools: Tool[] =
       workflowRuntime && effectiveWorkflow
@@ -1128,7 +1125,6 @@ async function agentLoopBody(
             error: `工具 "${tc.name}" 未在当前 Agent 的启用列表中，已拒绝执行`,
           }
         } else {
-          // 执行工具（Phase 1：通过 registry 分发，取代 if-else 链）
           const resolved = sessionBundle.resolve(tc.name)
           if (resolved) {
             result = await resolved.executor.execute(tc.name, args, resolved.sessionCtx, agentSessionCtx)
@@ -1166,7 +1162,7 @@ async function agentLoopBody(
         })
       }
 
-      // Phase 4: 工作流状态推进（使用共享函数，增强2：补充 planStatus）
+      // 工作流状态推进（使用共享函数，增强2：补充 planStatus）
       if (workflowRuntime && effectiveWorkflow) {
         const lastTool = nativeToolCalls[nativeToolCalls.length - 1]
         workflowRuntime = advanceWorkflowState(effectiveWorkflow, workflowRuntime, lastTool?.name, fullContent, sessionBundle)
@@ -1180,7 +1176,7 @@ async function agentLoopBody(
     const toolCalls = parseToolCalls(fullContent)
 
     if (toolCalls.length === 0) {
-      // ========== Phase 4 修复: 无工具调用时先检查工作流状态推进 ==========
+      // ========== 无工具调用时先检查工作流状态推进 ==========
       // 当 Agent 输出包含 message_contains 关键字（如"需求理解完成"）时，
       // 引擎不应将其视为 final_answer 直接退出，而应推进状态机并继续循环。
       const hasWorkflow = workflowRuntime && effectiveWorkflow
@@ -1305,7 +1301,6 @@ async function agentLoopBody(
           error: `工具 "${tc.name}" 未在当前 Agent 的启用列表中，已拒绝执行`,
         }
       } else {
-        // 执行工具（Phase 1：通过 registry 分发，取代 if-else 链）
         const resolved = sessionBundle.resolve(tc.name)
         if (resolved) {
           result = await resolved.executor.execute(tc.name, tc.arguments, resolved.sessionCtx, agentSessionCtx)
@@ -1351,7 +1346,7 @@ async function agentLoopBody(
       )
     }
 
-    // Phase 4: 工作流状态推进（使用共享函数，增强2：补充 planStatus）
+    // 工作流状态推进（使用共享函数，增强2：补充 planStatus）
     if (workflowRuntime && effectiveWorkflow && toolCalls.length > 0) {
       const lastTool = toolCalls[toolCalls.length - 1]
       workflowRuntime = advanceWorkflowState(effectiveWorkflow, workflowRuntime, lastTool?.name, fullContent, sessionBundle)
@@ -1407,7 +1402,7 @@ export async function runAgent(
   const runId = crypto.randomUUID()
   callbacks.onStatusChange('running')
 
-  // Phase 2: 启动 EventBus 运行
+  // 启动 EventBus 运行
   agentEventBus.startRun(runId, agent.id)
 
   // 确保 Skills 已从 IndexedDB 加载，供系统提示词与 list_skills/use_skill 使用
@@ -1416,7 +1411,7 @@ export async function runAgent(
   const startTime = Date.now()
   let stepIndex = 0
   // stepCounter 桥接对象：让 AgentSessionContext.stepCounter 与引擎 stepIndex 保持同步
-  // Phase 2 清理时将移除 stepIndex，统一使用 stepCounter
+  // 清理时将移除 stepIndex，统一使用 stepCounter
   const stepCounter: { value: number } = {
     get value() { return stepIndex },
     set value(v: number) { stepIndex = v },
@@ -1655,7 +1650,7 @@ export async function runAgent(
     ? (resumeOptions.existingSteps ? [...resumeOptions.existingSteps] : [])
     : []
 
-  // 创建 Agent 会话上下文和工具执行器 session bundle（Phase 1 新增）
+  // 创建 Agent 会话上下文和工具执行器 session bundle
   const agentSessionCtx: AgentSessionContext = {
     agentId: agent.id,
     agentName: agent.name,
@@ -1672,7 +1667,7 @@ export async function runAgent(
   }
   const sessionBundle = toolExecutorRegistry.createSessionBundle(agentSessionCtx)
 
-  // Phase 4: 在外部创建工作流运行时状态，以便 agentLoopBody 可以访问
+  // 在外部创建工作流运行时状态，以便 agentLoopBody 可以访问
   let workflowRuntime: WorkflowRuntimeState | null = null
   if (agent.workflow && agent.workflow.initial && agent.workflow.states[agent.workflow.initial]) {
     workflowRuntime = createWorkflowRuntimeState(agent.workflow)

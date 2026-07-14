@@ -1,5 +1,5 @@
 /**
- * AgentWorkflowEditor - 工作流状态机编辑器（Phase 4 / §5.2）
+ * AgentWorkflowEditor - 工作流状态机编辑器
  *
  * 提供两种编辑模式：
  * 1. 可视化模式：以卡片形式编辑状态（label / allowedTools / systemPromptSection）与转移规则

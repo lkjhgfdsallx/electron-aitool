@@ -349,7 +349,7 @@ export function useChat() {
     }
 
     // 构建创建 Agent 回调（创建新 Agent 并加入工作区团队）
-    // 支持 Phase 4 增强字段：planningStrategy, memoryConfig, termination, modelConfig,
+    // 支持 增强字段：planningStrategy, memoryConfig, termination, modelConfig,
     // knowledgeBaseIds, contextPolicy, approvalPolicy, maxParallelSubtasks
     const createAgent = async (input: CreateAgentInput): Promise<string> => {
       // 为新 Agent 设置合理的默认工具：工作区文件工具 + 核心工具
@@ -362,7 +362,7 @@ export function useChat() {
         : defaultWorkspaceToolIds
 
       // 创建工作区 Agent（而非全局 Agent），自动带有 workspace 标签
-      // Phase 4 字段优先使用传入值，未提供则使用合理默认值
+      // 字段优先使用传入值，未提供则使用合理默认值
       const workspaceAgentStore = useWorkspaceAgentStore.getState()
       const newAgent = await workspaceAgentStore.createWorkspaceAgent({
         name: input.name,
@@ -413,7 +413,6 @@ export function useChat() {
       return useWorkspaceStore.getState().requestFileActionApproval(request)
     }
 
-    // Phase 3: 并行子任务分派
     // 接收多个子任务，根据 dependsOnIndexes 做拓扑分层，同层任务用 Promise.all 并行执行。
     // 结果按入参顺序返回（与串行 dispatchSubTask 的返回格式一致）。
     const dispatchTasks = async (
@@ -733,7 +732,7 @@ export function useChat() {
       // 将包含附件内容的完整消息传递给 Agent 引擎
       const wsContext = buildWorkspaceContext(convId, onSubAgentActivity)
 
-      // Phase 3: 订阅 plan_created / task_updated 事件，将结构化计划同步到消息
+      // 订阅 plan_created / task_updated 事件，将结构化计划同步到消息
       let currentPlan: AgentPlan | null = null
       const planUnsub = agentEventBus.on('plan_created', (event: AgentEvent) => {
         const plan = (event.payload as { plan?: AgentPlan } | undefined)?.plan
@@ -750,7 +749,7 @@ export function useChat() {
         }
       })
 
-      // Phase 4: 订阅 context_compressed 事件，将压缩信息作为 observation 步骤注入消息流
+      // 订阅 context_compressed 事件，将压缩信息作为 observation 步骤注入消息流
       const compressUnsub = agentEventBus.on('context_compressed', (event: AgentEvent) => {
         const payload = event.payload as {
           beforeTokens?: number
@@ -961,13 +960,11 @@ export function useChat() {
           }
         },
         wsContext,
-        convId // Phase 2: conversationId 用于 checkpoint 关联
+        convId
       )
 
-      // Phase 3: 清理 plan 事件订阅
       planUnsub()
       taskUnsub()
-      // Phase 4: 清理压缩事件订阅
       compressUnsub()
       void currentPlan
     },
