@@ -44,6 +44,7 @@ import {
   filterToolsByState,
   getStatePromptSection,
   advanceState,
+  isTaskExecutionTool,
 } from './agent/workflow-engine'
 import type { WorkflowRuntimeState } from '../types'
 import type { TransitionContext } from './agent/workflow-engine'
@@ -232,6 +233,58 @@ interface AgentMessage {
   toolCallId?: string
   /** 工具名称（tool 消息） */
   toolName?: string
+}
+
+/**
+ * Plan-and-Execute 策略的内置工作流
+ * 用于强制 LLM 先创建计划再执行任务
+ */
+const PLAN_EXECUTE_WORKFLOW: AgentWorkflow = {
+  initial: 'planning',
+  terminals: ['done', 'error'],
+  states: {
+    planning: {
+      label: '规划阶段',
+      allowedTools: ['create_plan', 'get_plan', 'update_task'],
+      systemPromptSection: `## ⚠️ 当前阶段：规划阶段
+
+你当前处于**规划阶段**。在此阶段：
+
+1. **必须**先调用 \`create_plan\` 工具创建结构化任务计划
+2. **不可以**调用任何任务执行工具（如 workspace_write_file、workspace_execute_command 等）
+3. 可以调用 \`get_plan\` 查看当前计划状态（如果有）
+
+如果你尝试调用非规划类工具，引擎会拒绝执行并要求你先创建计划。`,
+      transitions: [
+        {
+          to: 'executing',
+          when: [{ type: 'tool_called', toolName: 'create_plan' }]
+        }
+      ]
+    },
+    executing: {
+      label: '执行阶段',
+      // allowedTools 未设置，继承 Agent 的 enabledToolIds
+      systemPromptSection: `## 当前阶段：执行阶段
+
+请按照已确认的计划逐个执行任务。对每个任务：
+1. 使用 \`update_task\` 将任务状态设为 \`in_progress\`
+2. 执行任务
+3. 使用 \`update_task\` 将任务状态设为 \`completed\`
+
+所有任务完成后，计划状态会自动更新为 \`done\`。`,
+      transitions: [
+        {
+          to: 'done',
+          when: [{ type: 'plan_status', planStatus: 'done' }]
+        },
+        {
+          to: 'error',
+          when: [{ type: 'plan_status', planStatus: 'failed' }]
+        }
+      ]
+    }
+  }
 }
 
 /**
@@ -727,13 +780,13 @@ async function executeContextCompression(
  * 返回更新后的 workflowRuntime（可能未变化）。
  */
 function advanceWorkflowState(
-  agent: AgentProfile,
+  workflow: AgentWorkflow | undefined,
   workflowRuntime: WorkflowRuntimeState | null,
   lastToolName: string | undefined,
   fullContent: string,
   bundle: ToolExecutorSessionBundle,
 ): WorkflowRuntimeState | null {
-  if (!workflowRuntime || !agent.workflow) return workflowRuntime
+  if (!workflowRuntime || !workflow) return workflowRuntime
 
   const planStatus = getPlanStatusFromBundle(bundle)
   const ctx: TransitionContext = {
@@ -742,7 +795,7 @@ function advanceWorkflowState(
     assistantContent: fullContent || undefined,
     planStatus,
   }
-  const advanced = advanceState(agent.workflow, workflowRuntime, ctx)
+  const advanced = advanceState(workflow, workflowRuntime, ctx)
   return advanced.transitioned ? advanced.runtime : workflowRuntime
 }
 
@@ -842,6 +895,8 @@ async function agentLoopBody(
     runId: string
     /** P1-2 修复：从 checkpoint 恢复的工作流运行时状态 */
     initialWorkflowRuntime?: WorkflowRuntimeState | null
+    /** P1-3: 注入的内置工作流（用于 plan-and-execute 等场景） */
+    injectedWorkflow?: AgentWorkflow | null
   },
   loopLimit: number,
   tcIdPrefix: string,
@@ -849,18 +904,21 @@ async function agentLoopBody(
   const {
     agent, messages, agentSessionCtx, sessionBundle,
     contextString, resolvedConfig, signal, callbacks,
-    workspaceContext, runId, initialWorkflowRuntime,
+    workspaceContext, runId, initialWorkflowRuntime, injectedWorkflow,
   } = ctx
   const steps = agentSessionCtx.steps
   const agentTools = agentSessionCtx.agentTools
+
+  // 确定最终使用的工作流定义（优先使用注入的工作流，其次是 agent 配置的工作流）
+  const effectiveWorkflow = injectedWorkflow ?? agent.workflow
 
   // Phase 4: 工作流状态机运行时（优先从 checkpoint 恢复，否则创建新的）
   let workflowRuntime: WorkflowRuntimeState | null = null
   if (initialWorkflowRuntime) {
     // 从 checkpoint 恢复工作流状态
     workflowRuntime = initialWorkflowRuntime
-  } else if (agent.workflow && agent.workflow.initial && agent.workflow.states[agent.workflow.initial]) {
-    workflowRuntime = createWorkflowRuntimeState(agent.workflow)
+  } else if (effectiveWorkflow?.initial && effectiveWorkflow.states[effectiveWorkflow.initial]) {
+    workflowRuntime = createWorkflowRuntimeState(effectiveWorkflow)
   }
 
   // 构建系统提示词基础（每轮会根据工作流状态重新拼接，故用 let）
@@ -897,13 +955,13 @@ async function agentLoopBody(
     // ========== Phase 4: 工作流状态机 + 上下文压缩（每轮开始时应用，使用共享函数） ==========
     // 1) 工作流：按当前状态过滤工具
     const effectiveTools: Tool[] =
-      workflowRuntime && agent.workflow
-        ? filterToolsByState(agent.workflow, workflowRuntime, agentTools)
+      workflowRuntime && effectiveWorkflow
+        ? filterToolsByState(effectiveWorkflow, workflowRuntime, agentTools)
         : agentTools
 
     // 2) 工作流：注入当前状态的 prompt 片段并重建系统提示词
-    if (workflowRuntime && agent.workflow) {
-      const section = getStatePromptSection(agent.workflow, workflowRuntime)
+    if (workflowRuntime && effectiveWorkflow) {
+      const section = getStatePromptSection(effectiveWorkflow, workflowRuntime)
       systemPrompt = buildAgentSystemPrompt(
         agent,
         effectiveTools,
@@ -1109,9 +1167,9 @@ async function agentLoopBody(
       }
 
       // Phase 4: 工作流状态推进（使用共享函数，增强2：补充 planStatus）
-      if (workflowRuntime && agent.workflow) {
+      if (workflowRuntime && effectiveWorkflow) {
         const lastTool = nativeToolCalls[nativeToolCalls.length - 1]
-        workflowRuntime = advanceWorkflowState(agent, workflowRuntime, lastTool?.name, fullContent, sessionBundle)
+        workflowRuntime = advanceWorkflowState(effectiveWorkflow, workflowRuntime, lastTool?.name, fullContent, sessionBundle)
       }
 
       // 继续循环，让模型根据工具结果继续推理
@@ -1125,12 +1183,12 @@ async function agentLoopBody(
       // ========== Phase 4 修复: 无工具调用时先检查工作流状态推进 ==========
       // 当 Agent 输出包含 message_contains 关键字（如"需求理解完成"）时，
       // 引擎不应将其视为 final_answer 直接退出，而应推进状态机并继续循环。
-      const hasWorkflow = workflowRuntime && agent.workflow
+      const hasWorkflow = workflowRuntime && effectiveWorkflow
 
       if (hasWorkflow) {
         // 利用本轮 assistantContent 尝试推进工作流状态
         const advanced = advanceWorkflowState(
-          agent,
+          effectiveWorkflow,
           workflowRuntime!,
           undefined, // 无工具调用时 lastToolName 为 undefined
           fullContent,
@@ -1153,7 +1211,7 @@ async function agentLoopBody(
           callbacks.onStep(thinkStep)
 
           // 如果新状态是终止状态 → 真正结束
-          if (isTerminalState(agent.workflow!, advanced!.currentState)) {
+          if (isTerminalState(effectiveWorkflow!, advanced!.currentState)) {
             const finalStep: AgentStep = {
               id: crypto.randomUUID(),
               type: 'final_answer',
@@ -1294,9 +1352,9 @@ async function agentLoopBody(
     }
 
     // Phase 4: 工作流状态推进（使用共享函数，增强2：补充 planStatus）
-    if (workflowRuntime && agent.workflow && toolCalls.length > 0) {
+    if (workflowRuntime && effectiveWorkflow && toolCalls.length > 0) {
       const lastTool = toolCalls[toolCalls.length - 1]
-      workflowRuntime = advanceWorkflowState(agent, workflowRuntime, lastTool?.name, fullContent, sessionBundle)
+      workflowRuntime = advanceWorkflowState(effectiveWorkflow, workflowRuntime, lastTool?.name, fullContent, sessionBundle)
     }
 
     // 检查是否达到目标（如果启用了自动停止）
@@ -1618,11 +1676,24 @@ export async function runAgent(
   let workflowRuntime: WorkflowRuntimeState | null = null
   if (agent.workflow && agent.workflow.initial && agent.workflow.states[agent.workflow.initial]) {
     workflowRuntime = createWorkflowRuntimeState(agent.workflow)
+  } else if (
+    agent.planningStrategy === 'plan-and-execute' &&
+    !agent.workflow &&
+    !agent.tags?.includes('leader')
+  ) {
+    // 为 plan-and-execute 策略自动注入内置工作流（强制先创建计划）
+    workflowRuntime = createWorkflowRuntimeState(PLAN_EXECUTE_WORKFLOW)
   }
 
   // Agent 循环（maxSteps 为 0 表示无限制）— 委托给共享 agentLoopBody
   try {
     const loopLimit = agent.termination.maxSteps === 0 ? Infinity : agent.termination.maxSteps
+    // 确定注入的工作流（用于 plan-and-execute 等场景）
+    const injectedWorkflow = (
+      agent.planningStrategy === 'plan-and-execute' &&
+      !agent.workflow &&
+      !agent.tags?.includes('leader')
+    ) ? PLAN_EXECUTE_WORKFLOW : undefined
     await agentLoopBody(
       {
         agent, messages, agentSessionCtx, sessionBundle,
@@ -1630,6 +1701,7 @@ export async function runAgent(
         resolvedConfig, signal, callbacks,
         workspaceContext, runId,
         initialWorkflowRuntime: workflowRuntime,  // P1-2: 传入初始工作流状态
+        injectedWorkflow: injectedWorkflow ?? null,  // P1-3: 传入注入的工作流
       },
       loopLimit,
       'text-tc-',

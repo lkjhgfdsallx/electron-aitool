@@ -156,6 +156,33 @@ export function advanceState(
 }
 
 /**
+ * 判断是否是计划相关工具
+ */
+export function isPlanTool(toolName: string): boolean {
+  return ['create_plan', 'update_task', 'get_plan'].includes(toolName)
+}
+
+/**
+ * 判断是否是任务执行工具（可用于排除 create_plan 后的执行阶段）
+ */
+export function isTaskExecutionTool(toolName: string): boolean {
+  const taskTools = new Set([
+    'workspace_execute_command',
+    'workspace_write_file',
+    'workspace_read_file',
+    'workspace_list_files',
+    'workspace_create_agent',
+    'workspace_dispatch_task',
+    'workspace_dispatch_parallel',
+    'web_search',
+    'fetch_webpage',
+    'remember',
+    'recall',
+  ])
+  return taskTools.has(toolName)
+}
+
+/**
  * 工作流引擎（无状态工具函数集合，状态由调用方持有 WorkflowRuntimeState）
  */
 export const workflowEngine = {

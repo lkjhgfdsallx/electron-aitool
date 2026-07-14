@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MessageItem } from './MessageItem'
 import { AssistantGroupBubble } from './AssistantGroupBubble'
 import { MessageInput } from './MessageInput'
@@ -8,6 +8,15 @@ import type { Message, MessageAttachment, PromptRuntimeContext } from '../../typ
 type MessageAlignment = 'left-right' | 'all-left' | 'all-right' | 'full-width'
 
 const EMPTY_RENDER_GROUPS: RenderGroup[] = []
+
+/** 距离底部多少像素内视为"在底部" */
+const BOTTOM_THRESHOLD = 100
+
+/** 判断滚动容器是否接近底部 */
+function isNearBottom(container: HTMLElement): boolean {
+  const { scrollTop, scrollHeight, clientHeight } = container
+  return scrollHeight - scrollTop - clientHeight < BOTTOM_THRESHOLD
+}
 
 export interface ChatViewCoreProps {
   conversationId: string | undefined
@@ -63,6 +72,10 @@ export function ChatViewCore({
   inputClassName,
 }: ChatViewCoreProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+
   const streaming = isStreaming ?? messages.some((m) => m.isStreaming)
 
   const renderGroups = useMemo(() => {
@@ -70,15 +83,32 @@ export function ChatViewCore({
     return groupMessages(messages)
   }, [messages])
 
+  /** 滚动事件处理 */
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (container) {
+      const atBottom = isNearBottom(container)
+      isAtBottomRef.current = atBottom
+      setIsAtBottom(atBottom)
+    }
+  }, [])
+
+  /** 智能滚动：仅在用户位于底部时才自动滚动 */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
+    if (isAtBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' })
+    }
   }, [messages, streaming])
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {headerSlot}
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden"
+        onScroll={handleScroll}
+      >
         {messages.length === 0 ? (
           emptyStateSlot ?? null
         ) : (

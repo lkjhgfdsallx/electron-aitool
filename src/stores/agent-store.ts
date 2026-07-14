@@ -151,12 +151,23 @@ function createTaskDecompositionExecutor(): AgentProfile {
       states: {
         clarify: {
           label: '需求澄清',
-          allowedTools: ['agent-builtin:ask_self', 'agent-builtin:ask_human', 'agent-builtin:recall'],
-          systemPromptSection: '你正处于[需求澄清]阶段。你的任务是深入理解用户的意图和目标。通过 ask_self 进行内部推理，通过 ask_human 向用户提问来澄清模糊之处，通过 recall 回忆之前记录的关键信息。不要急于开始执行，先确保你完全理解了用户的需求。',
+          allowedTools: [
+            'agent-builtin:ask_self',
+            'agent-builtin:ask_human',
+            'agent-builtin:recall',
+            // plan-and-execute：澄清阶段也允许创建计划，以便 Agent 在需要时可以主动创建
+            'agent-builtin:create_plan',
+            'agent-builtin:get_plan',
+          ],
+          systemPromptSection: '你正处于[需求澄清]阶段。你的任务是深入理解用户的意图和目标。通过 ask_self 进行内部推理，通过 ask_human 向用户提问来澄清模糊之处，通过 recall 回忆之前记录的关键信息。在澄清需求后，**必须调用 create_plan 工具**创建结构化任务计划。',
           transitions: [
             {
               to: 'decompose',
-              when: [{ type: 'message_contains', keyword: '需求理解完成' }]
+              when: [
+                { type: 'message_contains', keyword: '需求理解完成' },
+                // 调用 create_plan 后也可进入拆解/执行阶段
+                { type: 'tool_called', toolName: 'create_plan' },
+              ]
             }
           ]
         },
