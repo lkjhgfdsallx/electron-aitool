@@ -192,6 +192,16 @@ jest.mock('../stores/skill-store', () => ({
   },
 }))
 
+// 联网工具策略依赖 settings-store（经 utils/web-tools → stores）；默认关闭
+jest.mock('../stores', () => ({
+  useSettingsStore: {
+    getState: () => ({
+      webSearchEnabled: false,
+      disabledBuiltinToolIds: [],
+    }),
+  },
+}))
+
 jest.mock('../services/agent', () => ({
   toolExecutorRegistry: {
     createSessionBundle: jest.fn(() => ({

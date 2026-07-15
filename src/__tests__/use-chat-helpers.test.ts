@@ -3,7 +3,7 @@
  *
  * 测试 useChat hook 中模块内部纯函数的真实行为（非副本）：
  * - getFinishNotice: 根据 finishReason 生成截断/中断提示（通过 sendMessage 普通模式 onDone 间接验证）
- * - filterWebTools: 根据联网开关过滤工具列表（通过工具列表传递间接验证）
+ * - applyWebSearchPolicy: 根据联网开关过滤/注入工具列表（通过工具列表传递间接验证）
  * - notifyIfReady: 通知/声音设置（通过 window.electronAPI 间接验证）
  * - StreamingBuffer: 流式输出节流（通过连续 token 间接验证）
  *
@@ -291,7 +291,7 @@ describe('use-chat 内部辅助函数（真实模块）', () => {
     })
   })
 
-  describe('filterWebTools - 通过工具定义传递验证', () => {
+  describe('applyWebSearchPolicy - 通过工具定义传递验证', () => {
     it('webSearchEnabled=true 时普通模式仅暴露搜索类工具', async () => {
       mockSettingsState.webSearchEnabled = true
       const callbacksPromise = captureStreamChatCallbacks()

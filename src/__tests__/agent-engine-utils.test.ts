@@ -46,6 +46,16 @@ jest.mock('../constants/default-agents', () => ({
   WORKSPACE_LEADER_AGENT_ID: 'workspace-leader',
 }))
 
+// 联网工具策略依赖 settings-store（经 utils/web-tools → stores）；默认关闭
+jest.mock('../stores', () => ({
+  useSettingsStore: {
+    getState: () => ({
+      webSearchEnabled: false,
+      disabledBuiltinToolIds: [],
+    }),
+  },
+}))
+
 jest.mock('../stores/skill-store', () => ({
   useSkillStore: {
     getState: () => ({

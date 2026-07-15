@@ -19,6 +19,16 @@ import type {
 } from '../../types'
 import { isTerminalState } from '../../types'
 
+/** 联网工具（仅按 id/name 识别，避免依赖 settings 策略模块） */
+function isNetworkTool(tool: Pick<Tool, 'id' | 'name'>): boolean {
+  return (
+    tool.name === 'web_search' ||
+    tool.name === 'fetch_webpage' ||
+    tool.id === 'builtin:web_search' ||
+    tool.id === 'builtin:fetch_webpage'
+  )
+}
+
 /** 一轮 Agent 执行后用于评估转移的上下文 */
 export interface TransitionContext {
   /** 本轮 LLM 调用的工具名（如有） */
@@ -56,6 +66,8 @@ export function getCurrentState(
  *
  * - 若状态未定义 allowedTools 或为空数组：返回原始工具列表（继承 enabledToolIds）
  * - 否则：仅保留 allowedTools 中列出的工具
+ * - 联网工具（web_search / fetch_webpage）不在此过滤：由调用方在过滤后
+ *   通过 applyWebSearchPolicy 按对话框「联网」按钮重新注入/剥离
  */
 export function filterToolsByState(
   workflow: AgentWorkflow,
@@ -67,7 +79,8 @@ export function filterToolsByState(
     return tools
   }
   const allowed = new Set(state.allowedTools)
-  return tools.filter((t) => allowed.has(t.id) || allowed.has(t.name))
+  // 保留白名单工具；联网工具也先保留，最终由 applyWebSearchPolicy 决定
+  return tools.filter((t) => allowed.has(t.id) || allowed.has(t.name) || isNetworkTool(t))
 }
 
 /**

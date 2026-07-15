@@ -1,4 +1,5 @@
 import type { Tool, ToolDefinition, ToolExecuteResult } from '../types'
+import { isWebSearchEnabled, WEB_TOOL_NAMES } from '../utils/web-tools'
 import { mcpService } from './mcp-service'
 import { knowledgeBaseService } from './knowledge-base-service'
 import { useToolStatsStore } from '../stores/tool-stats-store'
@@ -226,6 +227,15 @@ export const toolService = {
     args: Record<string, unknown>,
     tools: Tool[]
   ): Promise<ToolExecuteResult> {
+    // 联网工具运行时二次校验：仅当对话框「联网」开启时可执行
+    if (WEB_TOOL_NAMES.has(toolName) && !isWebSearchEnabled()) {
+      return {
+        success: false,
+        data: '',
+        error: '联网功能未开启，请在对话框中打开「联网」按钮后再使用搜索/网页工具',
+      }
+    }
+
     const tool = tools.find((t) => t.name === toolName)
     if (!tool) {
       return { success: false, data: '', error: `工具 "${toolName}" 未找到` }

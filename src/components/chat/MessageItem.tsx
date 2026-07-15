@@ -29,7 +29,7 @@ import { ToolCallDisplay } from './ToolCallDisplay'
 import { AgentStepDisplay } from './AgentStepDisplay'
 import { SiteAnalyzerProgressPanel } from './SiteAnalyzerProgressPanel'
 import { reportStore } from '../../services/report-store'
-import type { Message } from '../../types'
+import type { Message, AgentPlan } from '../../types'
 
 /** 格式化文件大小 */
 function formatFileSize(bytes: number): string {
@@ -51,6 +51,10 @@ interface MessageItemProps {
   /** 继续生成（普通对话续写 / Agent 继续执行） */
   onContinueGeneration?: (messageId: string) => void
   onHumanInput?: (stepId: string, value: string | string[]) => void
+  /** 批准 Agent 计划（draft → approved） */
+  onApprovePlan?: (plan: AgentPlan) => void
+  /** 拒绝 Agent 计划并要求重新规划 */
+  onRejectPlan?: (plan: AgentPlan, reason?: string) => void
   /** 当前激活的分支索引（仅分支点消息有效） */
   activeBranchIndex?: number
   /** 切换分支回调 */
@@ -75,6 +79,8 @@ export const MessageItem = memo(function MessageItem({
   onEditAndResend,
   onContinueGeneration,
   onHumanInput,
+  onApprovePlan,
+  onRejectPlan,
   activeBranchIndex = 0,
   onSwitchBranch
 }: MessageItemProps) {
@@ -282,6 +288,8 @@ export const MessageItem = memo(function MessageItem({
               onHumanInput={onHumanInput}
               isError={message.isError}
               plan={message.agentPlan}
+              onApprovePlan={onApprovePlan}
+              onRejectPlan={onRejectPlan}
             />
           </SelectionBoundary>
         )}

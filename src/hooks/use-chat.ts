@@ -19,6 +19,7 @@ import { useWorkspaceStore } from '../stores/workspace-store'
 import { useWorkspaceAgentStore } from '../stores/workspace-agent-store'
 import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
+import { applyWebSearchPolicy, getWebToolsIfEnabled, isWebTool } from '../utils/web-tools'
 import type { Message, Tool, ToolDefinition, ToolExecuteResult, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
 import type { AgentEvent } from '../services/agent/event-bus'
 
@@ -31,25 +32,16 @@ function getFinishNotice(finishReason?: string): string | null {
   return null
 }
 
-/** 联网相关工具名集合，用于根据 webSearchEnabled 设置过滤工具 */
-const WEB_TOOL_NAMES = new Set(['web_search', 'fetch_webpage'])
-
-/** 根据联网开关过滤工具列表：webSearchEnabled=false 时移除联网工具 */
-function filterWebTools(tools: Tool[]): Tool[] {
-  const webSearchEnabled = useSettingsStore.getState().webSearchEnabled
-  return tools.filter((t) => !WEB_TOOL_NAMES.has(t.name) || webSearchEnabled)
-}
-
 /**
  * 过滤被用户禁用的内置工具
- * @param tools 工具列表（通常为 BUILT_IN_TOOLS）
- * @returns 过滤后的工具列表
+ * 注意：联网工具（web_search / fetch_webpage）不受 disabledBuiltinToolIds 影响，
+ * 仅由对话框「联网」按钮控制。
  */
 function filterDisabledBuiltinTools(tools: Tool[]): Tool[] {
   const disabledIds = useSettingsStore.getState().disabledBuiltinToolIds
   if (!disabledIds || disabledIds.length === 0) return tools
   return tools.map((t) =>
-    disabledIds.includes(t.id) ? { ...t, enabled: false } : t
+    !isWebTool(t) && disabledIds.includes(t.id) ? { ...t, enabled: false } : t
   )
 }
 
@@ -57,11 +49,10 @@ function filterDisabledBuiltinTools(tools: Tool[]): Tool[] {
  * 普通对话允许的工具：仅搜索类（web_search / fetch_webpage）。
  * 不暴露计算器、知识库检索、MCP、Agent 内置等任何其他工具，
  * 避免模型在非 Agent 场景“知道”或尝试调用它们。
- * 仍受 webSearchEnabled 与 disabledBuiltinToolIds 约束。
+ * 联网工具仅由对话框「联网」按钮控制（webSearchEnabled）。
  */
 function getNormalModeTools(): Tool[] {
-  const searchOnly = BUILT_IN_TOOLS.filter((t) => WEB_TOOL_NAMES.has(t.name))
-  return filterWebTools(filterDisabledBuiltinTools(searchOnly))
+  return getWebToolsIfEnabled()
 }
 
 /** 将进度事件类型映射到阶段 */
@@ -555,9 +546,15 @@ export function useChat() {
   const getAvailableTools = useCallback((): Tool[] => {
     const mcpTools = useMCPToolStore.getState().mcpTools
     const customTools = useCustomToolStore.getState().customTools.filter((t) => t.enabled)
-    // 联网工具也需要根据开关过滤（Agent 模式同样受此限制）
-    // 内置工具需要应用用户禁用黑名单（仅影响 BUILT_IN_TOOLS）
-    return filterWebTools([...filterDisabledBuiltinTools(BUILT_IN_TOOLS), ...AGENT_BUILTIN_TOOLS, ...mcpTools, ...customTools])
+    // 内置工具应用用户禁用黑名单（联网工具除外，见 filterDisabledBuiltinTools）
+    // 联网工具由 applyWebSearchPolicy 按对话框按钮统一注入/剥离
+    const base = [
+      ...filterDisabledBuiltinTools(BUILT_IN_TOOLS),
+      ...AGENT_BUILTIN_TOOLS,
+      ...mcpTools,
+      ...customTools,
+    ]
+    return applyWebSearchPolicy(base)
   }, [])
 
   /**
@@ -1748,6 +1745,50 @@ export function useChat() {
   }, [currentConversationId, getMessages, updateMessage])
 
   /**
+   * 批准 Agent 计划（draft → approved）
+   */
+  const approvePlan = useCallback(
+    (plan: AgentPlan) => {
+      if (!currentConversationId || !plan) return
+      const msgs = getMessages(currentConversationId)
+      const targetMsg = msgs
+        .slice()
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.agentPlan?.id === plan.id)
+      if (targetMsg && targetMsg.agentPlan) {
+        updateMessage(targetMsg.id, {
+          agentPlan: { ...targetMsg.agentPlan, status: 'approved', updatedAt: Date.now() },
+        })
+      }
+    },
+    [currentConversationId, getMessages, updateMessage],
+  )
+
+  /**
+   * 拒绝 Agent 计划（draft → failed），并要求重新规划
+   */
+  const rejectPlan = useCallback(
+    (plan: AgentPlan, reason?: string) => {
+      if (!currentConversationId || !plan) return
+      const msgs = getMessages(currentConversationId)
+      const targetMsg = msgs
+        .slice()
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.agentPlan?.id === plan.id)
+      if (targetMsg && targetMsg.agentPlan) {
+        const reasonText = reason ? `\n\n拒绝原因: ${reason}` : ''
+        const updatedContent = (targetMsg.content || '') +
+          `\n\n> ⚠️ **计划已拒绝**。${reasonText}请重新调用 \`create_plan\` 工具创建新的任务计划。`
+        updateMessage(targetMsg.id, {
+          agentPlan: { ...targetMsg.agentPlan, status: 'failed', updatedAt: Date.now() },
+          content: updatedContent,
+        })
+      }
+    },
+    [currentConversationId, getMessages, updateMessage],
+  )
+
+  /**
    * 编辑用户消息并重新发送（创建对话分支）
    * 1. 更新用户消息内容，标记为已编辑，设置分支计数
    * 2. 切换 activeBranches 到新分支
@@ -2322,5 +2363,7 @@ export function useChat() {
     continueGeneration,
     isStreaming: isStreamingRef.current,
     handleHumanInput,
+    approvePlan,
+    rejectPlan,
   }
 }

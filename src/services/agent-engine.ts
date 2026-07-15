@@ -34,6 +34,7 @@ import { memoryService } from './memory-service'
 import { knowledgeBaseService } from './knowledge-base-service'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from './built-in-tools'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
+import { applyWebSearchPolicy, shouldBypassAgentToolWhitelist } from '../utils/web-tools'
 import { useSkillStore } from '../stores/skill-store'
 import { toolExecutorRegistry, agentEventBus } from './agent'
 import type { AgentSessionContext, ToolExecutorSessionBundle } from './agent'
@@ -671,7 +672,9 @@ function renderPromptSections(sections: AgentProfile['promptSections']): string 
 /**
  * 过滤出 Agent 启用的工具
  *
- * 统一过滤逻辑：严格以 enabledToolIds 为白名单。
+ * 统一过滤逻辑：以 enabledToolIds 为白名单。
+ * 例外：联网工具（web_search / fetch_webpage）不走 Agent 白名单，
+ * 仅由对话框「联网」按钮（webSearchEnabled）在 applyWebSearchPolicy 中控制。
  * 工作区场景下，仅补充「已勾选且尚未在 allTools 中的」工作区工具定义
  *（因为 getAvailableTools 通常不包含 WORKSPACE_TOOLS）。
  * Leader 额外限制：即使勾选了执行类工作区工具，也只允许指挥/侦察类。
@@ -682,8 +685,9 @@ function resolveAgentTools(
   workspaceContext?: WorkspaceContext,
 ): Tool[] {
   const enabledSet = new Set(agent.enabledToolIds ?? [])
+  // 先按 Agent 白名单过滤；联网工具允许绕过白名单（仍受 applyWebSearchPolicy 控制）
   let agentTools = allTools.filter(
-    (t) => enabledSet.has(t.id) && t.enabled
+    (t) => t.enabled && (enabledSet.has(t.id) || shouldBypassAgentToolWhitelist(t))
   )
 
   if (workspaceContext) {
@@ -707,7 +711,8 @@ function resolveAgentTools(
     agentTools = [...agentTools, ...workspaceToolsToAdd]
   }
 
-  return agentTools
+  // 联网工具最终只由对话框按钮控制：开启则强制注入，关闭则强制剥离
+  return applyWebSearchPolicy(agentTools)
 }
 
 /**
@@ -951,10 +956,12 @@ async function agentLoopBody(
 
     // ========== 工作流状态机 + 上下文压缩（每轮开始时应用，使用共享函数） ==========
     // 1) 工作流：按当前状态过滤工具
-    const effectiveTools: Tool[] =
+    // 2) 联网工具不受 workflow.allowedTools 限制，仅由对话框「联网」按钮控制
+    const effectiveTools: Tool[] = applyWebSearchPolicy(
       workflowRuntime && effectiveWorkflow
         ? filterToolsByState(effectiveWorkflow, workflowRuntime, agentTools)
-        : agentTools
+        : agentTools,
+    )
 
     // 2) 工作流：注入当前状态的 prompt 片段并重建系统提示词
     if (workflowRuntime && effectiveWorkflow) {

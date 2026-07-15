@@ -62,8 +62,9 @@ const PLANNING_STRATEGIES: { value: PlanningStrategy; label: string; description
 const GLOBAL_AGENT_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS].map((t) => t.id)
 const WORKSPACE_AGENT_TOOL_IDS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS].map((t) => t.id)
 
-// 始终启用但对用户不可见的工具 ID（web 搜索相关能力由系统自动注入）
-const HIDDEN_ALWAYS_ENABLED_TOOL_IDS = ['builtin:web_search', 'builtin:fetch_webpage']
+// 对用户不可见的联网工具 ID（运行时仅由对话框「联网」按钮控制，见 utils/web-tools.ts）
+// 注意：这里硬编码 ID 与 WEB_TOOL_IDS 保持一致，避免 Agent 设置页依赖运行时策略模块
+const HIDDEN_ALWAYS_ENABLED_TOOL_IDS: string[] = ['builtin:web_search', 'builtin:fetch_webpage']
 
 // 在 UI 中可见的内置工具（排除始终隐藏的工具）
 const VISIBLE_BUILT_IN_TOOLS = BUILT_IN_TOOLS.filter(

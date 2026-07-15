@@ -47,6 +47,8 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     editAndResend,
     continueGeneration,
     handleHumanInput,
+    approvePlan,
+    rejectPlan,
   } = useChat()
 
   const { prepareCompression, getContextConfig } = useWorkspaceCompression()
@@ -398,6 +400,8 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
       onEditAndResend={editAndResend}
       onContinueGeneration={continueGeneration}
       onHumanInput={handleHumanInput}
+      onApprovePlan={approvePlan}
+      onRejectPlan={rejectPlan}
       onSend={handleSend}
       onStop={stopGeneration}
       isStreaming={isStreaming}

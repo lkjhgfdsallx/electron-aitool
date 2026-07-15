@@ -27,7 +27,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, continueGeneration, handleHumanInput } = useChat()
+  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, continueGeneration, handleHumanInput, approvePlan, rejectPlan } = useChat()
 
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
   const kbDropdownRef = useRef<HTMLDivElement>(null)
@@ -423,6 +423,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
       onEditAndResend={editAndResend}
       onContinueGeneration={continueGeneration}
       onHumanInput={handleHumanInput}
+      onApprovePlan={approvePlan}
+      onRejectPlan={rejectPlan}
       onSend={handleSend}
       onStop={stopGeneration}
       isStreaming={isStreaming}

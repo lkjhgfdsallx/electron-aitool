@@ -12,6 +12,7 @@ import { useMCPToolStore } from '../../stores/mcp-tool-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { toolService } from '../../services/tool-service'
+import { isWebTool } from '../../utils/web-tools'
 import type { Tool } from '../../types'
 import { SettingsHeader, SettingsTabs, useConfirmDialog, SettingsEmptyState } from './ui'
 
@@ -66,9 +67,10 @@ export function ToolEditor() {
   const [activeTab, setActiveTab] = useState<DetailTab>('edit')
 
   // 过滤被禁用的通用内置工具
+  // 联网工具不受 disabledBuiltinToolIds 影响，仅由对话框「联网」按钮控制
   const enabledBuiltInTools = useMemo(
     () => BUILT_IN_TOOLS.map((t) =>
-      disabledIds.includes(t.id) ? { ...t, enabled: false } : t
+      !isWebTool(t) && disabledIds.includes(t.id) ? { ...t, enabled: false } : t
     ),
     [disabledIds]
   )
@@ -279,7 +281,7 @@ export function ToolEditor() {
                     onEdit={() => handleSelectTool(tool, 'edit')}
                     onTest={() => handleSelectTool(tool, 'test')}
                     onToggle={
-                      builtinType === 'general'
+                      builtinType === 'general' && !isWebTool(tool)
                         ? () => toggleBuiltinTool(tool.id)
                         : undefined
                     }

@@ -31,6 +31,10 @@ export interface ChatViewCoreProps {
   onEditAndResend?: (messageId: string, content: string) => void
   onContinueGeneration?: (messageId: string) => void
   onHumanInput?: (stepId: string, value: string | string[]) => void
+  /** 批准 Agent 计划（draft → approved） */
+  onApprovePlan?: (plan: import('../../types').AgentPlan) => void
+  /** 拒绝 Agent 计划并要求重新规划 */
+  onRejectPlan?: (plan: import('../../types').AgentPlan, reason?: string) => void
   onSend: (content: string, attachments?: MessageAttachment[]) => void
   onStop: () => void
   isStreaming?: boolean
@@ -58,6 +62,8 @@ export function ChatViewCore({
   onEditAndResend,
   onContinueGeneration,
   onHumanInput,
+  onApprovePlan,
+  onRejectPlan,
   onSend,
   onStop,
   isStreaming,
@@ -149,6 +155,8 @@ export function ChatViewCore({
                   onEditAndResend={onEditAndResend}
                   onContinueGeneration={onContinueGeneration}
                   onHumanInput={onHumanInput}
+                  onApprovePlan={onApprovePlan}
+                  onRejectPlan={onRejectPlan}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={onSwitchBranch}
                 />
