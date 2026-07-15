@@ -559,7 +559,7 @@ describe('runAgent resume 模式', () => {
       expect(msgs[0].role).toBe('user')
     })
 
-    it('启用长期记忆时应按 agentId 注入记忆上下文', async () => {
+    it('启用长期记忆时应按 agentId/crossSession/conversationId 注入记忆上下文', async () => {
       expect.assertions(1)
       const { memoryService } = require('../services/memory-service')
 
@@ -576,7 +576,13 @@ describe('runAgent resume 模式', () => {
         { resume: true, existingSteps: [] },
       )
 
-      expect(memoryService.formatMemoriesAsContext).toHaveBeenCalledWith('test-agent')
+      expect(memoryService.formatMemoriesAsContext).toHaveBeenCalledWith({
+        agentId: 'test-agent',
+        conversationId: 'conv-test',
+        crossSession: false,
+        maxEntries: undefined,
+        maxChars: undefined,
+      })
     })
 
     it('resume 模式应调用 onStatusChange("running")', async () => {

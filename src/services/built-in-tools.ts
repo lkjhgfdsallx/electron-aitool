@@ -323,7 +323,8 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
   {
     id: 'agent-builtin:remember',
     name: 'remember',
-    description: '记住一条关键事实，用于长期记忆。在对话中发现重要信息时调用。',
+    description:
+      '记住一条关键事实，用于长期记忆。作用域由 Agent 的跨会话开关决定：开启则跨对话共享，关闭则仅本对话可见。',
     parameters: {
       type: 'object',
       properties: {
@@ -339,13 +340,50 @@ export const AGENT_BUILTIN_TOOLS: Tool[] = [
   {
     id: 'agent-builtin:recall',
     name: 'recall',
-    description: '回忆之前记住的关键事实。',
+    description: '回忆之前记住的关键事实（按 Agent 跨会话配置过滤可见范围）。',
     parameters: {
       type: 'object',
       properties: {
         key: { type: 'string', description: '要回忆的键名' }
       },
       required: ['key']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'agent-builtin:forget',
+    name: 'forget',
+    description: '删除一条已记住的关键事实（按当前作用域删除对应 key）。用于纠正错误或过期记忆。',
+    parameters: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: '要删除的记忆键名' }
+      },
+      required: ['key']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'agent-builtin:list_memories',
+    name: 'list_memories',
+    description:
+      '列出当前作用域下可见的长期记忆 key 与内容摘要，便于在 recall 前了解已有记忆，避免盲目猜测 key。',
+    parameters: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'number',
+          description: '最多返回条数，默认 50，最大 100',
+        },
+        query: {
+          type: 'string',
+          description: '可选关键词，过滤 key 或 value',
+        },
+      },
     },
     isBuiltIn: true,
     isMCP: false,

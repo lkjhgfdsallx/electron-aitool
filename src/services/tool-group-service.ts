@@ -58,10 +58,12 @@ export const TOOL_GROUP_MAP: Record<ToolGroup, string[]> = {
     'builtin:math_symbolic',
     'builtin:math_verify',
   ],
-  /** 记忆组：记忆、回忆、人工输入、技能 */
+  /** 记忆组：记忆、回忆、遗忘、列表、人工输入、技能 */
   memory: [
     'agent-builtin:remember',
     'agent-builtin:recall',
+    'agent-builtin:forget',
+    'agent-builtin:list_memories',
     'agent-builtin:ask_self',
     'agent-builtin:ask_human',
     'agent-builtin:list_skills',
@@ -309,6 +311,7 @@ export function getToolActionType(tool: Tool): ToolActionType {
   if (
     id.startsWith('agent-builtin:remember') ||
     id.startsWith('agent-builtin:recall') ||
+    id.startsWith('agent-builtin:forget') ||
     id.startsWith('agent-builtin:ask_') ||
     id.startsWith('agent-builtin:') // 其余 agent-builtin 归类为 memory/交互
   ) {

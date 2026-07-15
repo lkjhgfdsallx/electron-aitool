@@ -419,11 +419,13 @@ export const toolService = {
         }
       }
 
-      // P3: remember / recall / math_* 已由 MemoryToolExecutor / MathToolExecutor
+      // P3: remember / recall / forget / list_memories / math_* 已由 MemoryToolExecutor / MathToolExecutor
       // 通过 toolExecutorRegistry 分发处理，此处不再重复实现。
       // 非 Agent 模式（直接调用 toolService.executeTool）走到这里时给出明确提示。
       case 'remember':
       case 'recall':
+      case 'forget':
+      case 'list_memories':
       case 'math_analyze':
       case 'math_algebra':
       case 'math_geometry':

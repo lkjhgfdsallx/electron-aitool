@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react'
-import { MessageSquareDashed, Bot, Plug, Globe, FileText, BookOpen, ChevronDown, Check } from 'lucide-react'
+import { MessageSquareDashed, Bot, Plug, Globe, FileText, BookOpen, ChevronDown, Check, Brain, BrainCircuit } from 'lucide-react'
 import { ChatViewCore } from './ChatViewCore'
 import { AgentSelector } from './AgentSelector'
 import { SiteAnalyzerForm } from './SiteAnalyzerForm'
@@ -27,7 +27,18 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSettings }: ChatWindowProps) {
-  const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases, loadConversationMessages } = useConversationStore()
+  const {
+    currentConversationId,
+    getVisibleMessages,
+    switchBranch,
+    getConversation,
+    setConversationAgent,
+    createConversation,
+    selectConversation,
+    setConversationKnowledgeBases,
+    setMemoryInjectionPaused,
+    loadConversationMessages,
+  } = useConversationStore()
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
@@ -289,6 +300,43 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
           </span>
           <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
         </div>
+      )}
+
+      {/* 长期记忆注入：本对话暂停/恢复 */}
+      {currentAgent?.memoryConfig?.longTermEnabled && currentConversationId && (
+        <button
+          type="button"
+          onClick={() =>
+            setMemoryInjectionPaused(
+              currentConversationId,
+              !currentConversation?.memoryInjectionPaused
+            )
+          }
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+            currentConversation?.memoryInjectionPaused
+              ? 'bg-surface-100 dark:bg-surface-800 text-muted border-surface-200 dark:border-surface-700'
+              : 'bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 border-violet-200/60 dark:border-violet-800/40'
+          }`}
+          title={
+            currentConversation?.memoryInjectionPaused
+              ? '本对话已暂停将长期记忆注入上下文（记忆仍保留，可点击恢复）'
+              : '长期记忆将注入本对话上下文；点击可暂停注入，避免旧记忆污染'
+          }
+        >
+          {currentConversation?.memoryInjectionPaused ? (
+            <>
+              <Brain size={13} />
+              <span className="hidden sm:inline">记忆 · 已暂停</span>
+            </>
+          ) : (
+            <>
+              <BrainCircuit size={13} />
+              <span className="hidden sm:inline">
+                记忆 · {currentAgent.memoryConfig.crossSession ? '跨会话' : '本会话'}
+              </span>
+            </>
+          )}
+        </button>
       )}
 
       {/* 右侧弹性间隔 */}

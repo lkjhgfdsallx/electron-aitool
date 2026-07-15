@@ -28,6 +28,8 @@ const REQUIREMENT_ANALYST_TOOL_IDS = [
   'builtin:knowledge_search',
   'agent-builtin:remember',
   'agent-builtin:recall',
+  'agent-builtin:forget',
+  'agent-builtin:list_memories',
   'agent-builtin:ask_self',
   'agent-builtin:define_requirement',
   'agent-builtin:review_requirements',
@@ -45,6 +47,8 @@ const TASK_DECOMPOSITION_EXECUTOR_TOOL_IDS = [
   // AGENT_BUILTIN_TOOLS
   'agent-builtin:remember',
   'agent-builtin:recall',
+  'agent-builtin:forget',
+  'agent-builtin:list_memories',
   'agent-builtin:ask_self',
   'agent-builtin:ask_human',
   'agent-builtin:define_requirement',
@@ -155,6 +159,8 @@ function createTaskDecompositionExecutor(): AgentProfile {
             'agent-builtin:ask_self',
             'agent-builtin:ask_human',
             'agent-builtin:recall',
+            'agent-builtin:forget',
+            'agent-builtin:list_memories',
             // plan-and-execute：澄清阶段也允许创建计划，以便 Agent 在需要时可以主动创建
             'agent-builtin:create_plan',
             'agent-builtin:get_plan',
@@ -179,6 +185,7 @@ function createTaskDecompositionExecutor(): AgentProfile {
             'builtin:web_search',
             'builtin:fetch_webpage',
             'agent-builtin:remember',
+            'agent-builtin:forget',
             'agent-builtin:define_requirement',
             // plan-and-execute：拆解阶段必须能调用 create_plan
             'agent-builtin:create_plan',
@@ -200,7 +207,8 @@ function createTaskDecompositionExecutor(): AgentProfile {
           label: '逐步执行',
           allowedTools: [
             'builtin:web_search', 'builtin:fetch_webpage', 'builtin:get_current_time', 'builtin:calculate', 'builtin:knowledge_search',
-            'agent-builtin:remember', 'agent-builtin:recall', 'agent-builtin:ask_self', 'agent-builtin:ask_human',
+            'agent-builtin:remember', 'agent-builtin:recall', 'agent-builtin:forget', 'agent-builtin:list_memories',
+            'agent-builtin:ask_self', 'agent-builtin:ask_human',
             'agent-builtin:define_requirement', 'agent-builtin:review_requirements', 'agent-builtin:list_skills', 'agent-builtin:use_skill',
             // plan-and-execute：执行阶段用 update_task / get_plan 跟踪进度
             'agent-builtin:update_task',

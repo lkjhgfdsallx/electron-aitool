@@ -175,6 +175,8 @@ jest.mock('../services/built-in-tools', () => ({
     { id: 'agent-builtin:use_skill', name: 'use_skill' },
     { id: 'agent-builtin:remember', name: 'remember' },
     { id: 'agent-builtin:recall', name: 'recall' },
+    { id: 'agent-builtin:forget', name: 'forget' },
+    { id: 'agent-builtin:list_memories', name: 'list_memories' },
   ],
 }))
 

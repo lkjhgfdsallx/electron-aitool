@@ -125,12 +125,11 @@ describe('createDefaultRunContext', () => {
 })
 
 describe('getAgentBuiltinTools', () => {
-  it('应该返回 remember 和 recall 两个内置工具', () => {
+  it('应该返回 remember、recall、forget、list_memories 四个内置工具', () => {
     const tools = getAgentBuiltinTools()
 
-    expect(tools).toHaveLength(2)
-    expect(tools[0].name).toBe('remember')
-    expect(tools[1].name).toBe('recall')
+    expect(tools).toHaveLength(4)
+    expect(tools.map((t) => t.name)).toEqual(['remember', 'recall', 'forget', 'list_memories'])
   })
 
   it('remember 工具应该有正确的参数定义', () => {
@@ -161,6 +160,36 @@ describe('getAgentBuiltinTools', () => {
         key: { type: 'string', description: '要回忆的键名' },
       },
       required: ['key'],
+    })
+  })
+
+  it('forget 工具应该有正确的参数定义', () => {
+    const tools = getAgentBuiltinTools()
+    const forget = tools.find((t) => t.name === 'forget')
+
+    expect(forget).toBeDefined()
+    expect(forget?.id).toBe('agent-builtin:forget')
+    expect(forget?.parameters).toEqual({
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: '要删除的记忆键名' },
+      },
+      required: ['key'],
+    })
+  })
+
+  it('list_memories 工具应该有正确的参数定义', () => {
+    const tools = getAgentBuiltinTools()
+    const listMemories = tools.find((t) => t.name === 'list_memories')
+
+    expect(listMemories).toBeDefined()
+    expect(listMemories?.id).toBe('agent-builtin:list_memories')
+    expect(listMemories?.parameters).toEqual({
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: '最多返回条数，默认 50，最大 100' },
+        query: { type: 'string', description: '可选关键词，过滤 key 或 value' },
+      },
     })
   })
 

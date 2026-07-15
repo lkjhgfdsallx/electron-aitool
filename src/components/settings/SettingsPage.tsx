@@ -36,7 +36,7 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack, onOpenWo
       case 'ai-providers':
         return <AIProviderManager />
       case 'agents':
-        return <AgentManager />
+        return <AgentManager onOpenConversation={(convId) => { onBack() }} />
       case 'prompts':
         return <PromptManager />
       case 'skills':

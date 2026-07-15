@@ -51,6 +51,7 @@ import {
   type SensitiveDataSummary,
   type TimeRange
 } from '../../services/privacy-service'
+import { memoryService } from '../../services/memory-service'
 import { SettingsHeader, useConfirmDialog, DangerZone, StatusFeedback } from './ui'
 import { WebDAVSection } from './WebDAVSection'
 
@@ -548,12 +549,14 @@ function PrivacySection() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [rangePreview, setRangePreview] = useState<Array<{ id: string; title: string; createdAt: number; messageCount: number }>>([])
+  const [memoryCount, setMemoryCount] = useState(0)
   const { confirm, Dialog } = useConfirmDialog()
 
   // 加载敏感数据摘要
   const loadSummary = useCallback(async () => {
     const data = await scanSensitiveData()
     setSummary(data)
+    setMemoryCount(memoryService.countAll())
   }, [])
 
   useEffect(() => { loadSummary() }, [loadSummary])
@@ -744,6 +747,37 @@ function PrivacySection() {
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
           <EyeOff size={12} /> 清除
+        </button>
+      </div>
+
+      {/* 清除全部 Agent 长期记忆 */}
+      <div className="flex items-center justify-between py-2.5 border-b border-surface-100 dark:border-surface-800">
+        <div>
+          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">清除全部 Agent 长期记忆</div>
+          <div className="text-[11px] text-muted">
+            remember/recall 本地 KV（当前 {memoryCount} 条），不影响对话记录
+          </div>
+        </div>
+        <button
+          onClick={async () => {
+            if (memoryCount === 0) {
+              setStatus({ type: 'info', text: '没有长期记忆' })
+              return
+            }
+            const ok = await confirm({
+              title: '清除全部长期记忆',
+              message: `将删除全部 Agent 的 ${memoryCount} 条长期记忆，不可恢复。确定继续吗？`,
+              confirmLabel: '清除',
+              variant: 'danger',
+            })
+            if (!ok) return
+            const cleared = memoryService.clearAllMemories()
+            setMemoryCount(0)
+            setStatus({ type: 'success', text: `已清除 ${cleared} 条长期记忆` })
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
+        >
+          <Trash2 size={12} /> 清除
         </button>
       </div>
 

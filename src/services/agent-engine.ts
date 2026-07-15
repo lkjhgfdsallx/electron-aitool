@@ -1427,10 +1427,26 @@ export async function runAgent(
   // 过滤出 Agent 启用的工具（统一使用 resolveAgentTools，P2 修复）
   const agentTools = resolveAgentTools(agent, allTools, workspaceContext)
 
-  // 获取记忆上下文
+  // 获取记忆上下文：longTermEnabled + 对话未暂停注入
   let memoryContext = ''
-  if (agent.memoryConfig.longTermEnabled) {
-    memoryContext = memoryService.formatMemoriesAsContext(agent.id)
+  let memoryInjectionPaused = false
+  if (conversationId) {
+    try {
+      const { useConversationStore } = await import('../stores/conversation-store')
+      const conv = useConversationStore.getState().getConversation(conversationId)
+      memoryInjectionPaused = !!conv?.memoryInjectionPaused
+    } catch {
+      // store 不可用时不暂停
+    }
+  }
+  if (agent.memoryConfig.longTermEnabled && !memoryInjectionPaused) {
+    memoryContext = memoryService.formatMemoriesAsContext({
+      agentId: agent.id,
+      conversationId,
+      crossSession: agent.memoryConfig.crossSession !== false,
+      maxEntries: agent.memoryConfig.maxInjectEntries,
+      maxChars: agent.memoryConfig.maxInjectChars,
+    })
   }
 
   // RAG: 检索知识库上下文（优先使用 Agent 绑定的知识库集合）
@@ -1663,6 +1679,9 @@ export async function runAgent(
     agentName: agent.name,
     runId,
     conversationId: conversationId ?? '',
+    memoryCrossSession: agent.memoryConfig.crossSession !== false,
+    memoryInjectionPaused,
+    memoryPauseBlocksRecall: !!agent.memoryConfig.pauseBlocksRecall,
     agentTools,
     resolvedConfig,
     signal,
@@ -1733,14 +1752,15 @@ export function createDefaultRunContext(agentId: string): AgentRunContext {
 }
 
 /**
- * 为 Agent 配置添加 remember 和 recall 内置工具
+ * 为 Agent 配置添加 remember / recall / forget / list_memories 内置工具
  */
 export function getAgentBuiltinTools(): Array<{ id: string; name: string; description: string; parameters: Record<string, unknown> }> {
   return [
     {
       id: 'agent-builtin:remember',
       name: 'remember',
-      description: '记住一条关键事实，用于长期记忆。在对话中发现重要信息时调用。',
+      description:
+        '记住一条关键事实，用于长期记忆。作用域由 Agent 跨会话开关决定。',
       parameters: {
         type: 'object',
         properties: {
@@ -1753,13 +1773,37 @@ export function getAgentBuiltinTools(): Array<{ id: string; name: string; descri
     {
       id: 'agent-builtin:recall',
       name: 'recall',
-      description: '回忆之前记住的关键事实。',
+      description: '回忆之前记住的关键事实（按跨会话配置过滤可见范围）。',
       parameters: {
         type: 'object',
         properties: {
           key: { type: 'string', description: '要回忆的键名' }
         },
         required: ['key']
+      }
+    },
+    {
+      id: 'agent-builtin:forget',
+      name: 'forget',
+      description: '删除一条已记住的关键事实，用于纠正错误或过期记忆。',
+      parameters: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: '要删除的记忆键名' }
+        },
+        required: ['key']
+      }
+    },
+    {
+      id: 'agent-builtin:list_memories',
+      name: 'list_memories',
+      description: '列出当前作用域下可见的长期记忆 key 与内容摘要。',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: '最多返回条数，默认 50，最大 100' },
+          query: { type: 'string', description: '可选关键词，过滤 key 或 value' },
+        },
       }
     }
   ]

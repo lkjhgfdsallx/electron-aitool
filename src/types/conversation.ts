@@ -22,6 +22,11 @@ export interface Conversation {
   activeKnowledgeBaseIds?: string[]
   /** 最后一条消息的预览文本（缓存，避免渲染时加载全部消息） */
   lastMessagePreview?: string
+  /**
+   * 本对话是否暂停将长期记忆注入系统提示词。
+   * 暂停后 remember 仍可写入；recall 仍可读；仅跳过自动注入。
+   */
+  memoryInjectionPaused?: boolean
 }
 
 export type ConversationCreateInput = Omit<Conversation, 'id' | 'createdAt' | 'updatedAt' | 'messageCount'>

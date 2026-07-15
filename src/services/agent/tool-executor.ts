@@ -22,6 +22,21 @@ export interface AgentSessionContext {
   runId: string
   /** 关联的对话 ID（用于 checkpoint 查询） */
   conversationId: string
+  /**
+   * 长期记忆是否跨会话共享。
+   * true（默认）：remember/recall/注入使用 agent 作用域；
+   * false：仅当前 conversationId 的会话记忆。
+   */
+  memoryCrossSession?: boolean
+  /**
+   * 本对话是否暂停了长期记忆自动注入。
+   * 与 memoryPauseBlocksRecall 配合，可阻断 recall/list_memories。
+   */
+  memoryInjectionPaused?: boolean
+  /**
+   * 暂停注入时是否阻断 recall / list_memories（来自 Agent.memoryConfig.pauseBlocksRecall）。
+   */
+  memoryPauseBlocksRecall?: boolean
   /** Agent 可用的工具列表 */
   agentTools: Tool[]
   /** 解析后的 AI 配置 */

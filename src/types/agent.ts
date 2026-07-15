@@ -19,8 +19,17 @@ export interface MemoryConfig {
   historyTurns: number
   /** 是否启用长期记忆 */
   longTermEnabled: boolean
-  /** 是否跨会话记忆 */
+  /** 是否跨会话记忆（true=按 agent 全局共享；false=仅当前对话） */
   crossSession: boolean
+  /** 自动注入最多条数（默认 30） */
+  maxInjectEntries?: number
+  /** 自动注入最大字符数（默认 4000） */
+  maxInjectChars?: number
+  /**
+   * 本对话暂停注入时是否同时阻断 recall / list_memories。
+   * 默认 false：暂停只影响自动注入，Agent 仍可主动召回。
+   */
+  pauseBlocksRecall?: boolean
 }
 
 /**

@@ -22,7 +22,9 @@ const LOCAL_STORAGE_KEYS = [
   'agent-store',
   'ai-providers',
   'custom-tools',
-  'tool-stats'
+  'tool-stats',
+  /** Agent 长期记忆（跨会话/会话级 key-value） */
+  'agent-memory',
 ] as const
 
 /** localStorage 中需要排除的键（已迁移到 IndexedDB） */

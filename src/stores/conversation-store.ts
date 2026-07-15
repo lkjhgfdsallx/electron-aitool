@@ -128,6 +128,8 @@ export interface ConversationStore {
   setConversationAgent: (id: string, agentId: string | undefined) => void
   setConversationAIConfig: (id: string, aiConfig: ConversationAIConfig | undefined) => void
   setConversationKnowledgeBases: (id: string, knowledgeBaseIds: string[] | undefined) => void
+  /** 设置本对话是否暂停长期记忆注入 */
+  setMemoryInjectionPaused: (id: string, paused: boolean) => void
 
   // Workspace Actions
   setConversationWorkspaceId: (id: string, workspaceId: string) => void
@@ -266,6 +268,14 @@ export const useConversationStore = create<ConversationStore>()(
         set((state) => ({
           conversations: state.conversations.map((c) =>
             c.id === id ? { ...c, activeKnowledgeBaseIds: knowledgeBaseIds, updatedAt: Date.now() } : c
+          )
+        }))
+      },
+
+      setMemoryInjectionPaused: (id, paused) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, memoryInjectionPaused: paused, updatedAt: Date.now() } : c
           )
         }))
       },

@@ -44,6 +44,7 @@ import type {
   PromptSection,
 } from '../../types'
 import { AgentWorkflowEditor } from '../chat/AgentWorkflowEditor'
+import { AgentMemoryPanel } from './AgentMemoryPanel'
 import { AgentCategoryBadge } from '../shared/AgentCategoryBadge'
 import {
   groupAgentsByCategory,
@@ -102,9 +103,11 @@ export interface AgentManagerProps {
   initialEditingAgentId?: string
   /** 嵌入弹窗时关闭编辑器 */
   onClose?: () => void
+  /** 点击记忆来源对话链接时回调：跳转对话并退出设置页 */
+  onOpenConversation?: (conversationId: string) => void
 }
 
-export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditingAgentId, onClose }: AgentManagerProps) {
+export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditingAgentId, onClose, onOpenConversation }: AgentManagerProps) {
   const {
     agents: globalAgents, createAgent: createGlobalAgent, updateAgent: updateGlobalAgent, deleteAgent: deleteGlobalAgent,
     duplicateAgent: duplicateGlobalAgent, toggleAgentEnabled: toggleGlobalAgentEnabled,
@@ -643,7 +646,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
                 <div>
                   <span className="text-sm">长期记忆</span>
-                  <p className="text-xs text-muted">记住跨对话的重要信息</p>
+                  <p className="text-xs text-muted">启用后将重要事实写入本地记忆并可注入上下文</p>
                 </div>
                 <button
                   onClick={() =>
@@ -663,9 +666,12 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
                 <div>
                   <span className="text-sm">跨会话记忆</span>
-                  <p className="text-xs text-muted">在不同对话间共享记忆</p>
+                  <p className="text-xs text-muted">
+                    开启：同一 Agent 在不同对话间共享记忆；关闭：记忆仅限当前对话
+                  </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() =>
                     setAgentForm({
                       ...agentForm,
@@ -680,8 +686,91 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                   {agentForm.memoryConfig.crossSession ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
                 </button>
               </label>
+
+              {agentForm.memoryConfig.longTermEnabled && (
+                <>
+                  <div>
+                    <label className="block text-xs text-muted mb-1.5">
+                      自动注入最多条数：{agentForm.memoryConfig.maxInjectEntries ?? 30}
+                    </label>
+                    <input
+                      type="range"
+                      min="5"
+                      max="100"
+                      step="5"
+                      value={agentForm.memoryConfig.maxInjectEntries ?? 30}
+                      onChange={(e) =>
+                        setAgentForm({
+                          ...agentForm,
+                          memoryConfig: {
+                            ...agentForm.memoryConfig,
+                            maxInjectEntries: parseInt(e.target.value, 10),
+                          },
+                        })
+                      }
+                      className="w-full accent-500"
+                    />
+                    <p className="text-[11px] text-muted mt-1">默认 30；过大可能占用上下文窗口</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted mb-1.5">
+                      自动注入最大字符数：{agentForm.memoryConfig.maxInjectChars ?? 4000}
+                    </label>
+                    <input
+                      type="range"
+                      min="500"
+                      max="12000"
+                      step="500"
+                      value={agentForm.memoryConfig.maxInjectChars ?? 4000}
+                      onChange={(e) =>
+                        setAgentForm({
+                          ...agentForm,
+                          memoryConfig: {
+                            ...agentForm.memoryConfig,
+                            maxInjectChars: parseInt(e.target.value, 10),
+                          },
+                        })
+                      }
+                      className="w-full accent-500"
+                    />
+                    <p className="text-[11px] text-muted mt-1">默认 4000；按条累计截断</p>
+                  </div>
+                  <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
+                    <div>
+                      <span className="text-sm">暂停时阻断召回</span>
+                      <p className="text-xs text-muted">
+                        高级：本对话暂停注入时，同时禁止 recall / list_memories（默认仅跳过自动注入）
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAgentForm({
+                          ...agentForm,
+                          memoryConfig: {
+                            ...agentForm.memoryConfig,
+                            pauseBlocksRecall: !agentForm.memoryConfig.pauseBlocksRecall,
+                          },
+                        })
+                      }
+                      className={agentForm.memoryConfig.pauseBlocksRecall ? 'text-accent-500' : 'text-muted'}
+                    >
+                      {agentForm.memoryConfig.pauseBlocksRecall ? (
+                        <ToggleRight size={24} />
+                      ) : (
+                        <ToggleLeft size={24} />
+                      )}
+                    </button>
+                  </label>
+                </>
+              )}
             </div>
           </div>
+
+          {/* 已存记忆管理（编辑已有 Agent 时展示） */}
+          {editingAgent && (
+            <AgentMemoryPanel agentId={editingAgent.id} agentName={agentForm.name} onOpenConversation={onOpenConversation} />
+          )}
 
           {/* 终止条件 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
