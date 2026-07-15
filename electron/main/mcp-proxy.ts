@@ -226,7 +226,7 @@ class MCPServerProcess {
     const result = await this.sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: {},
-      clientInfo: { name: 'electron-aitool', version: '1.0.0' }
+      clientInfo: { name: 'LocalForge', version: '1.0.0' }
     })
     console.log(`[MCP:${this.config.name}] 初始化成功:`, result)
 

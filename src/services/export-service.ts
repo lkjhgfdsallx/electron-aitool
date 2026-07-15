@@ -390,7 +390,7 @@ export function exportToHTML(
   </div>
   ${messagesHTML}
   <div class="footer">
-    由 Electron AI Tool 导出 · ${formatTimestamp(Date.now())}
+    由 LocalForge 导出 · ${formatTimestamp(Date.now())}
   </div>
 </body>
 </html>`
@@ -507,7 +507,7 @@ export function batchExportConversations(
   </div>
   ${bodies.join('<hr style="margin:48px 0;border:1px solid #e9ecef;"/>')}
   <div style="text-align:center;padding:24px 0;color:#6c757d;font-size:12px;border-top:1px solid #e9ecef;margin-top:32px;">
-    由 Electron AI Tool 批量导出 · ${formatTimestamp(Date.now())}
+    由 LocalForge 批量导出 · ${formatTimestamp(Date.now())}
   </div>
 </body>
 </html>`,

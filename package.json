@@ -1,9 +1,9 @@
 {
-  "name": "electron-aitool",
+  "name": "localforge",
   "version": "1.0.0",
-  "description": "AI Chat Tool built with Electron + React",
+  "description": "LocalForge — Forge AI. Locally. Privately. Desktop AI workbench (Electron + React)",
   "main": "./out/main/index.js",
-  "author": "electron-aitool",
+  "author": "LocalForge",
   "license": "MIT",
   "scripts": {
     "dev": "node dev.cjs",

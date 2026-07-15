@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react'
+import { BrandLogo } from '../brand'
 import { WindowControls } from './WindowControls'
 
 /**
@@ -14,12 +14,10 @@ export function TitleBar() {
     >
       {/* 左侧：品牌标识 */}
       <div className="flex items-center gap-2 pl-3" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        <div className="flex items-center justify-center w-5 h-5 rounded-md bg-gradient-brand shadow-sm">
-          <Sparkles size={11} className="text-white" />
-        </div>
-        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 tracking-tight">
-          AI Tool
-        </span>
+        <BrandLogo
+          size="xs"
+          wordmarkClassName="text-gray-700 dark:text-gray-300"
+        />
       </div>
 
       {/* 中间：可拖拽空白区域 */}

@@ -48,7 +48,11 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
               onOpenSettings={() => onOpenSettings()}
               onBackToChat={onCloseSettings}
             />
-            <ChatWindow onOpenAgentManager={() => onOpenSettings('agents')} onOpenPromptManager={() => onOpenSettings('prompts')} />
+            <ChatWindow
+              onOpenAgentManager={() => onOpenSettings('agents')}
+              onOpenPromptManager={() => onOpenSettings('prompts')}
+              onOpenSettings={onOpenSettings}
+            />
           </>
         )
     }
@@ -67,7 +71,11 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
               onBackToChat={onCloseSettings}
             />
             <div className="flex-1 flex min-h-0">
-              <ChatWindow onOpenAgentManager={() => onOpenSettings('agents')} onOpenPromptManager={() => onOpenSettings('prompts')} />
+              <ChatWindow
+                onOpenAgentManager={() => onOpenSettings('agents')}
+                onOpenPromptManager={() => onOpenSettings('prompts')}
+                onOpenSettings={onOpenSettings}
+              />
             </div>
           </>
         )}

@@ -5,14 +5,14 @@
  */
 
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
-import { Bot, RotateCcw, Plus, MessageSquare, Trash2, ChevronDown } from 'lucide-react'
+import { Bot, RotateCcw, Plus, MessageSquare, Trash2, ChevronDown, Settings } from 'lucide-react'
 import { ChatViewCore } from '../chat/ChatViewCore'
 import { CompressionIndicator } from './CompressionIndicator'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
-import { useChat } from '../../hooks/use-chat'
+import { useChat, hasUsableAIProvider, MISSING_AI_PROVIDER_MESSAGE } from '../../hooks/use-chat'
 import { useWorkspaceCompression } from '../../hooks/use-workspace-compression'
 import { formatRelativeTime } from '../../utils/format-time'
 import type { Workspace, Message, MessageAttachment, PromptRuntimeContext } from '../../types'
@@ -28,9 +28,10 @@ interface CompressionData {
 
 interface WorkspaceChatPanelProps {
   workspace: Workspace
+  onOpenSettings?: (section?: string) => void
 }
 
-export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
+export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatPanelProps) {
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const { getVisibleMessages, getMessages, switchBranch, getConversation,
@@ -39,6 +40,14 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const getLeaderAgent = useWorkspaceAgentStore((s) => s.getLeaderAgent)
+
+  const handleMissingProvider = useCallback(() => {
+    if (onOpenSettings) {
+      onOpenSettings('ai-providers')
+    } else {
+      window.alert(MISSING_AI_PROVIDER_MESSAGE)
+    }
+  }, [onOpenSettings])
 
   const {
     sendMessage,
@@ -49,7 +58,11 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     handleHumanInput,
     approvePlan,
     rejectPlan,
-  } = useChat()
+  } = useChat({
+    onMissingProvider: handleMissingProvider
+  })
+
+  const hasAIProvider = hasUsableAIProvider()
 
   const { prepareCompression, getContextConfig } = useWorkspaceCompression()
 
@@ -196,16 +209,24 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
     }
   }, [conversationId, getContextConfig, estimateTokens, prepareCompression])
 
+  const ensureProviderOrOpenSettings = useCallback((): boolean => {
+    if (hasUsableAIProvider()) return true
+    handleMissingProvider()
+    return false
+  }, [handleMissingProvider])
+
   const handleSend = useCallback(
     async (content: string, attachments?: MessageAttachment[]) => {
       if (!conversationId) return
+      // 前置校验：无 AI 源时直接引导配置，避免先进入“思考中”
+      if (!ensureProviderOrOpenSettings()) return
       sendMessage(content, conversationId, attachments)
       setTimeout(() => {
         const msgs = getMessages(conversationId)
         checkAndCompress(msgs)
       }, 100)
     },
-    [conversationId, sendMessage, getMessages, checkAndCompress]
+    [conversationId, sendMessage, getMessages, checkAndCompress, ensureProviderOrOpenSettings]
   )
 
   const handleSwitchBranch = useCallback(
@@ -352,23 +373,46 @@ export function WorkspaceChatPanel({ workspace }: WorkspaceChatPanelProps) {
           <Bot size={28} className="text-teal-500" />
         )}
       </div>
-      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-        {leaderAgent?.name || 'AI 领导'} 就绪
-      </h3>
-      <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs mb-4">
-        在此输入指令，AI 将分析任务、拆解步骤并协调执行。
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
-        {['检查代码质量', '重构重复函数', '添加单元测试'].map((suggestion) => (
+      {!hasAIProvider ? (
+        <>
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            尚未配置 AI 源
+          </h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs mb-4">
+            {MISSING_AI_PROVIDER_MESSAGE}
+          </p>
           <button
-            key={suggestion}
-            onClick={() => handleSend(suggestion)}
-            className="px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+            onClick={handleMissingProvider}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 transition-colors"
           >
-            {suggestion}
+            <Settings size={13} />
+            去配置 AI 源
           </button>
-        ))}
-      </div>
+        </>
+      ) : (
+        <>
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            {leaderAgent?.name || 'AI 领导'} 就绪
+          </h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs mb-4">
+            在此输入指令，AI 将分析任务、拆解步骤并协调执行。
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {['检查代码质量', '重构重复函数', '添加单元测试'].map((suggestion) => (
+              <button
+                key={suggestion}
+                onClick={() => {
+                  if (!ensureProviderOrOpenSettings()) return
+                  handleSend(suggestion)
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs text-gray-500 dark:text-gray-400 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 

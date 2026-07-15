@@ -721,7 +721,10 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 />
               </div>
             ) : (
-              <WorkspaceChatPanel workspace={activeWorkspace} />
+              <WorkspaceChatPanel
+                workspace={activeWorkspace}
+                onOpenSettings={onOpenSettings}
+              />
             )}
           </div>
         </div>

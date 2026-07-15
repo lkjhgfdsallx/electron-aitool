@@ -4,13 +4,16 @@ import { ChatViewCore } from './ChatViewCore'
 import { AgentSelector } from './AgentSelector'
 import { SiteAnalyzerForm } from './SiteAnalyzerForm'
 import type { SiteAnalyzerFormData } from './SiteAnalyzerForm'
+import { BrandLogo } from '../brand'
+import { BRAND } from '../../constants/brand'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
-import { useChat } from '../../hooks/use-chat'
+import { useChat, hasUsableAIProvider, MISSING_AI_PROVIDER_MESSAGE } from '../../hooks/use-chat'
 import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
 import type { Message, MessageAttachment, PromptRuntimeContext } from '../../types'
+import type { SettingsSection } from '../settings/SettingsNavRail'
 
 /** ⚡ 稳定的空数组引用，避免每次渲染创建新的 [] 导致 useMemo 失效 */
 const EMPTY_MESSAGES: Message[] = []
@@ -20,14 +23,33 @@ type MessageAlignment = 'left-right' | 'all-left' | 'all-right' | 'full-width'
 interface ChatWindowProps {
   onOpenPromptManager?: () => void
   onOpenAgentManager?: () => void
+  onOpenSettings?: (section?: SettingsSection) => void
 }
 
-export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWindowProps) {
+export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSettings }: ChatWindowProps) {
   const { currentConversationId, getVisibleMessages, switchBranch, getConversation, setConversationAgent, createConversation, selectConversation, setConversationKnowledgeBases, loadConversationMessages } = useConversationStore()
   const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, continueGeneration, handleHumanInput, approvePlan, rejectPlan } = useChat()
+
+  const handleMissingProvider = useCallback(() => {
+    if (onOpenSettings) {
+      onOpenSettings('ai-providers')
+    } else {
+      window.alert(MISSING_AI_PROVIDER_MESSAGE)
+    }
+  }, [onOpenSettings])
+
+  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, continueGeneration, handleHumanInput, approvePlan, rejectPlan } = useChat({
+    onMissingProvider: handleMissingProvider
+  })
+
+  /** 欢迎页/快捷问题前置校验：无 AI 源时不创建空对话 */
+  const ensureProviderOrOpenSettings = useCallback((): boolean => {
+    if (hasUsableAIProvider()) return true
+    handleMissingProvider()
+    return false
+  }, [handleMissingProvider])
 
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false)
   const kbDropdownRef = useRef<HTMLDivElement>(null)
@@ -89,6 +111,9 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
   /** 将表单数据格式化为消息并发送 */
   const handleAnalyzerFormSubmit = useCallback(
     (formData: SiteAnalyzerFormData) => {
+      // 无 AI 源时不发起分析，直接引导配置
+      if (!ensureProviderOrOpenSettings()) return
+
       const lines: string[] = [
         `请分析以下网站：`,
         ``,
@@ -129,7 +154,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
       const content = lines.join('\n')
       sendMessage(content)
     },
-    [sendMessage]
+    [sendMessage, ensureProviderOrOpenSettings]
   )
 
   const handleSend = useCallback(
@@ -180,19 +205,18 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
         <div className="max-w-2xl w-full px-6 py-12 text-center animate-fade-in-up">
           {/* Logo + 标题 */}
           <div className="flex items-center justify-center mb-6">
-            <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-brand shadow-lg shadow-accent-500/20">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-white">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity="0.9" />
-                <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-              </svg>
+            <div className="shadow-lg shadow-accent-500/20 rounded-2xl">
+              <BrandLogo size="lg" showWordmark={false} />
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2 tracking-tight">
-            欢迎使用 <span className="text-gradient-warm">AI Tool</span>
+            欢迎使用 <span className="text-gradient-warm">{BRAND.name}</span>
           </h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+            {BRAND.tagline}
+          </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
-            智能对话助手，支持 Agent 自主任务、MCP 工具集成、网站分析等功能
+            {BRAND.taglineZh} · {BRAND.welcomeDescription}
           </p>
 
           {/* 功能亮点卡片 */}
@@ -223,6 +247,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
                 <button
                   key={i}
                   onClick={() => {
+                    // 无 AI 源时不创建空对话，直接引导配置
+                    if (!ensureProviderOrOpenSettings()) return
                     // 创建新对话并发送提示词
                     const conv = createConversation(prompt.text.slice(0, 20) + '...')
                     selectConversation(conv.id)
@@ -396,6 +422,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager }: ChatWind
             <button
               key={i}
               onClick={() => {
+                if (!ensureProviderOrOpenSettings()) return
                 sendMessage(prompt.text)
               }}
               className="group flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/80 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all text-left"

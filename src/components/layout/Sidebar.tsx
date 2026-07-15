@@ -1,6 +1,7 @@
 import { Plus, PanelLeftClose, PanelLeft, Settings, Database, Briefcase } from 'lucide-react'
 import { ConversationList } from '../conversation/ConversationList'
 import { ResizeHandle } from '../shared/ResizeHandle'
+import { BrandLogo } from '../brand'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
@@ -97,19 +98,7 @@ export function Sidebar({ viewMode, onOpenSettings, onOpenKnowledgeBase, onOpenW
       {/* 品牌区 */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-brand shadow-sm">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="text-white">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity="0.9" />
-                <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight">AI Tool</h1>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">v1.0</p>
-            </div>
-          </div>
+          <BrandLogo size="md" showVersion />
           <button
             onClick={toggleSidebar}
             className="p-1.5 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all"

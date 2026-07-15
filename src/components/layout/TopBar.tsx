@@ -4,12 +4,12 @@ import {
   Moon,
   Sun,
   Monitor,
-  Sparkles
 } from 'lucide-react'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { ModelSelector } from '../chat/ModelSelector'
+import { BrandLogo } from '../brand'
 import type { ThemeMode } from '../../types'
 import type { ViewMode } from '../settings/SettingsNavRail'
 
@@ -48,12 +48,7 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
     >
       {/* 左侧：品牌标识 */}
       <div className="flex items-center gap-2.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-brand shadow-sm">
-          <Sparkles size={15} className="text-white" />
-        </div>
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 tracking-tight">
-          AI Tool
-        </span>
+        <BrandLogo size="sm" wordmarkClassName="text-gray-800 dark:text-gray-200" />
       </div>
 
       {/* 中间：当前对话标题 或 设置页面标题 */}

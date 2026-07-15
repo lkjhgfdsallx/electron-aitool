@@ -1,5 +1,5 @@
-appId: com.electron-aitool.app
-productName: AI Chat Tool
+appId: com.localforge.app
+productName: LocalForge
 directories:
   buildResources: build
   output: dist
@@ -18,7 +18,7 @@ nsis:
   deleteAppDataOnUninstall: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: AI Chat Tool
+  shortcutName: LocalForge
 mac:
   target:
     - target: dmg

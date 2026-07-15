@@ -40,7 +40,7 @@ function createSandbox(args: Record<string, unknown>, timeout: number): Record<s
       const mod = parsedUrl.protocol === 'https:' ? https : http
       const method = init?.method || 'GET'
       const headers: Record<string, string> = {
-        'User-Agent': 'electron-aitool-custom-tool/1.0'
+        'User-Agent': 'LocalForge-custom-tool/1.0'
       }
       if (init?.headers) {
         if (init.headers instanceof Headers) {

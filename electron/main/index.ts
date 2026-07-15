@@ -23,6 +23,9 @@ function createWindow(): BrowserWindow {
     show: false,
     frame: false,
     autoHideMenuBar: true,
+    // 开发态任务栏图标；打包后由 electron-builder 使用 build/icon.png
+    icon: join(__dirname, '../../build/icon.png'),
+    title: 'LocalForge',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -100,7 +103,7 @@ function nodeFetch(url: string, maxRedirects = 5): Promise<Buffer> {
     }
 
     const mod = url.startsWith('https') ? https : http
-    const req = mod.get(url, { headers: { 'User-Agent': 'electron-aitool/1.0' } }, (res) => {
+    const req = mod.get(url, { headers: { 'User-Agent': 'LocalForge/1.0' } }, (res) => {
       const status = res.statusCode ?? 0
 
       // 跟随重定向
