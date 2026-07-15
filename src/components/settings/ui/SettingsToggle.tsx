@@ -16,9 +16,9 @@ export interface SettingsToggleProps {
 /**
  * 统一 Toggle 开关组件。
  *
- * 使用 CSS 滑块模式，统一 accent-500 品牌色，替代项目中 3 种不同的 Toggle 实现。
- * - 标准尺寸 (md): w-11 h-6，translate-x-5，用于表单面板
- * - 紧凑尺寸 (sm): w-9 h-5，translate-x-4，用于内联/弹窗/变量输入
+ * 使用与 MCP 扩展服务页一致的 CSS 滑块模式，统一 accent-500 品牌色。
+ * - 标准尺寸 (md): w-11 h-6，knob h-4 w-4，开启 translate-x-6
+ * - 紧凑尺寸 (sm): w-9 h-5，knob h-3.5 w-3.5，开启 translate-x-4
  */
 export function SettingsToggle({
   checked,
@@ -30,17 +30,13 @@ export function SettingsToggle({
   icon: Icon,
   className,
 }: SettingsToggleProps) {
-  const trackClass =
-    size === 'md'
-      ? 'w-11 h-6'
-      : 'w-9 h-5'
-
-  const knobClass =
-    size === 'md'
-      ? 'left-0.5 top-0.5 w-5 h-5 translate-x-5'
-      : 'left-0.5 top-0.5 w-4 h-4 translate-x-4'
-
-  const knobTranslate = checked ? (size === 'md' ? 'translate-x-5' : 'translate-x-4') : 'translate-x-0.5'
+  const trackClass = size === 'md' ? 'h-6 w-11' : 'h-5 w-9'
+  const knobSizeClass = size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5'
+  const knobTranslate = checked
+    ? size === 'md'
+      ? 'translate-x-6'
+      : 'translate-x-4'
+    : 'translate-x-1'
 
   return (
     <div className={`flex items-center justify-between gap-3 ${className ?? ''}`}>
@@ -61,7 +57,7 @@ export function SettingsToggle({
         type="button"
         onClick={() => onChange(!checked)}
         disabled={disabled}
-        className={`relative flex-shrink-0 rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 ${trackClass} ${
+        className={`relative inline-flex flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 ${trackClass} ${
           checked ? 'bg-accent-500' : 'bg-surface-300 dark:bg-surface-600'
         }`}
         role="switch"
@@ -69,7 +65,7 @@ export function SettingsToggle({
         aria-label={label || (checked ? '关闭' : '开启')}
       >
         <span
-          className={`absolute rounded-full bg-white shadow-sm transition-transform ${size === 'md' ? 'w-5 h-5 top-0.5' : 'w-4 h-4 top-0.5'} ${knobTranslate}`}
+          className={`inline-block transform rounded-full bg-white shadow-sm transition-transform ${knobSizeClass} ${knobTranslate}`}
         />
       </button>
     </div>

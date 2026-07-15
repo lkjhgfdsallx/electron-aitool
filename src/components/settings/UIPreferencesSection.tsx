@@ -106,28 +106,28 @@ export function UIPreferencesSection() {
     applyCSSVariables(settings)
   }, [settings.fontFamily, settings.codeFontFamily, settings.fontSize, settings.codeFontSize, settings.sidebarWidth])
 
-  const toggleItems: { label: string; desc: string; checked: boolean; onChange: () => void }[] = [
+  const toggleItems: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }[] = [
     {
       label: '显示 Token 用量',
-      desc: '在消息气泡下方显示 Token 消耗信息',
+      description: '在消息气泡下方显示 Token 消耗信息',
       checked: settings.showTokenUsage,
       onChange: () => settings.toggleTokenUsage()
     },
     {
       label: '显示时间戳',
-      desc: '在消息气泡下方显示发送时间',
+      description: '在消息气泡下方显示发送时间',
       checked: settings.showTimestamp,
       onChange: () => settings.toggleTimestamp()
     },
     {
       label: 'Enter 发送消息',
-      desc: '按 Enter 键直接发送，Shift+Enter 换行',
+      description: '按 Enter 键直接发送，Shift+Enter 换行',
       checked: settings.sendWithEnter,
       onChange: () => settings.setSendWithEnter(!settings.sendWithEnter)
     },
     {
       label: '联网搜索',
-      desc: '允许 AI 在回答时搜索互联网获取最新信息',
+      description: '允许 AI 在回答时搜索互联网获取最新信息',
       checked: settings.webSearchEnabled,
       onChange: () => settings.toggleWebSearch()
     }
