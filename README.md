@@ -1,66 +1,98 @@
-# LocalForge
+<p align="center">
+  <img src="build/icon-256.png" alt="LocalForge" width="128" height="128" />
+</p>
 
-**Forge AI. Locally. Privately.**
-**本地锻造你的 AI 工作台 — 无需登录、纯本地运行的桌面端专业 AI 助手。**
+<h1 align="center">LocalForge</h1>
 
-把你的 API Key 握在自己手里，所有对话、知识库、Agent 配置与工作区数据均在本机存储——不经过任何第三方中转服务器，不要求账号体系，也没有云端同步强制上传。
+<p align="center">
+  <strong>Forge AI. Locally. Privately.</strong><br />
+  <em>本地锻造你的 AI 工作台</em>
+</p>
 
-你可以用 OpenAI / DeepSeek 等云端模型，也可以接 Ollama 本地模型；向量检索、文件解析、记忆与备份全部在本地完成。即使断网，历史对话与知识库仍可查阅。
+<p align="center">
+  无需登录 · 纯本地运行 · 密钥自持 · 专业 AI 桌面工作台
+</p>
+
+<p align="center">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-3b82f6?style=flat-square" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8b5cf6?style=flat-square" />
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron&logoColor=white" />
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" />
+  <img alt="Privacy" src="https://img.shields.io/badge/privacy-local--first-22c55e?style=flat-square" />
+</p>
+
+<p align="center">
+  <a href="#-项目启动"><strong>快速开始</strong></a>
+  ·
+  <a href="#-功能总览"><strong>功能</strong></a>
+  ·
+  <a href="#-核心理念"><strong>理念</strong></a>
+  ·
+  <a href="#-开源协议"><strong>协议</strong></a>
+</p>
+
+---
+
+把你的 **API Key** 握在自己手里。对话、知识库、Agent 配置与工作区数据全部存在本机——**不经第三方中转**、**不要求账号**、也没有强制云端上传。
+
+| 云端模型 | 本地模型 | 离线可用 |
+|:--------:|:--------:|:--------:|
+| OpenAI / DeepSeek 等 | Ollama 等本机推理 | 历史对话与知识库可查阅 |
+
+向量检索、文件解析、记忆与备份均在本地完成；Base URL 指向 `localhost` 时，可不填 Key，推理也可完全留在本机。
 
 ---
 
 ## 目录
 
-- [核心理念](#-核心理念)
-- [功能总览](#-功能总览)
-- [界面与导航](#-界面与导航)
-- [智能对话](#-智能对话)
-- [Agent 智能体](#-agent-智能体)
-- [工具系统](#-工具系统)
-- [知识库](#-知识库)
-- [工作区](#-工作区)
-- [提示词与 Skills](#-提示词与-skills)
-- [数据与隐私](#-数据与隐私)
-- [设置指南](#️-设置指南)
-- [配置参考](#-配置参考)
-- [使用指南](#-使用指南)
-- [工作指南（工作区完整流程）](#-工作指南工作区完整流程)
-- [项目启动](#-项目启动)
-- [技术栈](#️-技术栈)
-- [开源协议](#-开源协议)
+| 入门 | 能力 | 深入 |
+|:-----|:-----|:-----|
+| [核心理念](#-核心理念) | [智能对话](#-智能对话) | [设置指南](#️-设置指南) |
+| [功能总览](#-功能总览) | [Agent 智能体](#-agent-智能体) | [配置参考](#-配置参考) |
+| [界面与导航](#-界面与导航) | [工具系统](#-工具系统) · [知识库](#-知识库) | [使用指南](#-使用指南) |
+| [项目启动](#-项目启动) | [工作区](#-工作区) · [提示词与 Skills](#-提示词与-skills) | [工作指南](#-工作指南工作区完整流程) |
+| [技术栈](#️-技术栈) | [数据与隐私](#-数据与隐私) | [开源协议](#-开源协议) |
 
 ---
 
 ## 🔒 核心理念
 
-| 理念 | 说明 |
+| | 理念 | 说明 |
+|:--:|:-----|:-----|
+| 🚪 | **无需登录** | 打开即可用。不注册、不登录、不绑定手机号或第三方账号。 |
+| 💻 | **纯本地优先** | 对话元数据与消息、知识库文件与向量、Agent/提示词/Skills、工作区配置与检查点索引均保存在本机（localStorage + IndexedDB + 工作区目录内的 VCS 数据）。 |
+| 🔑 | **密钥自持** | API Key 仅存在你本机的配置中。请求由 Electron 应用直接发往你配置的 Base URL（OpenAI / DeepSeek / Ollama 等），无强制中转。 |
+| 🛡️ | **隐私可控** | 提供一键清除 API Key、按时间段清理对话、导出/备份/恢复、缓存与存储用量统计，敏感数据可自助清洗。 |
+| ⚒️ | **专业工具链** | 不仅是聊天窗口：Agent 规划与工具调用、MCP 扩展、本地知识库、工作区文件/终端/检查点、网站分析、联网搜索、数学工具、提示词工程与 Skills 打包，构成完整专业 AI 工作台。 |
+
+<details>
+<summary><strong>本地 vs 网络边界（点开查看）</strong></summary>
+
+<br />
+
+| 边界 | 内容 |
 |------|------|
-| **无需登录** | 打开即可用。不注册、不登录、不绑定手机号或第三方账号。 |
-| **纯本地优先** | 对话元数据与消息、知识库文件与向量、Agent/提示词/Skills、工作区配置与检查点索引均保存在本机（localStorage + IndexedDB + 工作区目录内的 VCS 数据）。 |
-| **密钥自持** | API Key 仅存在你本机的配置中。请求由 Electron 应用直接发往你配置的 Base URL（OpenAI / DeepSeek / Ollama 等），无强制中转。 |
-| **隐私可控** | 提供一键清除 API Key、按时间段清理对话、导出/备份/恢复、缓存与存储用量统计，敏感数据可自助清洗。 |
-| **专业工具链** | 不仅是聊天窗口：Agent 规划与工具调用、MCP 扩展、本地知识库、工作区文件/终端/检查点、网站分析、联网搜索、数学工具、提示词工程与 Skills 打包，构成完整专业 AI 工作台。 |
+| **始终本地** | UI、对话存储、知识库分块与向量、BM25、文件树、检查点、记忆 KV、设置与备份打包 |
+| **仅在你启用时出网** | 你配置的 LLM API；`web_search` / `fetch_webpage`；MCP 子进程与外部服务器；网站分析爬取与 AI 分析接口；可选 **WebDAV** 备份 |
+| **本地模型路径** | Base URL 指向 `localhost` / `127.0.0.1`（如 Ollama）时，可不填 API Key，对话与推理可完全在本机完成 |
 
-**本地 vs 网络边界（务必理解）：**
-
-- **始终本地**：UI、对话存储、知识库分块与向量、BM25、文件树、检查点、记忆 KV、设置与备份打包。
-- **仅在你启用时出网**：调用你配置的 LLM API；`web_search` / `fetch_webpage`（联网工具）；MCP 子进程与外部服务器；网站分析器启动的浏览器爬取与对 AI 分析接口的调用；可选 **WebDAV** 备份上传/下载。
-- **本地模型路径**：Base URL 指向 `localhost` / `127.0.0.1`（如 Ollama）时，可不填 API Key，对话与推理可完全在本机完成。
+</details>
 
 ---
 
 ## ✨ 功能总览
 
 | 模块 | 你能做什么 |
-|------|-----------|
-| **智能对话** | 多服务商/多模型、流式输出、思考链、图片附件、编辑/重生成/继续生成、Token 用量、系统通知与提示音 |
-| **Agent** | ReAct / Plan-and-Execute / Trial-and-Error、结构化计划（create_plan）、工作流状态机、人机选择题、步骤可视化、Todo 面板 |
-| **工具** | 内置联网/计算/知识库/数学/记忆/需求/网站分析/工作区工具；MCP；自定义工具；工具组权限与自动审批 |
-| **知识库** | 多集合、多格式上传、本地嵌入、混合检索、对话注入、查询模拟器、分块/检索参数可配 |
-| **工作区** | 绑定文件夹、Leader/团队 Agent、文件读写与命令审批、终端面板、检查点与还原、上下文压缩、Slash 命令、项目模板 |
-| **提示词 / Skills** | 模板变量、`{{kb:}}` / `{{tool:}}` 注入、提示词链、版本历史与 diff、演练场；Skills 的 SKILL.md + 资源包导入导出 |
-| **数据管理** | 全量 ZIP 备份恢复、可选 WebDAV 云端同步、对话 JSON/Markdown/HTML 导出、缓存清理、隐私清洗 |
-| **界面** | 自定义标题栏、侧栏对话列表、主题与字体、快捷键、设置搜索与导航轨 |
+|:-----|:-----------|
+| 💬 **智能对话** | 多服务商/多模型、流式输出、思考链、图片附件、编辑/重生成/继续生成、Token 用量、系统通知与提示音 |
+| 🕵️ **Agent** | ReAct / Plan-and-Execute / Trial-and-Error、结构化计划（create_plan）、工作流状态机、人机选择题、步骤可视化、Todo 面板 |
+| 🧰 **工具** | 内置联网/计算/知识库/数学/记忆/需求/网站分析/工作区工具；MCP；自定义工具；工具组权限与自动审批 |
+| 📚 **知识库** | 多集合、多格式上传、本地嵌入、混合检索、对话注入、查询模拟器、分块/检索参数可配 |
+| 🗂️ **工作区** | 绑定文件夹、Leader/团队 Agent、文件读写与命令审批、终端面板、检查点与还原、上下文压缩、Slash 命令、项目模板 |
+| 📝 **提示词 / Skills** | 模板变量、`{{kb:}}` / `{{tool:}}` 注入、提示词链、版本历史与 diff、演练场；Skills 的 SKILL.md + 资源包导入导出 |
+| 💾 **数据管理** | 全量 ZIP 备份恢复、可选 WebDAV 云端同步、对话 JSON/Markdown/HTML 导出、缓存清理、隐私清洗 |
+| 🎨 **界面** | 自定义标题栏、侧栏对话列表、主题与字体、快捷键、设置搜索与导航轨 |
 
 ---
 
@@ -586,10 +618,12 @@ Memory · Requirement · HumanInput · SiteAnalyzer · Workspace · Math · Plan
 
 ## 🚀 项目启动
 
-### 环境
+### 环境要求
 
-- Node.js >= 18  
-- pnpm >= 8  
+| 依赖 | 版本 |
+|------|------|
+| Node.js | ≥ 18 |
+| pnpm | ≥ 8 |
 
 ### 开发
 
@@ -598,13 +632,9 @@ pnpm install    # 依赖安装；postinstall 会处理 chromium-bidi 兼容与 e
 pnpm dev        # 经 dev.cjs 清理 ELECTRON_RUN_AS_NODE 后启动 electron-vite dev
 ```
 
-若在 **VS Code / Cursor** 集成终端中 Electron 无法正常初始化，请使用：
-
-```bash
-node dev.cjs
-```
-
-（VS Code 自身作为 Electron 应用可能注入 `ELECTRON_RUN_AS_NODE`，导致子 Electron 行为异常；[`dev.cjs`](dev.cjs) 会删除该变量。）
+> **VS Code / Cursor 终端提示**
+> 集成终端里 Electron 若无法正常初始化，请改用 `node dev.cjs`。
+> 宿主编辑器可能注入 `ELECTRON_RUN_AS_NODE`；[`dev.cjs`](dev.cjs) 会清除该变量后再启动。
 
 ### 构建与打包
 
@@ -617,7 +647,7 @@ pnpm build:unpack    # 未打包目录输出
 pnpm preview         # 预览构建结果
 ```
 
-产物目录以 electron-builder 配置为准（通常为 `dist/`）。
+产物目录以 electron-builder 配置为准（通常为 `dist/`）。`appId` 为 `com.localforge.app`，产品名 **LocalForge**。
 
 ### 测试
 
@@ -633,23 +663,28 @@ pnpm test:coverage
 ## 🛠️ 技术栈
 
 | 层级 | 选型 |
-|------|------|
-| 桌面壳 | Electron 33 + electron-vite 3 |
-| 前端 | React 19 + TypeScript 5 |
-| 构建 | Vite 6、pnpm |
-| 样式 | Tailwind CSS 3 |
-| 状态 | Zustand 5（persist） |
-| 存储 | localStorage、IndexedDB（idb）、工作区磁盘 VCS |
-| AI 协议 | OpenAI 兼容 Chat Completions（流式 + tools） |
-| 本地向量 | @xenova/transformers + Worker |
-| 文档解析 | pdfjs-dist、mammoth、主进程统一提取 |
-| Markdown | marked + highlight.js + KaTeX |
-| 编辑器 | Monaco（提示词/部分设置场景） |
-| 打包 | electron-builder |
-| 测试 | Jest + jsdom + ts-jest |
+|:-----|:-----|
+| 🖥️ 桌面壳 | Electron 33 + electron-vite 3 |
+| ⚛️ 前端 | React 19 + TypeScript 5 |
+| ⚡ 构建 | Vite 6、pnpm |
+| 🎨 样式 | Tailwind CSS 3 |
+| 📦 状态 | Zustand 5（persist） |
+| 💾 存储 | localStorage、IndexedDB（idb）、工作区磁盘 VCS |
+| 🤖 AI 协议 | OpenAI 兼容 Chat Completions（流式 + tools） |
+| 🔍 本地向量 | @xenova/transformers + Worker |
+| 📄 文档解析 | pdfjs-dist、mammoth、主进程统一提取 |
+| 📝 Markdown | marked + highlight.js + KaTeX |
+| ✏️ 编辑器 | Monaco（提示词/部分设置场景） |
+| 📦 打包 | electron-builder |
+| 🧪 测试 | Jest + jsdom + ts-jest |
 
 ---
 
 ## 📄 开源协议
 
-[MIT License](LICENSE)
+本项目基于 [**MIT License**](LICENSE) 开源。
+
+<p align="center">
+  <img src="build/icon-32.png" alt="" width="32" height="32" /><br />
+  <sub>LocalForge — Forge AI. Locally. Privately.</sub>
+</p>
