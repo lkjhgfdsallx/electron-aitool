@@ -14,6 +14,7 @@ import { searchWeb, fetchWebpage } from './web-search'
 import { setupWorkspaceVCSHandlers } from './workspace-vcs-handler'
 import { setupWorkspaceWatcherHandlers } from './workspace-watcher-handler'
 import { setupWorkspaceCommandHandlers } from './workspace-command-handler'
+import { setupWebDAVHandlers } from './webdav-handler'
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -73,6 +74,9 @@ app.whenReady().then(() => {
   setupWorkspaceVCSHandlers()
   setupWorkspaceWatcherHandlers()
   setupWorkspaceCommandHandlers()
+
+  // 设置 WebDAV 备份
+  setupWebDAVHandlers()
 
   const mainWindow = createWindow()
 

@@ -52,6 +52,7 @@ import {
   type TimeRange
 } from '../../services/privacy-service'
 import { SettingsHeader, useConfirmDialog, DangerZone, StatusFeedback } from './ui'
+import { WebDAVSection } from './WebDAVSection'
 
 // ==================== 状态消息类型 ====================
 
@@ -870,9 +871,15 @@ export function DataManagementSection({ onNavigateToSection }: DataManagementSec
         </div>
       </SectionCard>
 
-      {/* 四大功能板块 */}
+      {/* 本地导出 / 备份 */}
       <ExportSection />
       <BackupSection />
+
+      {/* WebDAV 云端备份：放在本地备份之后，降低首屏压迫感 */}
+      <SectionCard>
+        <WebDAVSection />
+      </SectionCard>
+
       <CacheSection />
       <PrivacySection />
     </div>

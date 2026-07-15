@@ -247,6 +247,21 @@ export interface ElectronAPI {
     /** 选择文件夹对话框 */
     selectFolder: () => Promise<{ success: boolean; folderPath?: string; canceled?: boolean; error?: string }>
   }
+  // WebDAV 备份
+  webdav: {
+    /** 测试 WebDAV 连接 */
+    testConnection: (config: { url: string; username: string; password: string; remoteDir?: string }) => Promise<{ success: boolean; error?: string }>
+    /** 确保远程目录存在 */
+    ensureDir: (config: { url: string; username: string; password: string; remoteDir?: string }) => Promise<{ success: boolean; error?: string }>
+    /** 上传备份文件到 WebDAV */
+    upload: (config: { url: string; username: string; password: string; remoteDir?: string }, filename: string, fileData: number[]) => Promise<{ success: boolean; error?: string }>
+    /** 列出 WebDAV 远程备份文件 */
+    listFiles: (config: { url: string; username: string; password: string; remoteDir?: string }) => Promise<{ success: boolean; files?: Array<{ filename: string; size?: number; lastModified: string }> | null; error?: string }>
+    /** 从 WebDAV 下载备份文件 */
+    download: (config: { url: string; username: string; password: string; remoteDir?: string }, filename: string) => Promise<{ success: boolean; data?: number[]; error?: string }>
+    /** 删除 WebDAV 远程备份文件 */
+    delete: (config: { url: string; username: string; password: string; remoteDir?: string }, filename: string) => Promise<{ success: boolean; error?: string }>
+  }
 }
 
 const electronAPI: ElectronAPI = {
@@ -408,6 +423,20 @@ const electronAPI: ElectronAPI = {
     },
     selectFolder: () =>
       ipcRenderer.invoke('workspace:select-folder'),
+  },
+  webdav: {
+    testConnection: (config) =>
+      ipcRenderer.invoke('webdav:test', config),
+    ensureDir: (config) =>
+      ipcRenderer.invoke('webdav:ensureDir', config),
+    upload: (config, filename, fileData) =>
+      ipcRenderer.invoke('webdav:upload', config, filename, fileData),
+    listFiles: (config) =>
+      ipcRenderer.invoke('webdav:list', config),
+    download: (config, filename) =>
+      ipcRenderer.invoke('webdav:download', config, filename),
+    delete: (config, filename) =>
+      ipcRenderer.invoke('webdav:delete', config, filename),
   },
 }
 

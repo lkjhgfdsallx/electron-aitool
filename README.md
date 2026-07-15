@@ -44,7 +44,7 @@
 **本地 vs 网络边界（务必理解）：**
 
 - **始终本地**：UI、对话存储、知识库分块与向量、BM25、文件树、检查点、记忆 KV、设置与备份打包。
-- **仅在你启用时出网**：调用你配置的 LLM API；`web_search` / `fetch_webpage`（联网工具）；MCP 子进程与外部服务器；网站分析器启动的浏览器爬取与对 AI 分析接口的调用。
+- **仅在你启用时出网**：调用你配置的 LLM API；`web_search` / `fetch_webpage`（联网工具）；MCP 子进程与外部服务器；网站分析器启动的浏览器爬取与对 AI 分析接口的调用；可选 **WebDAV** 备份上传/下载。
 - **本地模型路径**：Base URL 指向 `localhost` / `127.0.0.1`（如 Ollama）时，可不填 API Key，对话与推理可完全在本机完成。
 
 ---
@@ -59,7 +59,7 @@
 | **知识库** | 多集合、多格式上传、本地嵌入、混合检索、对话注入、查询模拟器、分块/检索参数可配 |
 | **工作区** | 绑定文件夹、Leader/团队 Agent、文件读写与命令审批、终端面板、检查点与还原、上下文压缩、Slash 命令、项目模板 |
 | **提示词 / Skills** | 模板变量、`{{kb:}}` / `{{tool:}}` 注入、提示词链、版本历史与 diff、演练场；Skills 的 SKILL.md + 资源包导入导出 |
-| **数据管理** | 全量 ZIP 备份恢复、对话 JSON/Markdown/HTML 导出、缓存清理、隐私清洗 |
+| **数据管理** | 全量 ZIP 备份恢复、可选 WebDAV 云端同步、对话 JSON/Markdown/HTML 导出、缓存清理、隐私清洗 |
 | **界面** | 自定义标题栏、侧栏对话列表、主题与字体、快捷键、设置搜索与导航轨 |
 
 ---
@@ -428,6 +428,7 @@ Memory · Requirement · HumanInput · SiteAnalyzer · Workspace · Math · Plan
 | 能力 | 说明 |
 |------|------|
 | **全量备份** [`backup-service`](src/services/backup-service.ts) | localStorage 关键键 + 知识库 IDB + 对话 IDB + 报告 + Skills 等打成 **ZIP**；进度回调；按模块选择恢复 |
+| **WebDAV 同步** [`webdav-sync-service`](src/services/webdav-sync-service.ts) | 可选：将备份上传到自有 WebDAV、远程恢复与定时自动备份（设置 → 数据管理） |
 | **对话导出** [`export-service`](src/services/export-service.ts) | 单条/批量 → **JSON / Markdown / HTML** |
 | **缓存统计与清理** [`cache-service`](src/services/cache-service.ts) | 分区域统计 localStorage / IndexedDB / 嵌入模型文件缓存等；可清理项与存储估算 |
 | **隐私清洗** [`privacy-service`](src/services/privacy-service.ts) | 扫描敏感数据摘要；一键清 API Key；清 MCP 凭据；按时间范围删对话 |
@@ -450,7 +451,7 @@ Memory · Requirement · HumanInput · SiteAnalyzer · Workspace · Math · Plan
 | **MCP / 工具** | MCP 服务器与工具列表；自定义工具；内置工具启停 |
 | **知识库** | 嵌入与分块、检索参数 |
 | **Skills** | Skill 包管理与编辑 |
-| **数据管理** | 备份恢复、导出、缓存、隐私、存储概览 |
+| **数据管理** | 备份恢复、WebDAV 同步、导出、缓存、隐私、存储概览 |
 | **工作区设置** | 名称、路径、Leader、检查点策略、命令策略、上下文压缩等（亦有工作区内 Popover 快捷入口） |
 
 ---
