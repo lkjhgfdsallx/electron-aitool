@@ -16,15 +16,17 @@ import {
 } from 'lucide-react'
 import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
 import type { SearchMode } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 /** 模拟器搜索模式选项 */
-const SIMULATOR_MODES: { mode: SearchMode; label: string }[] = [
-  { mode: 'hybrid', label: '混合检索' },
-  { mode: 'vector', label: '向量检索' },
-  { mode: 'keyword', label: '关键词检索' }
+const SIMULATOR_MODES: { mode: SearchMode; labelKey: string }[] = [
+  { mode: 'hybrid', labelKey: 'knowledgeBase.hybridSearch' },
+  { mode: 'vector', labelKey: 'knowledgeBase.vectorSearch' },
+  { mode: 'keyword', labelKey: 'knowledgeBase.keywordMatch' }
 ]
 
 export function QuerySimulator() {
+  const { t } = useAppTranslation()
   const { simulatorResult, isSimulating, performSimulatorQuery, clearSimulatorResult } =
     useKnowledgeBaseStore()
 
@@ -52,11 +54,11 @@ export function QuerySimulator() {
         <div className="flex items-center gap-2 mb-3">
           <Brain size={16} className="text-violet-500" />
           <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">
-            检索模拟器
+            {t('knowledgeBase.querySimulator')}
           </h3>
         </div>
         <p className="text-xs text-muted mb-3">
-          输入查询文本，模拟检索流程，支持混合检索、向量检索和关键词检索
+          {t('knowledgeBase.simulatorDescription')}
         </p>
 
         {/* 查询输入 */}
@@ -65,7 +67,7 @@ export function QuerySimulator() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入查询文本，如：如何使用 React hooks？"
+            placeholder={t('knowledgeBase.querySimulatorPlaceholder')}
             rows={2}
             className="flex-1 px-3 py-2 text-sm rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-none"
           />
@@ -79,16 +81,16 @@ export function QuerySimulator() {
             ) : (
               <Search size={14} />
             )}
-            查询
+            {t('knowledgeBase.query')}
           </button>
         </div>
 
         {/* 检索模式选择 */}
         <div className="flex items-center gap-2 mb-3">
           <Layers size={12} className="text-surface-400" />
-          <span className="text-xs text-surface-500 dark:text-surface-400">检索模式</span>
+          <span className="text-xs text-surface-500 dark:text-surface-400">{t('knowledgeBase.retrievalMode')}</span>
           <div className="flex gap-1">
-            {SIMULATOR_MODES.map(({ mode, label }) => (
+            {SIMULATOR_MODES.map(({ mode, labelKey }) => (
               <button
                 key={mode}
                 onClick={() => setSimMode(mode)}
@@ -98,7 +100,7 @@ export function QuerySimulator() {
                     : 'bg-surface-100 dark:bg-surface-800 text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
                 }`}
               >
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
@@ -125,7 +127,7 @@ export function QuerySimulator() {
           </div>
           <div className="flex items-center gap-2 flex-1">
             <label className="text-xs text-surface-500 dark:text-surface-400 whitespace-nowrap">
-              阈值
+              {t('knowledgeBase.threshold')}
             </label>
             <input
               type="range"
@@ -148,7 +150,7 @@ export function QuerySimulator() {
         {isSimulating ? (
           <div className="flex flex-col items-center justify-center py-12">
             <Loader2 size={24} className="animate-spin text-violet-500 mb-3" />
-            <p className="text-sm text-muted">正在执行向量查询...</p>
+            <p className="text-sm text-muted">{t('knowledgeBase.simulatingQuery')}</p>
           </div>
         ) : simulatorResult ? (
           <div className="space-y-4">
@@ -156,25 +158,25 @@ export function QuerySimulator() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard
                 icon={Clock}
-                label="查询耗时"
+                label={t('knowledgeBase.queryDuration')}
                 value={`${simulatorResult.queryTime.toFixed(1)}ms`}
                 color="text-blue-500"
               />
               <StatCard
                 icon={Zap}
-                label="引擎类型"
-                value={simulatorResult.engineType === 'tfidf' ? 'TF-IDF' : '语义模型'}
+                label={t('knowledgeBase.engineType')}
+                value={simulatorResult.engineType === 'tfidf' ? 'TF-IDF' : t('knowledgeBase.semanticModel')}
                 color="text-amber-500"
               />
               <StatCard
                 icon={Hash}
-                label="向量维度"
+                label={t('knowledgeBase.vectorDimension')}
                 value={`${simulatorResult.dimension}D`}
                 color="text-emerald-500"
               />
               <StatCard
                 icon={Activity}
-                label="匹配/总量"
+                label={t('knowledgeBase.matchTotal')}
                 value={`${simulatorResult.results.length}/${simulatorResult.totalChunks}`}
                 color="text-violet-500"
               />
@@ -184,13 +186,13 @@ export function QuerySimulator() {
             {simulatorResult.results.length === 0 ? (
               <div className="text-center text-muted py-8">
                 <Search size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">无匹配结果</p>
-                <p className="text-xs mt-1">尝试降低相似度阈值或使用不同的查询文本</p>
+                <p className="text-sm">{t('knowledgeBase.noMatchingResults')}</p>
+                <p className="text-xs mt-1">{t('knowledgeBase.simulatorNoResultsHint')}</p>
               </div>
             ) : (
               <div className="space-y-2">
                 <span className="text-xs font-medium text-surface-500 dark:text-surface-400">
-                  检索结果（按相似度排序）
+                  {t('knowledgeBase.simulatorResults')}
                 </span>
                 {simulatorResult.results.map((result, i) => (
                   <SimulatorResultCard key={`${result.chunk.id}-${i}`} result={result} index={i} />
@@ -203,14 +205,14 @@ export function QuerySimulator() {
               onClick={clearSimulatorResult}
               className="text-xs text-muted hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
             >
-              清除结果
+              {t('knowledgeBase.clearResults')}
             </button>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-muted">
             <Brain size={48} className="mb-4 opacity-20" />
-            <p className="text-sm font-medium mb-1">输入查询开始模拟</p>
-            <p className="text-xs">输入文本后点击"查询"按钮，查看向量检索的完整过程</p>
+            <p className="text-sm font-medium mb-1">{t('knowledgeBase.startSimulator')}</p>
+            <p className="text-xs">{t('knowledgeBase.startSimulatorHint')}</p>
           </div>
         )}
       </div>

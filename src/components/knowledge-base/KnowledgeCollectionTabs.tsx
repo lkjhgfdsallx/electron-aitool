@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Edit2, Trash2, X, Check, FolderOpen } from 'lucide-react'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
+import { useAppTranslation } from '@/i18n/hooks'
 
 const EMOJI_OPTIONS = ['📚', '📖', '📄', '📝', '💻', '🔧', '🌐', '🎯', '📊', '🧪', '🛡️', '🎮', '🎵', '🤖', '🧠', '💡']
 
 export function KnowledgeCollectionTabs() {
+  const { t } = useAppTranslation()
   const {
     collections,
     activeCollectionId,
@@ -74,11 +76,11 @@ export function KnowledgeCollectionTabs() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除此知识库集合？其中的文件将保留在默认集合中。')) return
+    if (!confirm(t('knowledgeBase.deleteCollectionConfirm'))) return
     try {
       await deleteCollection(id)
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败')
+      alert(err instanceof Error ? err.message : t('knowledgeBase.deleteCollectionFailed'))
     }
   }
 
@@ -94,7 +96,7 @@ export function KnowledgeCollectionTabs() {
         }`}
       >
         <FolderOpen size={14} />
-        全部
+        {t('knowledgeBase.allCollections')}
       </button>
 
       {/* 分隔线 */}
@@ -149,14 +151,14 @@ export function KnowledgeCollectionTabs() {
                   <button
                     onClick={() => handleEdit(col.id)}
                     className="p-1 text-muted hover:text-surface-700 dark:hover:text-surface-300"
-                    title="编辑"
+                    title={t('common.edit')}
                   >
                     <Edit2 size={12} />
                   </button>
                   <button
                     onClick={() => handleDelete(col.id)}
                     className="p-1 text-red-400 hover:text-red-600"
-                    title="删除"
+                    title={t('common.delete')}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -183,7 +185,7 @@ export function KnowledgeCollectionTabs() {
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="集合名称"
+            placeholder={t('knowledgeBase.collectionName')}
             className="w-28 px-1 py-0.5 text-sm bg-transparent border-b border-surface-300 dark:border-surface-600 focus:outline-none focus:border-accent-500"
             autoFocus
             onKeyDown={(e) => {
@@ -206,7 +208,7 @@ export function KnowledgeCollectionTabs() {
         <button
           onClick={() => setIsCreating(true)}
           className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm text-muted hover:text-surface-600 dark:hover:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors ml-1"
-          title="新建知识库集合"
+          title={t('knowledgeBase.newCollection')}
         >
           <Plus size={14} />
         </button>

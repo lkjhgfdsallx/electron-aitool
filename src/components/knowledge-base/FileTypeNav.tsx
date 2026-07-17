@@ -9,6 +9,7 @@ import {
 import type { FileTypeCategory } from '../../types'
 import { FILE_TYPE_CATEGORIES } from '../../types'
 import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
+import { useAppTranslation } from '@/i18n/hooks'
 
 const CATEGORY_ICONS: Record<FileTypeCategory, typeof Files> = {
   all: Files,
@@ -21,6 +22,7 @@ const CATEGORY_ICONS: Record<FileTypeCategory, typeof Files> = {
 }
 
 export function FileTypeNav() {
+  const { t } = useAppTranslation()
   const { activeFilter, setActiveFilter, getCategoryCounts } = useKnowledgeBaseStore()
   const counts = getCategoryCounts()
 
@@ -44,7 +46,7 @@ export function FileTypeNav() {
             `}
           >
             <Icon size={15} className={isActive ? 'text-violet-500' : 'text-surface-400 dark:text-surface-500'} />
-            <span className="flex-1 text-left">{cat.label}</span>
+            <span className="flex-1 text-left">{t(`knowledgeBase.${cat.key === 'all' ? 'allFileTypes' : `${cat.key}FileType`}`)}</span>
             <span className={`text-xs tabular-nums ${isActive ? 'text-violet-500' : 'text-surface-400 dark:text-surface-500'}`}>
               {count}
             </span>

@@ -6,46 +6,47 @@
  */
 
 import type { CheckpointIndex } from '../../types'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- 存档类型配置 ----
 
 const TYPE_CONFIG: Record<string, {
-  label: string
+  labelKey: string
   icon: string
   color: string
   bgColor: string
   borderColor: string
 }> = {
   auto: {
-    label: '自动存档',
+    labelKey: 'workspace.autoCheckpoint',
     icon: '⏱',
     color: 'text-blue-600 dark:text-blue-400',
     bgColor: 'bg-blue-50 dark:bg-blue-950/30',
     borderColor: 'border-blue-200 dark:border-blue-800',
   },
   manual: {
-    label: '手动存档',
+    labelKey: 'workspace.manualCheckpointLabel',
     icon: '📌',
     color: 'text-violet-600 dark:text-violet-400',
     bgColor: 'bg-violet-50 dark:bg-violet-950/30',
     borderColor: 'border-violet-200 dark:border-violet-800',
   },
   'pre-command': {
-    label: '命令前存档',
+    labelKey: 'workspace.preCommandCheckpoint',
     icon: '⚡',
     color: 'text-amber-600 dark:text-amber-400',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
   },
   'pre-restore': {
-    label: '还原前存档',
+    labelKey: 'workspace.preRestoreCheckpoint',
     icon: '↩',
     color: 'text-orange-600 dark:text-orange-400',
     bgColor: 'bg-orange-50 dark:bg-orange-950/30',
     borderColor: 'border-orange-200 dark:border-orange-800',
   },
   'pre-compression': {
-    label: '压缩前存档',
+    labelKey: 'workspace.preCompressionCheckpoint',
     icon: '📦',
     color: 'text-cyan-600 dark:text-cyan-400',
     bgColor: 'bg-cyan-50 dark:bg-cyan-950/30',
@@ -55,12 +56,12 @@ const TYPE_CONFIG: Record<string, {
 
 // ---- 格式化时间 ----
 
-function formatTime(timestamp: number): string {
+function formatTime(timestamp: number, locale: string): string {
   const date = new Date(timestamp)
   const now = new Date()
   const isToday = date.toDateString() === now.toDateString()
 
-  const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  const time = date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
   if (isToday) return time
 
   const month = date.getMonth() + 1
@@ -76,6 +77,7 @@ interface CheckpointMarkerProps {
 }
 
 export function CheckpointMarker({ checkpoint, onClick }: CheckpointMarkerProps) {
+  const { t, currentLang } = useAppTranslation()
   const config = TYPE_CONFIG[checkpoint.type] ?? TYPE_CONFIG.auto
 
   return (
@@ -95,10 +97,10 @@ export function CheckpointMarker({ checkpoint, onClick }: CheckpointMarkerProps)
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className={`text-xs font-medium ${config.color}`}>
-            {config.label}
+            {t(config.labelKey)}
           </span>
           <span className="text-[10px] text-surface-400 dark:text-surface-500">
-            {formatTime(checkpoint.createdAt)}
+            {formatTime(checkpoint.createdAt, currentLang)}
           </span>
         </div>
         <p className="text-xs text-surface-600 dark:text-surface-300 mt-0.5 truncate">
@@ -106,7 +108,7 @@ export function CheckpointMarker({ checkpoint, onClick }: CheckpointMarkerProps)
         </p>
         {checkpoint.filesChanged > 0 && (
           <div className="flex items-center gap-2 mt-1 text-[10px] text-surface-400 dark:text-surface-500">
-            <span>{checkpoint.filesChanged} 文件</span>
+            <span>{t('workspace.filesCount', { count: checkpoint.filesChanged })}</span>
             {checkpoint.linesAdded > 0 && (
               <span className="text-emerald-500">+{checkpoint.linesAdded}</span>
             )}

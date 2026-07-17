@@ -6,6 +6,7 @@ import {
   Globe, Server, Bot, ArrowDown, Check, ChevronDown, ChevronUp,
   Layers, Zap
 } from 'lucide-react'
+import { useAppTranslation } from '@/i18n/hooks'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import { useAgentStore } from '../../stores/agent-store'
@@ -21,6 +22,7 @@ interface ResolvedParam {
 }
 
 export function ConfigHierarchyView() {
+  const { t } = useAppTranslation()
   const globalConfig = useGlobalConfigStore()
   const { providers } = useAIProviderStore()
   const { agents } = useAgentStore()
@@ -39,30 +41,30 @@ export function ConfigHierarchyView() {
 
     const params: ResolvedParam[] = [
       {
-        label: 'AI 源',
-        value: effectiveProvider?.name || '未配置',
+        label: t('settings.aiSource'),
+        value: effectiveProvider?.name || t('settings.notConfiguredHierarchy'),
         source: agent?.modelConfig?.providerId ? 'agent' : 'global',
         sourceName: agent?.modelConfig?.providerId
-          ? (agent?.name || 'Agent')
-          : '全局默认',
+          ? (agent?.name || t('settings.agent'))
+          : t('settings.globalDefault'),
       },
       {
-        label: '模型',
+        label: t('settings.model'),
         value:
           agent?.modelConfig?.modelId ||
           effectiveProvider?.defaultModelId ||
           globalConfig.defaultModel ||
-          '未选择',
+          t('settings.notSelected'),
         source: agent?.modelConfig?.modelId
           ? 'agent'
           : effectiveProvider?.defaultModelId
             ? 'provider'
             : 'global',
         sourceName: agent?.modelConfig?.modelId
-          ? (agent?.name || 'Agent')
+          ? (agent?.name || t('settings.agent'))
           : effectiveProvider?.defaultModelId
             ? (effectiveProvider?.name || 'Provider')
-            : '全局默认',
+            : t('settings.globalDefault'),
       },
       {
         label: 'Temperature',
@@ -72,8 +74,8 @@ export function ConfigHierarchyView() {
         ),
         source: agent?.modelConfig?.temperature !== undefined ? 'agent' : 'global',
         sourceName: agent?.modelConfig?.temperature !== undefined
-          ? (agent?.name || 'Agent')
-          : '全局默认',
+          ? (agent?.name || t('settings.agent'))
+          : t('settings.globalDefault'),
       },
       {
         label: 'Max Tokens',
@@ -83,8 +85,8 @@ export function ConfigHierarchyView() {
         ),
         source: agent?.modelConfig?.maxTokens !== undefined ? 'agent' : 'global',
         sourceName: agent?.modelConfig?.maxTokens !== undefined
-          ? (agent?.name || 'Agent')
-          : '全局默认',
+          ? (agent?.name || t('settings.agent'))
+          : t('settings.globalDefault'),
       },
     ]
 
@@ -129,10 +131,10 @@ export function ConfigHierarchyView() {
           </div>
           <div className="text-left">
             <h3 className="text-sm font-medium text-surface-800 dark:text-surface-200">
-              配置层级关系
+              {t('settings.configHierarchyTitle')}
             </h3>
             <p className="text-xs text-muted mt-0.5">
-              查看全局 → Provider → Agent 的参数覆盖关系
+              {t('settings.configHierarchyDescription')}
             </p>
           </div>
         </div>
@@ -147,18 +149,18 @@ export function ConfigHierarchyView() {
         <div className="px-5 pb-5 space-y-4">
           {/* Agent 选择器 */}
           <div className="flex items-center gap-3">
-            <label className="text-xs text-muted flex-shrink-0">查看视角：</label>
+            <label className="text-xs text-muted flex-shrink-0">{t('settings.viewPerspective')}：</label>
             <select
               value={selectedAgentId}
               onChange={(e) => setSelectedAgentId(e.target.value)}
               className="flex-1 text-xs bg-surface-100 dark:bg-surface-700/60 border border-surface-200 dark:border-surface-600 rounded-lg px-3 py-1.5 text-surface-700 dark:text-surface-300 focus:outline-none focus:ring-2 focus:ring-accent-500/30"
             >
-              <option value="">全局默认（无 Agent 覆盖）</option>
+              <option value="">{t('settings.globalDefaultNoAgent')}</option>
               {agents.filter((a) => a.enabled).map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agent.avatar} {agent.name}
                   {agent.modelConfig?.providerId || agent.modelConfig?.modelId
-                    ? ' (有自定义配置)'
+                    ? t('settings.hasCustomConfig')
                     : ''}
                 </option>
               ))}
@@ -173,10 +175,10 @@ export function ConfigHierarchyView() {
                 <Globe size={14} className="text-accent-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">全局默认</div>
+                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">{t('settings.globalDefault')}</div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                  <span className="text-[11px] text-muted">AI 源: <span className="text-surface-600 dark:text-surface-400">{providers.find(p => p.id === globalConfig.activeProviderId)?.name || '未设置'}</span></span>
-                  <span className="text-[11px] text-muted">模型: <span className="text-surface-600 dark:text-surface-400">{globalConfig.defaultModel || '未设置'}</span></span>
+                  <span className="text-[11px] text-muted">{t('settings.aiSource')}: <span className="text-surface-600 dark:text-surface-400">{providers.find(p => p.id === globalConfig.activeProviderId)?.name || t('settings.notSet')}</span></span>
+                  <span className="text-[11px] text-muted">{t('settings.model')}: <span className="text-surface-600 dark:text-surface-400">{globalConfig.defaultModel || t('settings.notSet')}</span></span>
                   <span className="text-[11px] text-muted">Temperature: <span className="font-mono text-surface-600 dark:text-surface-400">{globalConfig.temperature}</span></span>
                   <span className="text-[11px] text-muted">Max Tokens: <span className="font-mono text-surface-600 dark:text-surface-400">{globalConfig.maxTokens}</span></span>
                 </div>
@@ -194,9 +196,9 @@ export function ConfigHierarchyView() {
                 <Server size={14} className="text-accent-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">Provider 层</div>
+                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">Provider {t('settings.source')}</div>
                 {providers.length === 0 ? (
-                  <span className="text-[11px] text-muted">暂无配置的 AI 源</span>
+                  <span className="text-[11px] text-muted">{t('settings.noConfiguredProviders')}</span>
                 ) : (
                   <div className="space-y-1">
                     {providers.map((p) => (
@@ -211,10 +213,10 @@ export function ConfigHierarchyView() {
                         </span>
                         <span className="text-surface-400 dark:text-surface-500">→</span>
                         <span className="text-surface-600 dark:text-surface-400 font-mono">
-                          {p.defaultModelId || '未选模型'}
+                          {p.defaultModelId || t('settings.notSelected')}
                         </span>
                         {p.id === globalConfig.activeProviderId && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">当前激活</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">{t('settings.currentlyActive')}</span>
                         )}
                       </div>
                     ))}
@@ -234,9 +236,9 @@ export function ConfigHierarchyView() {
                 <Bot size={14} className="text-accent-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">Agent 层</div>
+                <div className="text-xs font-medium text-accent-700 dark:text-accent-400 mb-1.5">Agent {t('settings.source')}</div>
                 {agents.length === 0 ? (
-                  <span className="text-[11px] text-muted">暂无 Agent 配置</span>
+                  <span className="text-[11px] text-muted">{t('settings.noAgentConfig')}</span>
                 ) : (
                   <div className="space-y-1">
                     {agents.filter((a) => a.enabled).map((agent) => {
@@ -251,12 +253,12 @@ export function ConfigHierarchyView() {
                             <div className="flex items-center gap-1 flex-wrap">
                               {mc?.providerId && (
                                 <span className="text-[10px] px-1 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">
-                                  源: {providers.find(p => p.id === mc.providerId)?.name || mc.providerId}
+                                  {t('settings.aiSource')}: {providers.find(p => p.id === mc.providerId)?.name || mc.providerId}
                                 </span>
                               )}
                               {mc?.modelId && (
                                 <span className="text-[10px] px-1 py-0.5 rounded bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400">
-                                  模型: {mc.modelId}
+                                  {t('settings.model')}: {mc.modelId}
                                 </span>
                               )}
                               {mc?.temperature !== undefined && (
@@ -271,7 +273,7 @@ export function ConfigHierarchyView() {
                               )}
                             </div>
                           ) : (
-                            <span className="text-[10px] text-surface-400 dark:text-surface-500">使用全局配置</span>
+                            <span className="text-[10px] text-surface-400 dark:text-surface-500">{t('settings.usingGlobalConfig')}</span>
                           )}
                         </div>
                       )
@@ -288,8 +290,8 @@ export function ConfigHierarchyView() {
               <Zap size={14} className="text-accent-500" />
               <span className="text-xs font-medium text-accent-700 dark:text-accent-400">
                 {selectedAgentId
-                  ? `当前生效 (${agents.find(a => a.id === selectedAgentId)?.name || 'Agent'})`
-                  : '当前生效 (全局默认)'}
+                  ? t('settings.currentlyEffectiveAgent', { name: agents.find(a => a.id === selectedAgentId)?.name || 'Agent' })
+                  : t('settings.currentlyEffectiveGlobal')}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -310,11 +312,11 @@ export function ConfigHierarchyView() {
 
             {/* 图例 */}
             <div className="flex items-center gap-4 mt-3 pt-2.5 border-t border-accent-200/40 dark:border-accent-800/20">
-              <span className="text-[10px] text-muted">来源：</span>
+              <span className="text-[10px] text-muted">{t('settings.source')}：</span>
               {(['global', 'provider', 'agent'] as OverrideSource[]).map((source) => {
                 const colors = sourceColors[source]
                 const Icon = sourceIcons[source]
-                const labels = { global: '全局', provider: 'Provider', agent: 'Agent' }
+                const labels = { global: t('settings.global'), provider: 'Provider', agent: t('settings.agent') }
                 return (
                   <span key={source} className={`text-[10px] flex items-center gap-1 ${colors.text}`}>
                     <Icon size={10} />

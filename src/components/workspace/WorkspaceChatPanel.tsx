@@ -12,10 +12,11 @@ import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
-import { useChat, hasUsableAIProvider, MISSING_AI_PROVIDER_MESSAGE } from '../../hooks/use-chat'
+import { useChat, hasUsableAIProvider } from '../../hooks/use-chat'
 import { useWorkspaceCompression } from '../../hooks/use-workspace-compression'
 import { formatRelativeTime } from '../../utils/format-time'
 import type { Workspace, Message, MessageAttachment, PromptRuntimeContext } from '../../types'
+import { useAppTranslation } from '../../i18n/hooks'
 
 type MessageAlignment = 'left-right' | 'all-left' | 'all-right' | 'full-width'
 
@@ -32,6 +33,7 @@ interface WorkspaceChatPanelProps {
 }
 
 export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatPanelProps) {
+  const { t } = useAppTranslation()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const { getVisibleMessages, getMessages, switchBranch, getConversation,
@@ -45,9 +47,9 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
     if (onOpenSettings) {
       onOpenSettings('ai-providers')
     } else {
-      window.alert(MISSING_AI_PROVIDER_MESSAGE)
+      window.alert(t('workspace.aiProviderNotConfigured'))
     }
-  }, [onOpenSettings])
+  }, [onOpenSettings, t])
 
   const {
     sendMessage,
@@ -152,11 +154,11 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
 
   const handleRenameConversation = useCallback((convId: string) => {
     const current = getConversation(convId)
-    const newTitle = prompt('重命名对话', current?.title ?? '')
+    const newTitle = prompt(t('workspace.renameConversation'), current?.title ?? '')
     if (newTitle && newTitle.trim()) {
       useConversationStore.getState().renameConversation(convId, newTitle.trim())
     }
-  }, [getConversation])
+  }, [getConversation, t])
 
   const conversationId = activeConvId ?? undefined
   const currentConversation = conversationId ? getConversation(conversationId) : undefined
@@ -195,7 +197,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
         useConversationStore.getState().addMessage(conversationId, {
           conversationId,
           role: 'system',
-          content: `[上下文压缩] 已压缩 ${marker.compressedMessageCount} 条历史消息并创建存档点`,
+          content: t('workspace.contextCompressionSystemMessage', { count: marker.compressedMessageCount }),
           metadata: {
             compression: {
               checkpointId: marker.checkpointId,
@@ -207,7 +209,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
         })
       }
     }
-  }, [conversationId, getContextConfig, estimateTokens, prepareCompression])
+  }, [conversationId, getContextConfig, estimateTokens, prepareCompression, t])
 
   const ensureProviderOrOpenSettings = useCallback((): boolean => {
     if (hasUsableAIProvider()) return true
@@ -263,7 +265,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
             <MessageSquare size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
             <span className="truncate font-medium">{activeConvTitle}</span>
             <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-              {messages.length > 0 ? `${messages.length}条` : ''}
+              {messages.length > 0 ? t('workspace.messageCountShort', { count: messages.length }) : ''}
             </span>
             <ChevronDown
               size={12}
@@ -278,13 +280,13 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
                 className="flex items-center gap-2 w-full px-3 py-2 text-xs text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-900/20 border-b border-surface-100 dark:border-surface-700 transition-colors"
               >
                 <Plus size={13} />
-                <span>新建对话</span>
+                <span>{t('workspace.newConversation')}</span>
               </button>
 
               {workspaceConversations.map((conv) => {
                 const isActive = conv.id === activeConvId
                 const convMessages = useConversationStore.getState().messages[conv.id] ?? []
-                const preview = conv.lastMessagePreview || convMessages[convMessages.length - 1]?.content?.slice(0, 40) || '空对话'
+                const preview = conv.lastMessagePreview || convMessages[convMessages.length - 1]?.content?.slice(0, 40) || t('workspace.emptyConversation')
                 return (
                   <div
                     key={conv.id}
@@ -310,7 +312,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
                         {preview}
                       </p>
                       <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5">
-                        {formatRelativeTime(conv.updatedAt)} · {conv.messageCount}条消息
+                        {formatRelativeTime(conv.updatedAt)} · {t('workspace.messageCount', { count: conv.messageCount })}
                       </p>
                     </div>
 
@@ -321,7 +323,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
                           handleRenameConversation(conv.id)
                         }}
                         className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                        title="重命名"
+                        title={t('workspace.rename')}
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
@@ -331,7 +333,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
                         <button
                           onClick={(e) => handleDeleteConversation(e, conv.id)}
                           className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500"
-                          title="删除对话"
+                          title={t('workspace.deleteConversation')}
                         >
                           <Trash2 size={11} />
                         </button>
@@ -347,7 +349,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
         <button
           onClick={handleCreateConversation}
           className="p-1.5 rounded-lg text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-          title="新建对话"
+          title={t('workspace.newConversation')}
         >
           <Plus size={14} />
         </button>
@@ -356,7 +358,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
           onClick={handleExport}
           disabled={messages.length === 0}
           className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="将此对话移出工作区，变为全局对话"
+          title={t('workspace.moveConversationToGlobal')}
         >
           <RotateCcw size={13} />
         </button>
@@ -376,29 +378,33 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       {!hasAIProvider ? (
         <>
           <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            尚未配置 AI 源
+            {t('workspace.aiProviderNotConfigured')}
           </h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs mb-4">
-            {MISSING_AI_PROVIDER_MESSAGE}
+            {t('workspace.aiProviderNotConfiguredHint')}
           </p>
           <button
             onClick={handleMissingProvider}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 transition-colors"
           >
             <Settings size={13} />
-            去配置 AI 源
+            {t('workspace.configureAiProvider')}
           </button>
         </>
       ) : (
         <>
           <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            {leaderAgent?.name || 'AI 领导'} 就绪
+            {t('workspace.aiLeaderReady', { name: leaderAgent?.name || t('workspace.aiLeaderConfig') })}
           </h3>
           <p className="text-xs text-gray-400 dark:text-gray-500 max-w-xs mb-4">
-            在此输入指令，AI 将分析任务、拆解步骤并协调执行。
+            {t('workspace.workspaceChatReadyHint')}
           </p>
           <div className="flex flex-wrap justify-center gap-2">
-            {['检查代码质量', '重构重复函数', '添加单元测试'].map((suggestion) => (
+            {[
+              t('workspace.suggestionCheckCodeQuality'),
+              t('workspace.suggestionRefactorDuplicates'),
+              t('workspace.suggestionAddUnitTests'),
+            ].map((suggestion) => (
               <button
                 key={suggestion}
                 onClick={() => {

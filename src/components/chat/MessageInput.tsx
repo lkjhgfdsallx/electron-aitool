@@ -9,6 +9,7 @@ import { SlashCommandMenu } from './SlashCommandMenu'
 import { resolveSlashCommand } from '../../services/slash-command-service'
 import type { SlashCommand } from '../../services/slash-command-service'
 import type { MessageAttachment, Prompt, PromptRuntimeContext } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface MessageInputProps {
   onSend: (content: string, attachments?: MessageAttachment[]) => void
@@ -68,6 +69,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager, runtimeContext, workspacePath, isWorkspaceMode }: MessageInputProps) {
+  const { t } = useAppTranslation()
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<MessageAttachment[]>([])
   const [isExtracting, setIsExtracting] = useState(false)
@@ -143,14 +145,14 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
         file.name.endsWith('.css') || file.name.endsWith('.html')
 
       if (!isAccepted) {
-        alert(`不支持的文件类型: ${file.name} (${file.type || '未知'})`)
+        alert(t('chat.unsupportedFileType', { name: file.name, type: file.type || t('chat.unknownFileType') }))
         continue
       }
 
       // 限制文件大小 (图片 20MB, 其他 10MB)
       const maxSize = isImageType(file.type) ? 20 * 1024 * 1024 : 10 * 1024 * 1024
       if (file.size > maxSize) {
-        alert(`文件 ${file.name} 过大 (${formatFileSize(file.size)})，最大支持 ${formatFileSize(maxSize)}`)
+        alert(t('chat.fileTooLarge', { name: file.name, size: formatFileSize(file.size), maxSize: formatFileSize(maxSize) }))
         continue
       }
 
@@ -170,7 +172,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             content = extractedText
           } else {
             // 如果提取失败，回退到 base64（但标记为无法解析）
-            content = `[无法解析的文件: ${file.name}，类型: ${file.type}]`
+            content = t('chat.unreadableFile', { name: file.name, type: file.type })
           }
         }
 
@@ -182,7 +184,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
         })
       } catch (err) {
         console.error('读取文件失败:', err)
-        alert(`读取文件 ${file.name} 失败`)
+        alert(t('chat.readFileFailed', { name: file.name }))
       }
     }
 
@@ -196,7 +198,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [])
+  }, [t])
 
   /** 移除附件 */
   const removeAttachment = useCallback((index: number) => {
@@ -283,6 +285,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                 </span>
                 <button
                   onClick={() => removeAttachment(index)}
+                  aria-label={t('chat.removeAttachment', { name: att.name })}
+                  title={t('chat.removeAttachment', { name: att.name })}
                   className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-muted hover:text-danger-500 transition-colors"
                 >
                   <X size={12} />
@@ -300,7 +304,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isExtracting ? '正在解析文件...' : isStreaming ? 'AI 正在回复...' : '输入消息...（输入 / 唤起提示词面板）'}
+            placeholder={isExtracting ? t('chat.parsingFile') : isStreaming ? t('chat.responding') : t('chat.messagePlaceholder')}
             disabled={disabled || isStreaming || isExtracting}
             rows={1}
             className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400/80 dark:placeholder-gray-500/80 py-2 max-h-[200px]"
@@ -309,11 +313,11 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
           {/* 底部工具栏 */}
           <div className="flex items-center justify-between pt-1 border-t border-gray-200/50 dark:border-gray-700/50 mt-1">
             <div className="flex items-center gap-1">
-              {/* 附件按钮 */}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex-shrink-0 p-1.5 text-muted hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-700 transition-all"
-                title="上传文件（图片、PDF、Word、TXT等）"
+                title={t('chat.uploadFile')}
+                aria-label={t('chat.uploadFile')}
               >
                 <Paperclip size={18} />
               </button>
@@ -334,7 +338,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                     ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30'
                     : 'text-muted hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-700'
                 }`}
-                title={webSearchEnabled ? '联网搜索已开启（点击关闭）' : '联网搜索（模型按需调用）'}
+                title={webSearchEnabled ? t('chat.webSearchEnabled') : t('chat.webSearch')}
+                aria-label={webSearchEnabled ? t('chat.webSearchEnabled') : t('chat.webSearch')}
               >
                 <Globe size={18} />
               </button>
@@ -347,7 +352,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                 <button
                   onClick={onStop}
                   className="flex-shrink-0 p-2 bg-danger-500 hover:bg-danger-600 text-white rounded-xl transition-all"
-                  title="停止生成"
+                  title={t('chat.stopGenerating')}
+                  aria-label={t('chat.stopGenerating')}
                 >
                   <Square size={18} />
                 </button>
@@ -355,7 +361,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                 <button
                   disabled
                   className="flex-shrink-0 p-1.5 bg-primary-400 text-white rounded-lg opacity-70 cursor-wait"
-                  title="正在解析文件..."
+                  title={t('chat.parsingFile')}
+                  aria-label={t('chat.parsingFile')}
                 >
                   <Loader2 size={18} className="animate-spin" />
                 </button>
@@ -364,7 +371,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
                   onClick={handleSend}
                   disabled={(!content.trim() && attachments.length === 0) || disabled}
                   className="flex-shrink-0 p-2 bg-gradient-to-br from-accent-500 to-purple-600 hover:from-accent-600 hover:to-purple-700 text-white rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="发送"
+                  title={t('chat.sendMessage')}
+                  aria-label={t('chat.sendMessage')}
                 >
                   <Send size={18} />
                 </button>
@@ -375,7 +383,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
 
         {/* 提示文字 */}
         <div className="text-xs text-muted mt-2.5 text-center">
-          {sendWithEnter ? 'Enter 发送，Shift+Enter 换行' : 'Ctrl+Enter 发送，Enter 换行'} · 输入 <kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-800 rounded text-[10px]">/</kbd> 唤起提示词面板
+          {sendWithEnter ? t('chat.sendShortcut') : t('chat.sendShortcutCtrl')} · {t('chat.openPromptPanel').replace('/', '')}<kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-800 rounded text-[10px]">/</kbd>{t('chat.openPromptPanel').split('/').slice(1).join('/')}
         </div>
       </div>
 

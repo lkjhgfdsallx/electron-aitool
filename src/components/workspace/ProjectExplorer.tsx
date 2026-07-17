@@ -20,6 +20,7 @@ import { FileTree } from './FileTree'
 import { AgentManager } from '../settings/AgentManager'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
 import type { Workspace, CheckpointIndex, CheckpointDetail, CheckpointFileChange } from '../../types'
+import { useAppTranslation } from '../../i18n/hooks'
 
 interface ProjectExplorerProps {
   workspace: Workspace
@@ -34,6 +35,7 @@ interface ProjectExplorerProps {
 type ExplorerTab = 'files' | 'checkpoints' | 'agents' | 'skills'
 
 export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changedFiles }: ProjectExplorerProps) {
+  const { t } = useAppTranslation()
   const [activeTab, setActiveTab] = useState<ExplorerTab>('files')
   const checkpointIndex = useWorkspaceStore((s) => s.checkpointIndex)
   const addCheckpointIndex = useWorkspaceStore((s) => s.addCheckpointIndex)
@@ -54,10 +56,10 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
   }, [ensureSkillsLoaded])
 
   const tabs: { key: ExplorerTab; label: string; icon: typeof FileText; count?: number }[] = [
-    { key: 'files', label: '文件', icon: FileText },
-    { key: 'checkpoints', label: '存档', icon: Clock, count: workspaceCheckpoints.length },
-    { key: 'agents', label: '团队', icon: Users, count: workspace.teamAgentIds.length + (workspace.leaderAgentId ? 1 : 0) },
-    { key: 'skills', label: '技能', icon: Zap, count: projectSkills.length },
+    { key: 'files', label: t('workspace.files'), icon: FileText },
+    { key: 'checkpoints', label: t('workspace.archive'), icon: Clock, count: workspaceCheckpoints.length },
+    { key: 'agents', label: t('workspace.team'), icon: Users, count: workspace.teamAgentIds.length + (workspace.leaderAgentId ? 1 : 0) },
+    { key: 'skills', label: t('workspace.skills'), icon: Zap, count: projectSkills.length },
   ]
 
   return (
@@ -157,6 +159,7 @@ interface CheckpointTimelineProps {
 }
 
 function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTimelineProps) {
+  const { t, currentLang } = useAppTranslation()
   const [restoring, setRestoring] = useState<string | null>(null)
   const [restoreError, setRestoreError] = useState<string | null>(null)
   // 详情展开状态
@@ -176,7 +179,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
         workspace.id
       )
       if (!result.success) {
-        setRestoreError(result.error || '还原失败')
+        setRestoreError(result.error || t('workspace.restoreFailed'))
       } else {
         onRefresh()
         setSelectedId(null)
@@ -187,7 +190,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
     } finally {
       setRestoring(null)
     }
-  }, [workspace.folderPath, workspace.id, onRefresh])
+  }, [workspace.folderPath, workspace.id, onRefresh, t])
 
   const toggleDiff = useCallback((index: number) => {
     setExpandedDiff((prev) => prev === index ? null : index)
@@ -209,7 +212,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
           metadata: {
             id: metadata.id || checkpointId,
             workspaceId: metadata.workspaceId || workspace.id,
-            description: metadata.description || '存档详情',
+            description: metadata.description || t('workspace.checkpointDetail'),
             type: metadata.type || 'auto',
             filesChanged: (metadata.fileChanges || []).length,
             linesAdded: metadata.linesAdded || 0,
@@ -233,7 +236,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
     } finally {
       setLoadingDetail(false)
     }
-  }, [workspace.folderPath, workspace.id])
+  }, [workspace.folderPath, workspace.id, t])
 
   const handleItemClick = useCallback((checkpointId: string) => {
     if (selectedId === checkpointId) {
@@ -258,12 +261,12 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
     const date = new Date(timestamp)
     const now = new Date()
     const isToday = date.toDateString() === now.toDateString()
-    const time = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    if (isToday) return `今天 ${time}`
+    const time = date.toLocaleTimeString(currentLang, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    if (isToday) return `${t('common.today')} ${time}`
     const isYesterday = new Date(now.getTime() - 86400000).toDateString() === date.toDateString()
-    if (isYesterday) return `昨天 ${time}`
+    if (isYesterday) return `${t('common.yesterday')} ${time}`
     // 显示完整的年月日时间
-    return date.toLocaleString('zh-CN', {
+    return date.toLocaleString(currentLang, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -286,14 +289,14 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
       {/* 标题和刷新按钮 */}
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-          {selectedId ? '存档详情' : '存档时间线'}
+          {selectedId ? t('workspace.checkpointDetail') : t('workspace.checkpointTimeline')}
         </span>
         <div className="flex items-center gap-1">
           {selectedId && (
             <button
               onClick={handleBackToList}
               className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              title="返回列表"
+              title={t('workspace.backToList')}
             >
               <ArrowLeft size={12} />
             </button>
@@ -301,7 +304,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
           <button
             onClick={onRefresh}
             className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            title="刷新存档列表"
+            title={t('workspace.refreshCheckpointList')}
           >
             <RotateCcw size={12} />
           </button>
@@ -327,7 +330,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
             </p>
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {new Date(detail.metadata.createdAt).toLocaleString('zh-CN')}
+                {new Date(detail.metadata.createdAt).toLocaleString(currentLang)}
               </span>
               <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
               <span className="text-[10px] text-green-500">+{detail.metadata.linesAdded}</span>
@@ -338,14 +341,14 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
                 </>
               )}
               <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
-              <span className="text-[10px] text-gray-500">{detail.fileChanges.length} 文件</span>
+              <span className="text-[10px] text-gray-500">{t('workspace.filesCount', { count: detail.fileChanges.length })}</span>
             </div>
           </div>
 
           {/* 文件变更列表 */}
           <div className="space-y-1.5">
             <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">
-              文件变更 ({detail.fileChanges.length})
+              {t('workspace.fileChangesCount', { count: detail.fileChanges.length })}
             </p>
             {detail.fileChanges.map((fc, i) => {
               const { dir, file } = formatFilePath(fc.filePath)
@@ -378,17 +381,17 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
                       <button
                         onClick={() => toggleDiff(i)}
                         className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors"
-                        title="查看更改"
+                        title={t('workspace.viewChanges')}
                       >
                         {expandedDiff === i ? (
                           <>
                             <Eye size={10} className="text-gray-500" />
-                            <span className="text-gray-600 dark:text-gray-400">收起</span>
+                            <span className="text-gray-600 dark:text-gray-400">{t('workspace.collapse')}</span>
                           </>
                         ) : (
                           <>
                             <Eye size={10} className="text-teal-500" />
-                            <span className="text-teal-600 dark:text-teal-400">查看更改</span>
+                            <span className="text-teal-600 dark:text-teal-400">{t('workspace.viewChanges')}</span>
                           </>
                         )}
                       </button>
@@ -432,12 +435,12 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
             {restoring === selectedId ? (
               <>
                 <Loader2 size={12} className="animate-spin" />
-                <span>还原中...</span>
+                <span>{t('workspace.restoring')}</span>
               </>
             ) : (
               <>
                 <RotateCcw size={12} />
-                <span>还原到此存档点</span>
+                <span>{t('workspace.restoreToThisCheckpoint')}</span>
               </>
             )}
           </button>
@@ -445,9 +448,9 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
       ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Clock size={24} className="text-gray-300 dark:text-gray-600 mb-2" />
-          <p className="text-xs text-gray-400 dark:text-gray-500">暂无存档点</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">{t('workspace.noCheckpoints')}</p>
           <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">
-            文件修改时会自动创建存档
+            {t('workspace.checkpointsAutoCreatedHint')}
           </p>
         </div>
       ) : (
@@ -473,10 +476,10 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
                   'pre-restore': 'bg-green-400',
                 }
                 const typeLabels: Record<string, string> = {
-                  auto: '自动',
-                  manual: '手动',
-                  'pre-command': '命令前',
-                  'pre-restore': '还原前',
+                  auto: t('workspace.auto'),
+                  manual: t('workspace.manual'),
+                  'pre-command': t('workspace.beforeCommand'),
+                  'pre-restore': t('workspace.beforeRestore'),
                 }
                 const isSelected = selectedId === cp.id
 
@@ -509,7 +512,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
                           {typeLabels[cp.type] || cp.type}
                         </span>
                         <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                          {cp.filesChanged} 文件
+                          {t('workspace.filesCount', { count: cp.filesChanged })}
                         </span>
                         <span className="text-[10px] text-green-500">+{cp.linesAdded}</span>
                         {cp.linesRemoved > 0 && (
@@ -529,7 +532,7 @@ function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTim
                       }}
                       disabled={restoring !== null}
                       className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-all flex-shrink-0"
-                      title="还原到此存档点"
+                      title={t('workspace.restoreToThisCheckpoint')}
                     >
                       {restoring === cp.id ? (
                         <Loader2 size={12} className="animate-spin" />
@@ -555,6 +558,7 @@ interface AgentTeamPanelProps {
 }
 
 function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
+  const { t } = useAppTranslation()
   const { getAgent, agents } = useAgentStore()
   const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
@@ -642,7 +646,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
           type="button"
           onClick={() => setEditingAgentId(leaderAgent.id)}
           className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg bg-teal-50/50 dark:bg-teal-900/10 border border-teal-200/50 dark:border-teal-800/30 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors text-left"
-          title="编辑 AI 领导 Agent"
+          title={t('workspace.editAiLeaderAgent')}
         >
           <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-sm flex-shrink-0">
             {leaderAgent.avatar || '👑'}
@@ -653,11 +657,11 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
                 {leaderAgent.name}
               </p>
               <span className="text-[9px] px-1 rounded bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 flex-shrink-0">
-                领导
+                {t('workspace.leader')}
               </span>
             </div>
             <p className="text-[10px] text-teal-500/70 dark:text-teal-400/70 truncate mt-0.5">
-              {leaderAgent.description || '项目主管，负责任务拆解与协调'}
+              {leaderAgent.description || t('workspace.defaultLeaderDescription')}
             </p>
           </div>
         </button>
@@ -666,7 +670,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
       {/* 分隔线 + 添加按钮 */}
       <div className="flex items-center gap-2 py-1">
         <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
-        <span className="text-[9px] text-gray-400 dark:text-gray-500">团队成员</span>
+        <span className="text-[9px] text-gray-400 dark:text-gray-500">{t('workspace.teamMembers')}</span>
         <div className="flex-1 h-px bg-surface-200 dark:bg-surface-700" />
       </div>
 
@@ -696,7 +700,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
               <button
                 onClick={(e) => { e.stopPropagation(); handleRemoveAgent(agent!.id) }}
                 className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
-                title="移除"
+                title={t('workspace.remove')}
               >
                 <X size={11} />
               </button>
@@ -708,7 +712,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
       {teamAgents.length === 0 && (
         <div className="flex flex-col items-center justify-center py-4 text-center">
           <Users size={20} className="text-gray-300 dark:text-gray-600 mb-1.5" />
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">暂无团队成员</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('workspace.noTeamMembers')}</p>
         </div>
       )}
 
@@ -719,7 +723,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
         className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-dashed border-teal-300/50 dark:border-teal-700/50"
       >
         <Plus size={12} />
-        添加 Agent
+        {t('workspace.addAgent')}
       </button>
 
       {/* Agent 选择下拉（fixed 定位，避免被 overflow 裁剪） */}
@@ -731,8 +735,8 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
         >
           {availableAgents.length === 0 ? (
             <div className="px-3 py-4 text-center">
-              <p className="text-[11px] text-gray-400 dark:text-gray-500">没有可用的 Agent</p>
-              <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">所有 Agent 已在团队中或已禁用</p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('workspace.noAvailableAgents')}</p>
+              <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">{t('workspace.allAgentsInTeamOrDisabled')}</p>
             </div>
           ) : (
             availableAgents.map((agent) => (
@@ -760,18 +764,18 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
       <div className="mt-3 pt-3 border-t border-surface-200 dark:border-surface-700">
         <div className="space-y-1.5 text-[10px]">
           <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
-            <span>命令执行</span>
+            <span>{t('workspace.commandExecution')}</span>
             <span className={workspace.commandExecutionEnabled ? 'text-green-500' : 'text-gray-400'}>
-              {workspace.commandExecutionEnabled ? '已启用' : '已禁用'}
+              {workspace.commandExecutionEnabled ? t('workspace.enabled') : t('workspace.disabled')}
             </span>
           </div>
           <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
-            <span>审批策略</span>
-            <span>{workspace.commandPolicy === 'auto-approve-safe' ? '安全自动' : workspace.commandPolicy === 'auto-approve-all' ? '全部自动' : '全部审批'}</span>
+            <span>{t('workspace.approvalPolicy')}</span>
+            <span>{workspace.commandPolicy === 'auto-approve-safe' ? t('workspace.safeAuto') : workspace.commandPolicy === 'auto-approve-all' ? t('workspace.allAuto') : t('workspace.allApproval')}</span>
           </div>
           <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
-            <span>存档策略</span>
-            <span>{workspace.checkpointPolicy === 'auto-before-modify' ? '自动' : workspace.checkpointPolicy === 'timed' ? '定时' : '手动'}</span>
+            <span>{t('workspace.checkpointPolicy')}</span>
+            <span>{workspace.checkpointPolicy === 'auto-before-modify' ? t('workspace.auto') : workspace.checkpointPolicy === 'timed' ? t('workspace.timed') : t('workspace.manual')}</span>
           </div>
         </div>
       </div>
@@ -806,29 +810,30 @@ interface WorkspaceSkillsPanelProps {
 }
 
 function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) {
+  const { t } = useAppTranslation()
   const { createSkill, toggleSkill, deleteSkill } = useSkillStore()
   const [expandedDir, setExpandedDir] = useState<string | null>(null)
 
   const handleCreateSkill = useCallback(() => {
     createSkill({
       name: `project-skill-${Date.now().toString(36)}`,
-      description: '新技能',
+      description: t('workspace.newSkill'),
       content: '',
       location: 'project',
       projectWorkspaceId: workspace.id,
     })
-  }, [createSkill, workspace.id])
+  }, [createSkill, workspace.id, t])
 
   return (
     <div className="p-2 space-y-2">
       <div className="flex items-center justify-between px-1">
         <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          工作区技能（{skills.length}）
+          {t('workspace.workspaceSkillsCount', { count: skills.length })}
         </span>
         <button
           onClick={handleCreateSkill}
           className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-colors"
-          title="创建新技能"
+          title={t('workspace.createNewSkill')}
         >
           <Plus size={14} />
         </button>
@@ -837,8 +842,8 @@ function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) 
       {skills.length === 0 ? (
         <div className="text-center py-6 text-xs text-gray-400 dark:text-gray-500">
           <Zap size={20} className="mx-auto mb-1 opacity-50" />
-          <p>暂无工作区技能</p>
-          <p className="mt-0.5">点击 + 创建，或在设置中导入</p>
+          <p>{t('workspace.noWorkspaceSkills')}</p>
+          <p className="mt-0.5">{t('workspace.createOrImportSkillHint')}</p>
         </div>
       ) : (
         <div className="space-y-1">
@@ -856,7 +861,7 @@ function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) 
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleSkill(skill.dirPath) }}
                   className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-600 transition-colors"
-                  title={skill.enabled ? '禁用' : '启用'}
+                  title={skill.enabled ? t('workspace.disable') : t('workspace.enable')}
                 >
                   {skill.enabled
                     ? <ToggleRight size={16} className="text-teal-500" />
@@ -867,14 +872,14 @@ function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) 
               {expandedDir === skill.dirPath && (
                 <div className="px-2 pb-2 border-t border-surface-100 dark:border-surface-700/40">
                   <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-3">
-                    {skill.description || '无描述'}
+                    {skill.description || t('workspace.noDescription')}
                   </p>
                   <div className="flex items-center gap-1 mt-1.5">
                     <button
                       onClick={() => deleteSkill(skill.dirPath)}
                       className="text-[10px] text-red-400 hover:text-red-500 transition-colors"
                     >
-                      删除
+                      {t('common.delete')}
                     </button>
                   </div>
                 </div>

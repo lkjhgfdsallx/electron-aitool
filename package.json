@@ -37,7 +37,10 @@
     "react-dom": "^19.0.0",
     "uuid": "^11.1.0",
     "webdav": "^5.10.0",
-    "zustand": "^5.0.3"
+    "zustand": "^5.0.3",
+    "i18next": "^23.3.0",
+    "react-i18next": "^14.0.0",
+    "i18next-browser-languagedetector": "^7.1.0"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",

@@ -14,6 +14,7 @@ import {
   FileCode, FileJson, FileImage, FileType, RefreshCw,
 } from 'lucide-react'
 import { workspaceFsService, type DirEntry } from '../../services/workspace-fs-service'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- Props ----
 
@@ -72,6 +73,7 @@ interface TreeNodeProps {
 }
 
 function TreeNode({ entry, depth, rootPath, onFileSelect, selectedFile, changedFiles }: TreeNodeProps) {
+  const { t } = useAppTranslation()
   const [expanded, setExpanded] = useState(false)
   const [children, setChildren] = useState<DirEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -187,7 +189,7 @@ function TreeNode({ entry, depth, rootPath, onFileSelect, selectedFile, changedF
           className="text-[10px] text-gray-300 dark:text-gray-600 italic py-1"
           style={{ paddingLeft: `${indent + 28}px` }}
         >
-          空目录
+          {t('workspace.emptyDirectory')}
         </div>
       )}
     </div>

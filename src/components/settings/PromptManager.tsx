@@ -19,6 +19,7 @@ import { VersionHistory } from './VersionHistory'
 import { PromptChainEditor } from './PromptChainEditor'
 import type { Prompt, PromptCreateInput } from '../../types'
 import { useConfirmDialog, SettingsEmptyState } from './ui'
+import { useAppTranslation } from '@/i18n/hooks'
 
 type DetailView = 'editor' | 'playground' | 'versions' | 'chains' | null
 
@@ -33,6 +34,7 @@ export function PromptManager() {
   } = useAgentStore()
 
   const { confirm, Dialog } = useConfirmDialog()
+  const { t } = useAppTranslation()
 
   // ==================== 列表状态 ====================
   const [searchQuery, setSearchQuery] = useState('')
@@ -110,9 +112,9 @@ export function PromptManager() {
   const handleDelete = useCallback(
     async (id: string) => {
       const ok = await confirm({
-        title: '删除提示词',
-        message: '确定删除此提示词？此操作不可撤销。',
-        confirmLabel: '删除',
+        title: t('prompt.deletePrompt'),
+        message: t('prompt.deletePromptConfirm'),
+        confirmLabel: t('common.delete'),
         variant: 'danger',
       })
       if (ok) {
@@ -124,13 +126,13 @@ export function PromptManager() {
         }
       }
     },
-    [deletePrompt, selectedPrompt, confirm],
+    [deletePrompt, selectedPrompt, confirm, t],
   )
 
   const handleDuplicate = useCallback(
     (prompt: Prompt) => {
       const newPrompt = createPrompt({
-        name: `${prompt.name} (副本)`,
+        name: t('prompt.copyName', { name: prompt.name }),
         description: prompt.description,
         content: prompt.content,
         sections: prompt.sections,
@@ -145,7 +147,7 @@ export function PromptManager() {
       setDetailView('editor')
       setIsCreating(false)
     },
-    [createPrompt],
+    [createPrompt, t],
   )
 
   const handleConvertToAgent = useCallback(
@@ -162,9 +164,9 @@ export function PromptManager() {
         knowledgeBaseIds: [],
         enabled: true,
       })
-      alert('已成功将提示词 "' + prompt.name + '" 转化为 Agent！请前往 Agent 管理查看。')
+      alert(t('prompt.convertToAgentSuccess', { name: prompt.name }))
     },
-    [createAgent],
+    [createAgent, t],
   )
 
   const handleExport = useCallback(() => {
@@ -190,11 +192,11 @@ export function PromptManager() {
         const data = JSON.parse(text) as Prompt[]
         importPrompts(data)
       } catch {
-        alert('导入失败')
+        alert(t('prompt.importFailed'))
       }
     }
     input.click()
-  }, [importPrompts])
+  }, [importPrompts, t])
 
   const handleCloseDetail = useCallback(() => {
     setSelectedPrompt(null)
@@ -213,34 +215,34 @@ export function PromptManager() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
               <FileText size={18} className="text-accent-500" />
-              提示词管理
+              {t('prompt.promptManager')}
             </h2>
             <div className="flex items-center gap-1">
               <button
                 onClick={handleImport}
                 className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                title="导入"
+                title={t('common.import')}
               >
                 <Upload size={14} />
               </button>
               <button
                 onClick={handleExport}
                 className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                title="导出"
+                title={t('common.export')}
               >
                 <Download size={14} />
               </button>
               <button
                 onClick={handleCreate}
                 className="p-1.5 rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
-                title="新建提示词"
+                title={t('prompt.newPrompt')}
               >
                 <Plus size={14} />
               </button>
               <button
                 onClick={() => { setSelectedPrompt(null); setDetailView('chains'); setIsCreating(false) }}
                 className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                title="提示词链"
+                title={t('prompt.promptChain')}
               >
                 <Link2 size={14} />
               </button>
@@ -254,7 +256,7 @@ export function PromptManager() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索提示词..."
+              placeholder={t('prompt.searchPrompts')}
               className="w-full pl-8 pr-3 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
             />
           </div>
@@ -267,7 +269,7 @@ export function PromptManager() {
                 className="flex items-center gap-1 text-xs text-muted hover:text-surface-700 dark:hover:text-surface-300 transition-colors"
               >
                 <Filter size={12} />
-                标签过滤
+                {t('prompt.tagFilter')}
                 {selectedTag && (
                   <span className="ml-1 px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded text-[10px]">
                     {selectedTag}
@@ -284,7 +286,7 @@ export function PromptManager() {
                         : 'border-surface-300 dark:border-surface-600 text-muted hover:border-accent-300'
                     }`}
                   >
-                    全部
+                    {t('common.all')}
                   </button>
                   {allTags.map((tag) => (
                     <button
@@ -310,14 +312,14 @@ export function PromptManager() {
           {filteredPrompts.length === 0 ? (
             <SettingsEmptyState
               icon={FileText}
-              title={searchQuery || selectedTag ? '没有匹配的提示词' : '暂无提示词'}
+              title={searchQuery || selectedTag ? t('prompt.noMatchingPrompts') : t('prompt.noPrompts')}
               action={
                 !searchQuery && !selectedTag ? (
                   <button
                     onClick={handleCreate}
                     className="text-xs text-accent-500 hover:text-accent-600"
                   >
-                    创建第一个
+                    {t('prompt.createFirstPrompt')}
                   </button>
                 ) : undefined
               }
@@ -339,7 +341,7 @@ export function PromptManager() {
                       <div className="flex items-center gap-1.5">
                         {prompt.pinned && <Pin size={10} className="text-accent-500 flex-shrink-0" />}
                         <h3 className="text-sm font-medium text-surface-800 dark:text-surface-200 truncate">
-                          {prompt.name || '未命名'}
+                          {prompt.name || t('common.untitled')}
                         </h3>
                         {prompt.favorite && (
                           <Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" />
@@ -374,7 +376,7 @@ export function PromptManager() {
                           toggleFavorite(prompt.id)
                         }}
                         className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700"
-                        title={prompt.favorite ? '取消收藏' : '收藏'}
+                        title={prompt.favorite ? t('prompt.removeFavorite') : t('prompt.addFavorite')}
                       >
                         <Star
                           size={12}
@@ -387,7 +389,7 @@ export function PromptManager() {
                           handleDelete(prompt.id)
                         }}
                         className="p-1 rounded hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-500"
-                        title="删除"
+                        title={t('common.delete')}
                       >
                         <Trash2 size={12} />
                       </button>
@@ -401,8 +403,8 @@ export function PromptManager() {
 
         {/* 底部统计 */}
         <div className="px-4 py-2 border-t border-surface-200/80 dark:border-surface-700/60 text-xs text-muted">
-          共 {prompts.length} 个提示词
-          {searchQuery && ` · 筛选 ${filteredPrompts.length} 个`}
+          {t('prompt.totalPrompts', { count: prompts.length })}
+          {searchQuery && ` · ${t('prompt.filteredPrompts', { count: filteredPrompts.length })}`}
         </div>
       </div>
 
@@ -437,8 +439,8 @@ export function PromptManager() {
         ) : (
           <SettingsEmptyState
             icon={FileText}
-            title="选择左侧提示词进行编辑"
-            description="或点击 + 创建新提示词"
+            title={t('prompt.selectPromptToEdit')}
+            description={t('prompt.createPromptHint')}
             iconSize={48}
           />
         )}

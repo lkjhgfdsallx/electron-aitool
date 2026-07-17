@@ -8,6 +8,7 @@
 import { useState, useCallback } from 'react'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- 组件 ----
 
@@ -31,6 +32,7 @@ export function CompressionIndicator({
   tokensBefore,
   tokensAfter,
 }: CompressionIndicatorProps) {
+  const { t, currentLang } = useAppTranslation()
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspace = workspaces.find((w) => w.id === activeWorkspaceId)
@@ -64,7 +66,7 @@ export function CompressionIndicator({
     }
   }, [workspace, checkpointId, loadedMessages, isExpanded])
 
-  const time = new Date(compressedAt).toLocaleTimeString('zh-CN', {
+  const time = new Date(compressedAt).toLocaleTimeString(currentLang, {
     hour: '2-digit',
     minute: '2-digit',
   })
@@ -83,10 +85,10 @@ export function CompressionIndicator({
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
-          {isLoading ? '加载中...' : '上下文已压缩'}
+          {isLoading ? t('common.loading') : t('workspace.contextCompressed')}
           {compressedMessageCount && (
             <span className="text-[10px] text-cyan-500 dark:text-cyan-500">
-              ({compressedMessageCount} 条消息)
+              ({t('workspace.messageCount', { count: compressedMessageCount })})
             </span>
           )}
           <span className="text-[10px] text-cyan-400 dark:text-cyan-600">{time}</span>
@@ -97,13 +99,13 @@ export function CompressionIndicator({
       {/* 统计信息 */}
       {(tokensBefore || tokensAfter) && (
         <div className="flex items-center justify-center gap-3 mt-1.5 text-[10px] text-surface-400 dark:text-surface-500">
-          {tokensBefore && <span>压缩前: {tokensBefore.toLocaleString()} tokens</span>}
+          {tokensBefore && <span>{t('workspace.beforeCompression')}: {tokensBefore.toLocaleString()} tokens</span>}
           {tokensBefore && tokensAfter && (
             <span className="text-cyan-500">
               ↓ {Math.round((1 - tokensAfter / tokensBefore) * 100)}%
             </span>
           )}
-          {tokensAfter && <span>压缩后: {tokensAfter.toLocaleString()} tokens</span>}
+          {tokensAfter && <span>{t('workspace.afterCompression')}: {tokensAfter.toLocaleString()} tokens</span>}
         </div>
       )}
 
@@ -112,13 +114,13 @@ export function CompressionIndicator({
         <div className="mx-4 mt-2 p-3 rounded-lg bg-cyan-50/50 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-800 max-h-60 overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-cyan-700 dark:text-cyan-300">
-              压缩前的消息历史（共 {loadedMessages.length} 条）
+              {t('workspace.preCompressionMessageHistory', { count: loadedMessages.length })}
             </span>
             <button
               onClick={() => setIsExpanded(false)}
               className="text-xs text-cyan-500 hover:text-cyan-700 dark:hover:text-cyan-300"
             >
-              收起
+              {t('workspace.collapse')}
             </button>
           </div>
           <div className="space-y-1.5">
@@ -131,10 +133,10 @@ export function CompressionIndicator({
                     m.role === 'assistant' ? 'text-emerald-500' :
                     'text-surface-400'
                   }`}>
-                    {m.role === 'user' ? '用户' : m.role === 'assistant' ? 'AI' : m.role ?? '?'}:
+                    {m.role === 'user' ? t('common.user') : m.role === 'assistant' ? 'AI' : m.role ?? '?'}:
                   </span>
                   <span className="ml-1 line-clamp-2">
-                    {typeof m.content === 'string' ? m.content.slice(0, 200) : '[非文本内容]'}
+                    {typeof m.content === 'string' ? m.content.slice(0, 200) : t('workspace.nonTextContent')}
                   </span>
                 </div>
               )

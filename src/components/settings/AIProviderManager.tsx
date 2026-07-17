@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   X,
   Plus,
@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import { SettingsHeader, SettingsSaveBar, useConfirmDialog, SettingsEmptyState } from './ui'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
+import { useAppTranslation } from '@/i18n/hooks'
 import type { AIProvider, AIProviderCreateInput, AIModel, ProviderType, ConnectionStatus, ProviderRequestConfig, LocalModelConfig } from '../../types'
 
 const EMPTY_PROVIDER: AIProviderCreateInput = {
@@ -71,6 +72,7 @@ const STATUS_TEXT: Record<ConnectionStatus, string> = {
 }
 
 export function AIProviderManager() {
+  const { t } = useAppTranslation()
   const {
     providers,
     addProvider,
@@ -83,6 +85,24 @@ export function AIProviderManager() {
     updateModel
   } = useAIProviderStore()
   const { confirm, Dialog } = useConfirmDialog()
+
+  // 预设 Provider 模板（使用翻译）
+  const PROVIDER_PRESETS = useMemo(() => [
+    { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', type: 'remote' as ProviderType },
+    { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', type: 'remote' as ProviderType },
+    { name: t('settings.presetLocalOllama'), baseUrl: 'http://localhost:11434/v1', type: 'local' as ProviderType },
+    { name: 'LM Studio', baseUrl: 'http://localhost:1234/v1', type: 'local' as ProviderType },
+    { name: t('settings.presetCustom'), baseUrl: '', type: 'remote' as ProviderType }
+  ], [t])
+
+  // 状态文本映射（使用翻译）
+  const STATUS_TEXT = useMemo<Record<ConnectionStatus, string>>(() => ({
+    unknown: t('settings.statusUnknown'),
+    checking: t('settings.statusChecking'),
+    online: t('settings.statusOnline'),
+    offline: t('settings.statusOffline'),
+    error: t('settings.statusError')
+  }), [t])
 
   const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null)
   const [form, setForm] = useState<AIProviderCreateInput>(EMPTY_PROVIDER)
@@ -129,7 +149,7 @@ export function AIProviderManager() {
         setSelectedModelId(models[0].id)
       }
     } catch (error) {
-      setFetchError(error instanceof Error ? error.message : '自动拉取失败，请手动输入')
+      setFetchError(error instanceof Error ? error.message : t('settings.autoFetchFailed'))
       setIsManualMode(true)
     } finally {
       setFetching(false)
@@ -215,12 +235,12 @@ export function AIProviderManager() {
   }
 
   const formatTime = (timestamp?: number) => {
-    if (!timestamp) return '从未'
+    if (!timestamp) return t('settings.never')
     const now = Date.now()
     const diff = now - timestamp
-    if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
+    if (diff < 60000) return t('settings.justNow')
+    if (diff < 3600000) return t('settings.minutesAgo', { count: Math.floor(diff / 60000) })
+    if (diff < 86400000) return t('settings.hoursAgo', { count: Math.floor(diff / 3600000) })
     return new Date(timestamp).toLocaleDateString('zh-CN')
   }
 
@@ -310,9 +330,9 @@ export function AIProviderManager() {
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: '删除 AI 源',
-      message: '确定删除此 AI 源？关联的对话将回退到默认配置。',
-      confirmLabel: '删除',
+      title: t('settings.deleteAiProvider'),
+      message: t('settings.deleteAiProviderConfirm'),
+      confirmLabel: t('common.delete'),
       variant: 'danger',
     })
     if (ok) {
@@ -327,14 +347,14 @@ export function AIProviderManager() {
     try {
       const models = await fetchModelsFromUrl(form.baseUrl, form.apiKey)
       setFetchedModels(models)
-      setFetchSuccess(`成功获取 ${models.length} 个模型`)
+      setFetchSuccess(t('settings.fetchSuccess', { count: models.length }))
       if (models.length > 0 && !selectedModelId) {
         setSelectedModelId(models[0].id)
       }
       setIsManualMode(false)
       setTimeout(() => setFetchSuccess(null), 3000)
     } catch (error) {
-      setFetchError(error instanceof Error ? error.message : '拉取失败')
+      setFetchError(error instanceof Error ? error.message : t('settings.fetchFailed'))
       setTimeout(() => setFetchError(null), 5000)
     } finally {
       setFetching(false)
@@ -365,7 +385,7 @@ export function AIProviderManager() {
   // 获取选中模型的显示名称
   const getSelectedModelDisplay = () => {
     if (isManualMode && manualModelId) return manualModelId
-    if (!selectedModelId) return '选择模型...'
+    if (!selectedModelId) return t('settings.selectModelPlaceholder')
     const model = fetchedModels.find((m) => m.id === selectedModelId)
     return model ? `${model.name} (${model.id})` : selectedModelId
   }
@@ -379,7 +399,7 @@ export function AIProviderManager() {
         <div className="flex-shrink-0 px-1 pb-4">
           <SettingsHeader
             icon={Globe}
-            title={editingProvider ? '编辑 AI 源' : '添加 AI 源'}
+            title={editingProvider ? t('settings.editAiProvider') : t('settings.addAiProvider')}
             actions={
               <button
                 onClick={handleCancel}
@@ -413,7 +433,7 @@ export function AIProviderManager() {
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-4">
           {/* Provider 类型 */}
           <div>
-            <label className="block text-xs text-muted mb-1.5">类型</label>
+            <label className="block text-xs text-muted mb-1.5">{t('settings.type')}</label>
             <div className="flex gap-2">
               <button
                 onClick={() => setProviderType('remote')}
@@ -424,7 +444,7 @@ export function AIProviderManager() {
                 }`}
               >
                 <Globe size={14} />
-                远程 API
+                {t('settings.remoteApi')}
               </button>
               <button
                 onClick={() => setProviderType('local')}
@@ -435,7 +455,7 @@ export function AIProviderManager() {
                 }`}
               >
                 <Home size={14} />
-                本地模型
+                {t('settings.localModel')}
               </button>
             </div>
           </div>
@@ -443,13 +463,13 @@ export function AIProviderManager() {
           {/* 名称 */}
           <div>
             <label className="block text-xs text-muted mb-1.5">
-              <Server size={12} className="inline mr-1" />名称 *
+              <Server size={12} className="inline mr-1" />{t('settings.nameRequired')}
             </label>
             <input
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="如 OpenAI、DeepSeek、本地 Ollama"
+              placeholder={t('settings.namePlaceholder')}
               className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all"
             />
           </div>
@@ -457,7 +477,7 @@ export function AIProviderManager() {
           {/* Base URL */}
           <div>
             <label className="block text-xs text-muted mb-1.5">
-              <Link size={12} className="inline mr-1" />Base URL *
+              <Link size={12} className="inline mr-1" />{t('settings.baseUrlRequired')}
             </label>
             <input
               type="text"
@@ -472,13 +492,13 @@ export function AIProviderManager() {
           {providerType === 'remote' && (
             <div>
               <label className="block text-xs text-muted mb-1.5">
-                <Key size={12} className="inline mr-1" />API Key
+                <Key size={12} className="inline mr-1" />{t('settings.apiKey')}
               </label>
               <input
                 type="password"
                 value={form.apiKey}
                 onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-                placeholder="sk-...（本地服务可留空）"
+                placeholder={t('settings.apiKeyPlaceholder')}
                 className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all"
               />
             </div>
@@ -489,21 +509,21 @@ export function AIProviderManager() {
             <div className="bg-surface-50 dark:bg-surface-900/50 rounded-lg p-4 space-y-3">
               <div className="flex items-center gap-2 text-xs font-medium text-surface-700 dark:text-surface-300">
                 <Terminal size={14} />
-                本地模型配置
+                {t('settings.localModelConfig')}
               </div>
               <div>
-                <label className="block text-[11px] text-muted mb-1">启动命令</label>
+                <label className="block text-[11px] text-muted mb-1">{t('settings.launchCommand')}</label>
                 <input
                   type="text"
                   value={localConfig.launchCommand || ''}
                   onChange={(e) => setLocalConfig({ ...localConfig, launchCommand: e.target.value })}
-                  placeholder="如 ollama serve"
+                  placeholder={t('settings.launchCommandPlaceholder')}
                   className="w-full px-3 py-1.5 text-xs bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-lg focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all font-mono"
                 />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-[11px] text-muted mb-1">端口</label>
+                  <label className="block text-[11px] text-muted mb-1">{t('settings.port')}</label>
                   <input
                     type="number"
                     value={localConfig.port || ''}
@@ -520,7 +540,7 @@ export function AIProviderManager() {
                       onChange={(e) => setLocalConfig({ ...localConfig, autoStart: e.target.checked })}
                       className="rounded border-surface-300 dark:border-surface-600 text-accent-500 focus:ring-accent-500/30"
                     />
-                    <span className="text-xs text-muted">自动启动</span>
+                    <span className="text-xs text-muted">{t('settings.autoStart')}</span>
                   </label>
                 </div>
               </div>
@@ -531,21 +551,21 @@ export function AIProviderManager() {
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-muted">
-                <Check size={12} className="inline mr-1" />默认模型
+                <Check size={12} className="inline mr-1" />{t('settings.defaultModel')}
               </label>
               <div className="flex items-center gap-2">
                 {fetching && (
                   <span className="flex items-center gap-1 text-[10px] text-accent-500">
-                    <Loader2 size={10} className="animate-spin" /> 拉取中...
+                    <Loader2 size={10} className="animate-spin" /> {t('settings.fetchingModels')}
                   </span>
                 )}
                 <button
                   onClick={handleManualRefresh}
                   disabled={fetching || !form.baseUrl.trim()}
                   className="flex items-center gap-1 text-[10px] text-accent-500 hover:text-accent-600 disabled:opacity-40 transition-colors"
-                  title="手动刷新模型列表"
+                  title={t('settings.refreshModels')}
                 >
-                  <RefreshCw size={10} /> 刷新
+                  <RefreshCw size={10} /> {t('settings.refresh')}
                 </button>
                 <button
                   onClick={() => setIsManualMode(!isManualMode)}
@@ -554,9 +574,9 @@ export function AIProviderManager() {
                       ? 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400'
                       : 'text-muted hover:text-surface-600 dark:hover:text-surface-400'
                   }`}
-                  title="切换手动输入模式"
+                  title={t('settings.toggleManualMode')}
                 >
-                  <Keyboard size={10} /> 手动
+                  <Keyboard size={10} /> {t('settings.manual')}
                 </button>
               </div>
             </div>
@@ -567,12 +587,12 @@ export function AIProviderManager() {
                   type="text"
                   value={manualModelId}
                   onChange={(e) => setManualModelId(e.target.value)}
-                  placeholder="手动输入模型 ID，如 gpt-4o、deepseek-chat"
+                  placeholder={t('settings.manualModelIdPlaceholder')}
                   className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all font-mono"
                 />
                 {fetchedModels.length > 0 && (
                   <p className="text-[10px] text-muted">
-                    已获取 {fetchedModels.length} 个模型，可点击"手动"按钮切换到下拉选择
+                    {t('settings.modelsFetchedHint', { count: fetchedModels.length })}
                   </p>
                 )}
               </div>
@@ -600,7 +620,7 @@ export function AIProviderManager() {
                             type="text"
                             value={modelSearch}
                             onChange={(e) => setModelSearch(e.target.value)}
-                            placeholder="搜索模型..."
+                            placeholder={t('settings.searchModels')}
                             className="w-full pl-7 pr-2 py-1 text-xs bg-surface-50 dark:bg-surface-900 border border-surface-200/60 dark:border-surface-700/40 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent-500/30"
                             autoFocus
                           />
@@ -610,7 +630,7 @@ export function AIProviderManager() {
                     <div className="max-h-52 overflow-y-auto">
                       {filteredModels.length === 0 ? (
                         <div className="px-3 py-3 text-xs text-muted text-center">
-                          {fetchedModels.length === 0 ? '暂无模型，请先拉取' : '无匹配模型'}
+                          {fetchedModels.length === 0 ? t('settings.noModelsYet') : t('settings.noMatchingModels')}
                         </div>
                       ) : (
                         filteredModels.map((model) => (
@@ -630,8 +650,8 @@ export function AIProviderManager() {
                             <div className="min-w-0 flex-1">
                               <div className={`text-xs truncate ${selectedModelId === model.id ? 'text-accent-700 dark:text-accent-300 font-medium' : 'text-surface-700 dark:text-surface-300'}`}>
                                 {model.name}
-                                {model.deprecated && <span className="ml-1 text-[10px] text-orange-500">已弃用</span>}
-                                {model.unavailable && <span className="ml-1 text-[10px] text-red-500">不可用</span>}
+                                {model.deprecated && <span className="ml-1 text-[10px] text-orange-500">{t('settings.deprecated')}</span>}
+                                {model.unavailable && <span className="ml-1 text-[10px] text-red-500">{t('settings.unavailable')}</span>}
                               </div>
                               <div className="flex items-center gap-2">
                                 {model.id !== model.name && (
@@ -681,14 +701,14 @@ export function AIProviderManager() {
             >
               <ChevronRight size={12} className={`transition-transform ${showAdvanced ? 'rotate-90' : ''}`} />
               <Settings size={12} />
-              高级配置
+              {t('settings.advancedConfig')}
             </button>
 
             {showAdvanced && (
               <div className="mt-3 space-y-4 pl-4 border-l-2 border-surface-200/80 dark:border-surface-700/60">
                 {/* 请求超时 */}
                 <div>
-                  <label className="block text-[11px] text-muted mb-1">请求超时（毫秒）</label>
+                  <label className="block text-[11px] text-muted mb-1">{t('settings.requestTimeout')}</label>
                   <input
                     type="number"
                     value={requestConfig.timeout || ''}
@@ -700,7 +720,7 @@ export function AIProviderManager() {
 
                 {/* 重试次数 */}
                 <div>
-                  <label className="block text-[11px] text-muted mb-1">失败重试次数</label>
+                  <label className="block text-[11px] text-muted mb-1">{t('settings.maxRetries')}</label>
                   <input
                     type="number"
                     min="0"
@@ -714,7 +734,7 @@ export function AIProviderManager() {
 
                 {/* 自定义 Headers */}
                 <div>
-                  <label className="block text-[11px] text-muted mb-1">自定义 HTTP 头（每行一个，格式：Key: Value）</label>
+                  <label className="block text-[11px] text-muted mb-1">{t('settings.customHeadersHint')}</label>
                   <textarea
                     value={customHeadersText}
                     onChange={(e) => setCustomHeadersText(e.target.value)}
@@ -736,7 +756,7 @@ export function AIProviderManager() {
               >
                 <ChevronRight size={12} className={`transition-transform ${showModelManager ? 'rotate-90' : ''}`} />
                 <Tag size={12} />
-                模型管理 ({fetchedModels.length})
+                {t('settings.modelManager', { count: fetchedModels.length })}
               </button>
 
               {showModelManager && (
@@ -750,10 +770,10 @@ export function AIProviderManager() {
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono truncate">{model.id}</span>
                           {model.deprecated && (
-                            <span className="text-[9px] px-1 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded">弃用</span>
+                            <span className="text-[9px] px-1 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded">{t('settings.deprecated')}</span>
                           )}
                           {model.unavailable && (
-                            <span className="text-[9px] px-1 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded">不可用</span>
+                            <span className="text-[9px] px-1 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded">{t('settings.unavailable')}</span>
                           )}
                         </div>
                         {/* 标签 */}
@@ -790,7 +810,7 @@ export function AIProviderManager() {
                                 }
                               }}
                               onBlur={() => setEditingModelTags(null)}
-                              placeholder="输入标签..."
+                              placeholder={t('settings.tagInputPlaceholder')}
                               className="w-16 px-1 py-0.5 text-[9px] bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-600 rounded focus:outline-none"
                               autoFocus
                             />
@@ -799,7 +819,7 @@ export function AIProviderManager() {
                               onClick={() => setEditingModelTags(model.id)}
                               className="text-[9px] text-muted hover:text-accent-500 transition-colors"
                             >
-                              +标签
+                              {t('settings.addTag')}
                             </button>
                           )}
                         </div>
@@ -822,7 +842,7 @@ export function AIProviderManager() {
                                 }
                               }}
                               onBlur={() => setEditingModelContext(null)}
-                              placeholder="上下文窗口"
+                              placeholder={t('settings.contextWindow')}
                               className="w-20 px-1 py-0.5 text-[9px] bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-600 rounded focus:outline-none font-mono"
                               autoFocus
                             />
@@ -834,7 +854,7 @@ export function AIProviderManager() {
                               }}
                               className="text-[9px] text-muted hover:text-accent-500 transition-colors"
                             >
-                              {model.contextWindow ? `${model.contextWindow.toLocaleString()} tokens` : '设置上下文窗口'}
+                              {model.contextWindow ? `${model.contextWindow.toLocaleString()} tokens` : t('settings.setContextWindow')}
                             </button>
                           )}
                         </div>
@@ -848,7 +868,7 @@ export function AIProviderManager() {
                             if (editingProvider) updateModel(editingProvider.id, model.id, { deprecated: newVal })
                           }}
                           className={`p-1 rounded transition-colors ${model.deprecated ? 'text-orange-500' : 'text-muted hover:text-orange-500'}`}
-                          title={model.deprecated ? '取消弃用' : '标记弃用'}
+                          title={model.deprecated ? t('settings.unmarkDeprecated') : t('settings.markDeprecated')}
                         >
                           <AlertTriangle size={12} />
                         </button>
@@ -859,7 +879,7 @@ export function AIProviderManager() {
                             if (editingProvider) updateModel(editingProvider.id, model.id, { unavailable: newVal })
                           }}
                           className={`p-1 rounded transition-colors ${model.unavailable ? 'text-red-500' : 'text-muted hover:text-red-500'}`}
-                          title={model.unavailable ? '标记可用' : '标记不可用'}
+                          title={model.unavailable ? t('settings.markAvailable') : t('settings.markUnavailable')}
                         >
                           {model.unavailable ? <XCircle size={12} /> : <WifiOff size={12} />}
                         </button>
@@ -878,9 +898,9 @@ export function AIProviderManager() {
         <SettingsSaveBar
           onSave={handleSave}
           isDirty={form.name.trim().length > 0 && form.baseUrl.trim().length > 0}
-          saveLabel={editingProvider ? '保存修改' : '添加 AI 源'}
+          saveLabel={editingProvider ? t('settings.saveChanges') : t('settings.addAiProvider')}
           onReset={handleCancel}
-          resetLabel="取消"
+          resetLabel={t('settings.cancel')}
         />
       </div>
     )
@@ -893,22 +913,22 @@ export function AIProviderManager() {
       {/* 标题 + 操作栏 */}
       <SettingsHeader
         icon={Globe}
-        title="AI 源管理"
-        description="管理 AI 模型服务提供商的接入配置"
+        title={t('settings.aiProviderManagement')}
+        description={t('settings.aiProviderManagementDescription')}
         actions={
           <>
             <button
               onClick={() => checkAllConnections()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-              title="检测所有连接"
+              title={t('settings.checkAllConnections')}
             >
-              <Zap size={14} /> 全部检测
+              <Zap size={14} /> {t('settings.checkAll')}
             </button>
             <button
               onClick={handleCreate}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
             >
-              <Plus size={14} /> 添加 AI 源
+              <Plus size={14} /> {t('settings.addAiProvider')}
             </button>
           </>
         }
@@ -919,8 +939,8 @@ export function AIProviderManager() {
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8">
           <SettingsEmptyState
             icon={Globe}
-            title="还没有配置 AI 源"
-            description={'点击"添加 AI 源"开始配置'}
+            title={t('settings.noProvidersYet')}
+            description={t('settings.addProviderHint')}
             iconSize={40}
           />
         </div>
@@ -952,12 +972,12 @@ export function AIProviderManager() {
                     </span>
                     {provider.isDefault && (
                       <span className="text-[10px] px-1.5 py-0.5 bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400 rounded-full font-medium">
-                        默认
+                        {t('settings.defaultBadge')}
                       </span>
                     )}
                     {provider.type === 'local' && (
                       <span className="text-[10px] px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-medium">
-                        本地
+                        {t('settings.localBadge')}
                       </span>
                     )}
                     {/* 连接状态指示器 */}
@@ -975,12 +995,12 @@ export function AIProviderManager() {
                   <div className="text-xs text-muted truncate font-mono">{provider.baseUrl}</div>
                   <div className="flex items-center gap-3 text-[10px] text-muted mt-0.5">
                     <span>
-                      模型：{defaultModel ? defaultModel.name : provider.defaultModelId || '未选择'}
-                      {provider.models.length > 0 && ` (${provider.models.length} 个可用)`}
+                      {t('settings.modelSelected', { name: defaultModel ? defaultModel.name : provider.defaultModelId || t('settings.noModelSelected') })}
+                      {provider.models.length > 0 && ` (${t('settings.modelCount', { count: provider.models.length })})`}
                     </span>
                     {provider.modelsFetchedAt && (
                       <span className="opacity-70">
-                        上次拉取：{formatTime(provider.modelsFetchedAt)}
+                        {t('settings.lastFetched', { time: formatTime(provider.modelsFetchedAt) })}
                       </span>
                     )}
                   </div>
@@ -991,7 +1011,7 @@ export function AIProviderManager() {
                     onClick={() => handleTestConnection(provider.id)}
                     disabled={health?.status === 'checking'}
                     className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all disabled:opacity-50"
-                    title="测试连接"
+                    title={t('settings.testConnectionTitle')}
                   >
                     {health?.status === 'checking' ? (
                       <Loader2 size={14} className="animate-spin" />
@@ -1006,21 +1026,21 @@ export function AIProviderManager() {
                         ? 'text-accent-500'
                         : 'text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800'
                     }`}
-                    title={provider.isDefault ? '默认 AI 源' : '设为默认'}
+                    title={provider.isDefault ? t('settings.isDefault') : t('settings.setAsDefault')}
                   >
                     {provider.isDefault ? <Star size={14} /> : <StarOff size={14} />}
                   </button>
                   <button
                     onClick={() => handleEdit(provider)}
                     className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                    title="编辑"
+                    title={t('settings.edit')}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => handleDelete(provider.id)}
                     className="p-1.5 rounded-lg text-muted hover:text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-all"
-                    title="删除"
+                    title={t('common.delete')}
                   >
                     <Trash2 size={14} />
                   </button>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   Database,
   Brain,
@@ -26,6 +26,7 @@ import {
 import { useSettingsStore } from '../../stores/settings-store'
 import { embeddingService } from '../../services/embedding-service'
 import { knowledgeBaseService } from '../../services/knowledge-base-service'
+import { useAppTranslation } from '@/i18n/hooks'
 import type {
   EmbeddingEngineStatus,
   EmbeddingProviderConfig,
@@ -44,6 +45,7 @@ import {
 import { SettingsHeader, SettingsSectionHeader, DangerZone, useConfirmDialog } from './ui'
 
 export function KnowledgeBaseSettings() {
+  const { t } = useAppTranslation()
   const {
     embeddingConfig, setEmbeddingConfig,
     chunkingConfig, setChunkingConfig,
@@ -148,15 +150,15 @@ export function KnowledgeBaseSettings() {
 
   const handleClearAll = useCallback(async () => {
     const ok = await confirm({
-      title: '清空知识库',
-      message: '确定清空所有知识库数据？此操作不可恢复。',
-      confirmLabel: '确认清空',
+      title: t('knowledgeBase.clearKnowledgeBase'),
+      message: t('knowledgeBase.clearKnowledgeBaseConfirm'),
+      confirmLabel: t('knowledgeBase.confirmClear'),
       variant: 'danger',
     })
     if (!ok) return
     await knowledgeBaseService.clearAll()
     window.location.reload()
-  }, [confirm])
+  }, [confirm, t])
 
   const handleRebuild = useCallback(async () => {
     setIsRebuilding(true)
@@ -166,20 +168,20 @@ export function KnowledgeBaseSettings() {
       const result = await knowledgeBaseService.rebuildAllEmbeddings((progress) => {
         setRebuildProgress(progress)
       })
-      console.log(`[知识库] 重建完成: ${result.rebuilt}/${result.totalChunks} 个分块，${result.errors} 个错误`)
+      console.log(`[KnowledgeBase] Rebuild complete: ${result.rebuilt}/${result.totalChunks} chunks, ${result.errors} errors`)
     } catch (error) {
-      console.error('[知识库] 重建失败:', error)
+      console.error('[KnowledgeBase] Rebuild failed:', error)
     } finally {
       setIsRebuilding(false)
     }
   }, [])
 
-  const providerLabels: Record<EmbeddingProviderType, string> = {
-    tfidf: 'TF-IDF 哈希（基础）',
-    'local-model': '本地模型（transformers.js）',
-    ollama: 'Ollama 本地服务',
-    'openai-api': 'OpenAI 兼容 API'
-  }
+  const providerLabels = useMemo<Record<EmbeddingProviderType, string>>(() => ({
+    tfidf: t('knowledgeBase.tfidfBasic'),
+    'local-model': t('knowledgeBase.localModelTransformers'),
+    ollama: t('knowledgeBase.ollamaLocal'),
+    'openai-api': t('knowledgeBase.openaiCompatible')
+  }), [t])
 
   const providerIcons: Record<EmbeddingProviderType, typeof Brain> = {
     tfidf: Zap,
@@ -188,20 +190,20 @@ export function KnowledgeBaseSettings() {
     'openai-api': Globe
   }
 
-  const chunkingModeLabel: Record<ChunkingMode, string> = {
-    character: '按字符',
-    delimiter: '按分隔符',
-    token: '按 Token'
-  }
+  const chunkingModeLabel = useMemo<Record<ChunkingMode, string>>(() => ({
+    character: t('knowledgeBase.byCharacter'),
+    delimiter: t('knowledgeBase.byDelimiter'),
+    token: t('knowledgeBase.byToken')
+  }), [t])
 
   return (
     <div className="space-y-6">
       {/* 标题 */}
-      <SettingsHeader icon={Database} title="知识库设置" description="配置知识库的嵌入引擎和检索参数" />
+      <SettingsHeader icon={Database} title={t('knowledgeBase.knowledgeBaseSettings')} description={t('knowledgeBase.knowledgeBaseSettingsDescription')} />
 
       {/* ===== 普通设置 ===== */}
       <div className="space-y-4">
-        <SettingsSectionHeader title="普通设置" />
+        <SettingsSectionHeader title={t('knowledgeBase.generalSettings')} />
 
         {/* 语义引擎状态卡片 */}
         <SemanticEngineStatusCard
@@ -214,6 +216,7 @@ export function KnowledgeBaseSettings() {
           onRetry={handleRetry}
           onLoadModel={handleLoadModel}
           migrationProgress={migrationProgress}
+          t={t}
         />
 
         {/* Embedding 提供者选择 */}
@@ -221,7 +224,7 @@ export function KnowledgeBaseSettings() {
           <div className="flex items-center gap-2">
             <Settings size={14} className="text-muted" />
             <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-              Embedding 提供者
+              {t('knowledgeBase.embeddingProvider')}
             </span>
             <span className="text-xs text-muted">
               ({providerLabels[embeddingConfig.type]})
@@ -252,13 +255,13 @@ export function KnowledgeBaseSettings() {
 
           {/* 提供者特定配置 */}
           {embeddingConfig.type === 'local-model' && (
-            <LocalModelConfig config={embeddingConfig} onChange={setEmbeddingConfig} />
+            <LocalModelConfig config={embeddingConfig} onChange={setEmbeddingConfig} t={t} />
           )}
           {embeddingConfig.type === 'ollama' && (
-            <OllamaConfig config={embeddingConfig} onChange={setEmbeddingConfig} />
+            <OllamaConfig config={embeddingConfig} onChange={setEmbeddingConfig} t={t} />
           )}
           {embeddingConfig.type === 'openai-api' && (
-            <OpenAIConfig config={embeddingConfig} onChange={setEmbeddingConfig} />
+            <OpenAIConfig config={embeddingConfig} onChange={setEmbeddingConfig} t={t} />
           )}
         </div>
       </div>
@@ -270,7 +273,7 @@ export function KnowledgeBaseSettings() {
           className="w-full cursor-pointer group"
         >
           <SettingsSectionHeader
-            title="高级设置"
+            title={t('knowledgeBase.advancedSettings')}
             actions={showAdvanced ? <ChevronUp size={16} className="text-muted" /> : <ChevronDown size={16} className="text-muted" />}
           />
         </div>
@@ -282,23 +285,23 @@ export function KnowledgeBaseSettings() {
               <div className="flex items-center gap-2">
                 <Scissors size={14} className="text-muted" />
                 <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                  分块设置
+                  {t('knowledgeBase.chunkingSettings')}
                 </span>
                 <span className="text-xs text-muted">
-                  ({chunkingModeLabel[chunkingConfig.mode]}，{chunkingConfig.chunkSize} 字符/Token)
+                  ({chunkingModeLabel[chunkingConfig.mode]}，{chunkingConfig.chunkSize} {t('knowledgeBase.charsToken')})
                 </span>
               </div>
 
               {/* 分块模式选择 */}
               <div>
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-2 block">
-                  分块模式
+                  {t('knowledgeBase.chunkingMode')}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {([
-                    { mode: 'character' as ChunkingMode, icon: Type, label: '按字符', desc: '通用，按句子断句' },
-                    { mode: 'delimiter' as ChunkingMode, icon: SplitSquareVertical, label: '按分隔符', desc: 'Markdown/代码' },
-                    { mode: 'token' as ChunkingMode, icon: Hash, label: '按 Token', desc: '精确控制上下文' }
+                    { mode: 'character' as ChunkingMode, icon: Type, label: t('knowledgeBase.byCharacter'), desc: t('knowledgeBase.byCharacterDesc') },
+                    { mode: 'delimiter' as ChunkingMode, icon: SplitSquareVertical, label: t('knowledgeBase.byDelimiter'), desc: t('knowledgeBase.byDelimiterDesc') },
+                    { mode: 'token' as ChunkingMode, icon: Hash, label: t('knowledgeBase.byToken'), desc: t('knowledgeBase.byTokenDesc') }
                   ] as const).map(({ mode, icon: Icon, label, desc }) => {
                     const isActive = chunkingConfig.mode === mode
                     return (
@@ -323,7 +326,7 @@ export function KnowledgeBaseSettings() {
               {/* 分块大小 */}
               <div>
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-                  {chunkingConfig.mode === 'token' ? '每块最大 Token 数' : '每块最大字符数'}
+                  {chunkingConfig.mode === 'token' ? t('knowledgeBase.maxTokensPerChunk') : t('knowledgeBase.maxCharsPerChunk')}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -344,7 +347,7 @@ export function KnowledgeBaseSettings() {
               {/* 重叠长度 */}
               <div>
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-                  重叠长度
+                  {t('knowledgeBase.overlapLength')}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -369,7 +372,7 @@ export function KnowledgeBaseSettings() {
               {chunkingConfig.mode === 'delimiter' && (
                 <div>
                   <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-                    分隔符
+                    {t('knowledgeBase.delimiter')}
                   </label>
                   <input
                     type="text"
@@ -385,7 +388,7 @@ export function KnowledgeBaseSettings() {
                 onClick={() => setChunkingConfig({ ...DEFAULT_CHUNKING_CONFIG })}
                 className="text-xs text-muted hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
               >
-                恢复默认
+                {t('knowledgeBase.restoreDefaults')}
               </button>
             </div>
 
@@ -394,17 +397,17 @@ export function KnowledgeBaseSettings() {
               <div className="flex items-center gap-2">
                 <Search size={14} className="text-muted" />
                 <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                  检索参数
+                  {t('knowledgeBase.retrievalParams')}
                 </span>
                 <span className="text-xs text-muted">
-                  (Top-{retrievalConfig.topK}，阈值 {retrievalConfig.similarityThreshold.toFixed(2)}，向量 {retrievalConfig.hybridVectorWeight ?? 0.6}/BM25 {retrievalConfig.hybridBM25Weight ?? 0.4})
+                  (Top-{retrievalConfig.topK}，{t('knowledgeBase.threshold')} {retrievalConfig.similarityThreshold.toFixed(2)}，{t('knowledgeBase.vector')} {retrievalConfig.hybridVectorWeight ?? 0.6}/BM25 {retrievalConfig.hybridBM25Weight ?? 0.4})
                 </span>
               </div>
 
               {/* Top-K */}
               <div>
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-                  Top-K 结果数
+                  {t('knowledgeBase.topKResults')}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -422,7 +425,7 @@ export function KnowledgeBaseSettings() {
               {/* 相似度阈值 */}
               <div>
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">
-                  相似度阈值
+                  {t('knowledgeBase.similarityThreshold')}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -443,12 +446,12 @@ export function KnowledgeBaseSettings() {
               {/* 混合检索权重 */}
               <div className="pt-2 border-t border-surface-100 dark:border-surface-700/40">
                 <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-2 block">
-                  混合检索权重
+                  {t('knowledgeBase.hybridSearchWeights')}
                 </label>
                 <div className="space-y-2">
                   {/* 向量权重 */}
                   <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-surface-500 dark:text-surface-400 w-16">向量</span>
+                    <span className="text-[11px] text-surface-500 dark:text-surface-400 w-16">{t('knowledgeBase.vector')}</span>
                     <input
                       type="range" min={0} max={1} step={0.05}
                       value={retrievalConfig.hybridVectorWeight ?? 0.6}
@@ -488,7 +491,7 @@ export function KnowledgeBaseSettings() {
                   </div>
                 </div>
                 <p className="text-[10px] text-surface-400 mt-1">
-                  向量权重高 → 偏语义理解；BM25 权重高 → 偏精确关键词匹配
+                  {t('knowledgeBase.vectorWeightHigh')}
                 </p>
               </div>
 
@@ -496,7 +499,7 @@ export function KnowledgeBaseSettings() {
                 onClick={() => setRetrievalConfig({ ...DEFAULT_RETRIEVAL_CONFIG })}
                 className="text-xs text-muted hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
               >
-                恢复默认
+                {t('knowledgeBase.restoreDefaults')}
               </button>
             </div>
 
@@ -505,20 +508,20 @@ export function KnowledgeBaseSettings() {
               <div className="flex items-center gap-2 mb-2">
                 <RotateCcw size={14} className="text-muted" />
                 <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                  重建向量索引
+                  {t('knowledgeBase.rebuildVectorIndex')}
                 </span>
               </div>
               <p className="text-xs text-muted mb-3">
-                更换 Embedding 模型后，点击此按钮重新生成所有文档的语义向量。处理过程中可以正常使用知识库。
+                {t('knowledgeBase.rebuildDescription')}
               </p>
               {isRebuilding && rebuildProgress ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin text-accent-500" />
                     <span className="text-xs text-surface-600 dark:text-surface-300">
-                      {rebuildProgress.phase === 'clearing' ? '正在清除旧向量...' :
-                       rebuildProgress.phase === 'done' ? '重建完成' :
-                       `正在生成向量 ${rebuildProgress.current}/${rebuildProgress.total}`}
+                      {rebuildProgress.phase === 'clearing' ? t('knowledgeBase.clearingOldVectors') :
+                       rebuildProgress.phase === 'done' ? t('knowledgeBase.rebuildComplete') :
+                       t('knowledgeBase.generatingVectors', { current: rebuildProgress.current, total: rebuildProgress.total })}
                     </span>
                   </div>
                   {rebuildProgress.total > 0 && (
@@ -532,18 +535,18 @@ export function KnowledgeBaseSettings() {
                 </div>
               ) : showRebuildConfirm ? (
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-amber-600 dark:text-amber-400">确定重建所有向量？这可能需要几分钟。</span>
+                  <span className="text-xs text-amber-600 dark:text-amber-400">{t('knowledgeBase.rebuildConfirm')}</span>
                   <button
                     onClick={handleRebuild}
                     className="px-3 py-1.5 text-xs rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
                   >
-                    确认重建
+                    {t('knowledgeBase.confirmRebuild')}
                   </button>
                   <button
                     onClick={() => setShowRebuildConfirm(false)}
                     className="px-3 py-1.5 text-xs rounded-lg bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-300 dark:hover:bg-surface-600 transition-colors"
                   >
-                    取消
+                    {t('common.cancel')}
                   </button>
                 </div>
               ) : (
@@ -553,7 +556,7 @@ export function KnowledgeBaseSettings() {
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-accent-50 dark:bg-accent-950/20 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/30 hover:bg-accent-100 dark:hover:bg-accent-950/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <RotateCcw size={12} />
-                  一键重建向量库
+                  {t('knowledgeBase.rebuildAll')}
                 </button>
               )}
             </div>
@@ -565,7 +568,7 @@ export function KnowledgeBaseSettings() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg text-danger-500 border border-danger-200 dark:border-danger-800/60 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
               >
                 <Trash2 size={12} />
-                清空知识库
+                {t('knowledgeBase.clearKnowledgeBase')}
               </button>
             </DangerZone>
           </>
@@ -580,7 +583,7 @@ export function KnowledgeBaseSettings() {
 
 function SemanticEngineStatusCard({
   status, config, showErrorDetail, setShowErrorDetail,
-  copied, onCopyError, onRetry, onLoadModel, migrationProgress
+  copied, onCopyError, onRetry, onLoadModel, migrationProgress, t
 }: {
   status: EmbeddingEngineStatus
   config: EmbeddingProviderConfig
@@ -591,13 +594,14 @@ function SemanticEngineStatusCard({
   onRetry: () => void
   onLoadModel: () => void
   migrationProgress: { total: number; migrated: number; percentage: number } | null
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   if (config.type === 'tfidf') return null
 
   let bgColor = 'bg-surface-50 dark:bg-surface-800/40'
   let borderColor = 'border-surface-200/80 dark:border-surface-700/60'
   let icon = <Brain size={16} className="text-muted" />
-  let title = '语义增强'
+  let title = t('knowledgeBase.semanticEnhanced')
   let subtitle = ''
   let showLoadButton = false
 
@@ -605,21 +609,21 @@ function SemanticEngineStatusCard({
     bgColor = 'bg-emerald-50/50 dark:bg-emerald-950/20'
     borderColor = 'border-emerald-200/80 dark:border-emerald-800/40'
     icon = <Brain size={16} className="text-emerald-600 dark:text-emerald-400" />
-    title = '语义增强已启用'
-    subtitle = `${status.semanticDimension || '?'} 维向量 · ${providerShortLabel(config.type)}`
+    title = t('knowledgeBase.semanticEnabled')
+    subtitle = t('knowledgeBase.semanticDimension', { dimension: status.semanticDimension || '?' }) + ` · ${providerShortLabel(config.type)}`
   } else if (status.modelLoading) {
     bgColor = 'bg-amber-50/50 dark:bg-amber-950/20'
     borderColor = 'border-amber-200/80 dark:border-amber-800/40'
     icon = <Loader2 size={16} className="animate-spin text-amber-600 dark:text-amber-400" />
-    title = '语义模型加载中...'
+    title = t('knowledgeBase.modelLoading')
     subtitle = status.loadPhaseDetail || `${status.loadProgress}%`
   } else if (status.loadPhase === 'error') {
     bgColor = 'bg-red-50/50 dark:bg-red-950/20'
     borderColor = 'border-red-200/80 dark:border-red-800/40'
     icon = <AlertCircle size={16} className="text-red-600 dark:text-red-400" />
-    title = status.errorMessage || '语义增强不可用'
+    title = status.errorMessage || t('knowledgeBase.semanticUnavailable')
   } else {
-    subtitle = `${providerShortLabel(config.type)} · 点击下方按钮加载模型`
+    subtitle = `${providerShortLabel(config.type)} · ${t('knowledgeBase.loadModelHint')}`
     showLoadButton = true
   }
 
@@ -633,12 +637,12 @@ function SemanticEngineStatusCard({
         </div>
         {showLoadButton && (
           <button onClick={onLoadModel} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-accent-100 dark:bg-accent-900/30 text-accent-700 dark:text-accent-300 hover:bg-accent-200 dark:hover:bg-accent-900/50 transition-all">
-            <Download size={12} />加载模型
+            <Download size={12} />{t('knowledgeBase.loadModel')}
           </button>
         )}
         {status.loadPhase === 'error' && status.errorRecoverable && (
           <button onClick={onRetry} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-all">
-            <RefreshCw size={12} />重试
+            <RefreshCw size={12} />{t('common.retry')}
           </button>
         )}
       </div>
@@ -650,14 +654,14 @@ function SemanticEngineStatusCard({
       {status.modelReady && migrationProgress && migrationProgress.total > 0 && migrationProgress.migrated < migrationProgress.total && (
         <div className="flex items-center gap-2 text-xs text-muted">
           <Loader2 size={12} className="animate-spin" />
-          正在迁移旧文档语义向量: {migrationProgress.migrated}/{migrationProgress.total} ({migrationProgress.percentage}%)
+          {t('knowledgeBase.migratingVectors', { migrated: migrationProgress.migrated, total: migrationProgress.total, percentage: migrationProgress.percentage })}
         </div>
       )}
       {status.loadPhase === 'error' && status.errorDetail && (
         <div>
           <button onClick={() => setShowErrorDetail(!showErrorDetail)} className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400 hover:underline">
             {showErrorDetail ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            查看详细错误信息
+            {t('knowledgeBase.viewErrorDetail')}
           </button>
           {showErrorDetail && (
             <div className="mt-2 space-y-2">
@@ -665,7 +669,7 @@ function SemanticEngineStatusCard({
                 {status.errorDetail}
               </pre>
               <button onClick={onCopyError} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-300 dark:hover:bg-surface-600 transition-all">
-                {copied ? <><Check size={12} className="text-emerald-500" />已复制</> : <><Copy size={12} />复制错误信息</>}
+                {copied ? <><Check size={12} className="text-emerald-500" />{t('knowledgeBase.copied')}</> : <><Copy size={12} />{t('knowledgeBase.copyErrorInfo')}</>}
               </button>
             </div>
           )}
@@ -675,63 +679,66 @@ function SemanticEngineStatusCard({
   )
 }
 
-function LocalModelConfig({ config, onChange }: {
+function LocalModelConfig({ config, onChange, t }: {
   config: Extract<EmbeddingProviderConfig, { type: 'local-model' }>
   onChange: (config: EmbeddingProviderConfig) => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">模型 ID</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.modelId')}</label>
         <input type="text" value={config.modelId} onChange={(e) => onChange({ ...config, modelId: e.target.value })} placeholder="Xenova/all-MiniLM-L6-v2" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">镜像站 URL</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.mirrorUrl')}</label>
         <input type="text" value={config.mirrorUrl} onChange={(e) => onChange({ ...config, mirrorUrl: e.target.value })} placeholder="https://hf-mirror.com" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div className="flex items-center gap-2">
         <input type="checkbox" id="autoDownload" checked={config.autoDownload} onChange={(e) => onChange({ ...config, autoDownload: e.target.checked })} className="rounded border-surface-300 dark:border-surface-600 text-accent-500 focus:ring-accent-500/50" />
-        <label htmlFor="autoDownload" className="text-xs text-surface-700 dark:text-surface-300">应用启动时自动下载模型</label>
+        <label htmlFor="autoDownload" className="text-xs text-surface-700 dark:text-surface-300">{t('knowledgeBase.autoDownload')}</label>
       </div>
     </div>
   )
 }
 
-function OllamaConfig({ config, onChange }: {
+function OllamaConfig({ config, onChange, t }: {
   config: Extract<EmbeddingProviderConfig, { type: 'ollama' }>
   onChange: (config: EmbeddingProviderConfig) => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">Ollama 服务地址</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.ollamaServiceUrl')}</label>
         <input type="text" value={config.baseUrl} onChange={(e) => onChange({ ...config, baseUrl: e.target.value })} placeholder="http://localhost:11434" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">模型名称</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.modelName')}</label>
         <input type="text" value={config.model} onChange={(e) => onChange({ ...config, model: e.target.value })} placeholder="nomic-embed-text" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
-        <p className="text-xs text-muted mt-1">推荐: nomic-embed-text、mxbai-embed-large、all-minilm</p>
+        <p className="text-xs text-muted mt-1">{t('knowledgeBase.recommendedModels')}</p>
       </div>
     </div>
   )
 }
 
-function OpenAIConfig({ config, onChange }: {
+function OpenAIConfig({ config, onChange, t }: {
   config: Extract<EmbeddingProviderConfig, { type: 'openai-api' }>
   onChange: (config: EmbeddingProviderConfig) => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">API 地址</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.apiUrl')}</label>
         <input type="text" value={config.baseUrl} onChange={(e) => onChange({ ...config, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">API Key</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.apiKey')}</label>
         <input type="password" value={config.apiKey} onChange={(e) => onChange({ ...config, apiKey: e.target.value })} placeholder="sk-..." className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
       <div>
-        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">模型名称</label>
+        <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1 block">{t('knowledgeBase.modelName')}</label>
         <input type="text" value={config.model} onChange={(e) => onChange({ ...config, model: e.target.value })} placeholder="text-embedding-3-small" className="w-full px-3 py-2 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-accent-500/50" />
       </div>
     </div>

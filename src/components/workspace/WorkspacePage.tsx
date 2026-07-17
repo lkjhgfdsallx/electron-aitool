@@ -27,6 +27,7 @@ import { FilePreview } from './FilePreview'
 import { WorkspaceCreateDialog } from './WorkspaceCreateDialog'
 import { WorkspaceSettingsPopover } from './WorkspaceSettingsPopover'
 import { ContextTimelinePanel } from './ContextTimelinePanel'
+import { useAppTranslation } from '../../i18n/hooks'
 
 interface WorkspacePageProps {
   onBackToChat: () => void
@@ -34,6 +35,7 @@ interface WorkspacePageProps {
 }
 
 export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePageProps) {
+  const { t } = useAppTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const openTabs = useWorkspaceStore((s) => s.openTabs)
@@ -220,11 +222,11 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             <button
               onClick={onBackToChat}
               className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
-              title="返回对话"
+              title={t('nav.backToChat')}
             >
               <ChevronLeft size={18} />
             </button>
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">工作区</span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('workspace.workspace')}</span>
           </div>
         </div>
 
@@ -240,10 +242,10 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 </svg>
               </div>
               <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1.5">
-                欢迎使用工作区
+                {t('workspace.welcomeTitle')}
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
-                工作区是一个完整的 AI 项目操作台，文件、对话、命令三要素同屏协作。
+                {t('workspace.welcomeDescription')}
               </p>
             </div>
 
@@ -264,7 +266,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        工作区
+                        {t('workspace.workspace')}
                       </h3>
                       <div className="flex items-center bg-surface-100 dark:bg-surface-800 rounded-lg p-0.5">
                         <button
@@ -275,7 +277,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                           }`}
                         >
-                          最近
+                          {t('workspace.recent')}
                         </button>
                         <button
                           onClick={() => setViewMode('all')}
@@ -285,7 +287,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                           }`}
                         >
-                          全部
+                          {t('workspace.all')}
                         </button>
                       </div>
                     </div>
@@ -295,7 +297,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="搜索工作区..."
+                        placeholder={t('workspace.searchPlaceholder')}
                         className="pl-8 pr-3 py-1.5 text-xs rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 dark:focus:border-teal-500 w-40 transition-all"
                       />
                     </div>
@@ -312,7 +314,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                         <Plus size={20} className="text-gray-400 dark:text-gray-500 group-hover:text-teal-500 transition-colors" />
                       </div>
                       <span className="text-xs font-medium text-gray-500 dark:text-gray-400 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
-                        新建工作区
+                        {t('workspace.newWorkspace')}
                       </span>
                     </div>
 
@@ -345,7 +347,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                               }}
                               className="px-2 py-0.5 text-[10px] font-medium rounded bg-danger-500 text-white hover:bg-danger-600 transition-colors"
                             >
-                              确认
+                              {t('common.confirm')}
                             </button>
                             <button
                               onClick={(e) => {
@@ -354,7 +356,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                               }}
                               className="px-2 py-0.5 text-[10px] font-medium rounded bg-surface-200 dark:bg-surface-600 text-gray-600 dark:text-gray-300 hover:bg-surface-300 dark:hover:bg-surface-500 transition-colors"
                             >
-                              取消
+                              {t('common.cancel')}
                             </button>
                           </div>
                         ) : (
@@ -365,7 +367,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                                 setDeleteConfirmId(ws.id)
                               }}
                               className="absolute top-2.5 right-2.5 p-1 rounded-md opacity-0 group-hover:opacity-100 hover:bg-danger-50 dark:hover:bg-danger-950/30 text-gray-400 hover:text-danger-500 transition-all z-10"
-                              title="删除工作区"
+                              title={t('workspace.deleteWorkspace')}
                             >
                               <Trash2 size={13} />
                             </button>
@@ -422,7 +424,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                   {/* 搜索无结果 */}
                   {searchQuery && filtered.length === 0 && (
                     <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
-                      未找到匹配的工作区
+                      {t('workspace.noMatchingWorkspaces')}
                     </div>
                   )}
                 </div>
@@ -458,7 +460,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         <button
           onClick={onBackToChat}
           className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
-          title="返回对话"
+          title={t('workspace.backToChat')}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <ChevronLeft size={14} />
@@ -493,7 +495,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                   closeTab(ws.id)
                 }}
                 className="p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-600 transition-opacity flex-shrink-0"
-                title="关闭标签"
+                title={t('workspace.closeTab')}
               >
                 <X size={11} />
               </button>
@@ -504,7 +506,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         <button
           onClick={() => setShowCreateWorkspace(true)}
           className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
-          title="新建工作区"
+          title={t('workspace.newWorkspace')}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <Plus size={13} />
@@ -524,7 +526,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             }}
             className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
           >
-            关闭其他标签
+            {t('workspace.closeOtherTabs')}
           </button>
           <button
             onClick={() => {
@@ -533,7 +535,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             }}
             className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
           >
-            关闭标签
+            {t('workspace.closeTab')}
           </button>
           <div className="h-px bg-surface-200 dark:bg-surface-700 my-1" />
           <button
@@ -545,9 +547,9 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors flex items-center gap-1.5"
           >
             {tabContextMenu.tabId === defaultWorkspaceId ? (
-              <><StarOff size={12} /> 取消默认工作区</>
+              <><StarOff size={12} /> {t('workspace.unsetDefaultWorkspace')}</>
             ) : (
-              <><Star size={12} /> 设为默认工作区</>
+              <><Star size={12} /> {t('workspace.setDefaultWorkspace')}</>
             )}
           </button>
         </div>
@@ -568,12 +570,12 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           </span>
           {/* C7: 默认工作区标记 */}
           {activeWorkspaceId === defaultWorkspaceId && (
-            <span title="默认工作区"><Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" /></span>
+            <span title={t('workspace.defaultWorkspace')}><Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" /></span>
           )}
           {/* B8: 文件变化计数 */}
           {changedFiles.size > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
-              {changedFiles.size} 变更
+              {t('workspace.changedFilesCount', { count: changedFiles.size })}
             </span>
           )}
         </div>
@@ -587,7 +589,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
                 : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
             }`}
-            title={leftPanelCollapsed ? '展开项目浏览器' : '折叠项目浏览器'}
+            title={leftPanelCollapsed ? t('workspace.expandProjectExplorer') : t('workspace.collapseProjectExplorer')}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -603,7 +605,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
                 : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
             }`}
-            title={bottomPanelCollapsed ? '展开终端面板' : '折叠终端面板'}
+            title={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
           >
             {bottomPanelCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
@@ -616,7 +618,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
                 : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
             }`}
-            title="上下文时间线"
+            title={t('workspace.contextTimeline')}
           >
             <Clock size={16} />
           </button>
@@ -625,7 +627,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           <button
             onClick={handleExport}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-            title="导出工作区"
+            title={t('workspace.exportWorkspace')}
           >
             <Download size={16} />
           </button>
@@ -640,7 +642,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                   ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
                   : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
               }`}
-              title="工作区设置"
+              title={t('workspace.workspaceSettings')}
             >
               <Settings size={16} />
             </button>
@@ -710,7 +712,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                   <button
                     onClick={() => setPreviewFile(null)}
                     className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                    title="关闭预览"
+                    title={t('workspace.closePreview')}
                   >
                     <X size={13} />
                   </button>

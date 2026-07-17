@@ -13,57 +13,58 @@ import {
   BarChart3
 } from 'lucide-react'
 import type { SiteAnalyzerLiveProgress } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 /** 阶段配置 */
 const PHASE_CONFIG: Record<
   SiteAnalyzerLiveProgress['phase'],
-  { icon: typeof Globe; label: string; color: string; bgColor: string; gradient: string }
+  { icon: typeof Globe; labelKey: string; color: string; bgColor: string; gradient: string }
 > = {
   browser: {
     icon: Globe,
-    label: '启动浏览器',
+    labelKey: 'special.phaseBrowser',
     color: 'text-blue-500',
     bgColor: 'bg-blue-100 dark:bg-blue-900/40',
     gradient: 'from-blue-400 to-blue-600'
   },
   login: {
     icon: LogIn,
-    label: '登录验证',
+    labelKey: 'special.phaseLogin',
     color: 'text-emerald-500',
     bgColor: 'bg-emerald-100 dark:bg-emerald-900/40',
     gradient: 'from-emerald-400 to-emerald-600'
   },
   crawling: {
     icon: Search,
-    label: '全站爬取',
+    labelKey: 'special.phaseCrawling',
     color: 'text-amber-500',
     bgColor: 'bg-amber-100 dark:bg-amber-900/40',
     gradient: 'from-amber-400 to-amber-600'
   },
   analyzing: {
     icon: Brain,
-    label: 'AI 智能分析',
+    labelKey: 'special.phaseAnalyzing',
     color: 'text-purple-500',
     bgColor: 'bg-purple-100 dark:bg-purple-900/40',
     gradient: 'from-purple-400 to-purple-600'
   },
   report: {
     icon: FileText,
-    label: '生成报告',
+    labelKey: 'special.phaseReport',
     color: 'text-indigo-500',
     bgColor: 'bg-indigo-100 dark:bg-indigo-900/40',
     gradient: 'from-indigo-400 to-indigo-600'
   },
   completed: {
     icon: CheckCircle2,
-    label: '分析完成',
+    labelKey: 'special.phaseCompleted',
     color: 'text-green-500',
     bgColor: 'bg-green-100 dark:bg-green-900/40',
     gradient: 'from-green-400 to-green-600'
   },
   error: {
     icon: AlertCircle,
-    label: '分析出错',
+    labelKey: 'special.phaseError',
     color: 'text-red-500',
     bgColor: 'bg-red-100 dark:bg-red-900/40',
     gradient: 'from-red-400 to-red-600'
@@ -81,15 +82,6 @@ const PHASE_ORDER: SiteAnalyzerLiveProgress['phase'][] = [
 
 interface SiteAnalyzerProgressPanelProps {
   progress: SiteAnalyzerLiveProgress
-}
-
-/** 格式化耗时 */
-function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000)
-  if (seconds < 60) return `${seconds}秒`
-  const minutes = Math.floor(seconds / 60)
-  const remainSeconds = seconds % 60
-  return `${minutes}分${remainSeconds}秒`
 }
 
 /** 截断URL */
@@ -115,7 +107,16 @@ function AnimatedNumber({ value, label, icon: Icon }: { value?: number; label: s
 }
 
 export function SiteAnalyzerProgressPanel({ progress }: SiteAnalyzerProgressPanelProps) {
+  const { t } = useAppTranslation()
   const [elapsed, setElapsed] = useState(0)
+
+  const formatElapsed = (ms: number): string => {
+    const seconds = Math.floor(ms / 1000)
+    if (seconds < 60) return t('special.elapsedSeconds', { count: seconds })
+    const minutes = Math.floor(seconds / 60)
+    const remainSeconds = seconds % 60
+    return t('special.elapsedMinutesSeconds', { minutes, seconds: remainSeconds })
+  }
 
   // 实时更新耗时
   useEffect(() => {
@@ -148,7 +149,7 @@ export function SiteAnalyzerProgressPanel({ progress }: SiteAnalyzerProgressPane
             ) : (
               <AlertCircle size={18} className="text-white" />
             )}
-            <span className="text-white font-semibold text-sm tracking-wide">网站分析引擎</span>
+            <span className="text-white font-semibold text-sm tracking-wide">{t('special.siteAnalyzerEngine')}</span>
           </div>
           <div className="flex items-center gap-1.5 text-white/80 text-xs">
             <Clock size={12} />
@@ -217,7 +218,7 @@ export function SiteAnalyzerProgressPanel({ progress }: SiteAnalyzerProgressPane
                         : 'text-gray-400 dark:text-gray-600'
                   }`}
                 >
-                  {config.label}
+                  {t(config.labelKey)}
                 </span>
 
                 {/* 连接线 */}
@@ -258,9 +259,9 @@ export function SiteAnalyzerProgressPanel({ progress }: SiteAnalyzerProgressPane
 
         {/* 统计数据 */}
         <div className="grid grid-cols-3 gap-2">
-          <AnimatedNumber value={progress.pagesCrawled} label="已爬页面" icon={Search} />
-          <AnimatedNumber value={progress.apisFound} label="发现 API" icon={BarChart3} />
-          <AnimatedNumber value={progress.pagesAnalyzed} label="已分析" icon={Brain} />
+          <AnimatedNumber value={progress.pagesCrawled} label={t('special.pagesCrawled')} icon={Search} />
+          <AnimatedNumber value={progress.apisFound} label={t('special.apisFound')} icon={BarChart3} />
+          <AnimatedNumber value={progress.pagesAnalyzed} label={t('special.pagesAnalyzed')} icon={Brain} />
         </div>
 
         {/* 错误信息 */}

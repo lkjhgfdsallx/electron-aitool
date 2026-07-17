@@ -4,12 +4,24 @@ import { MainArea } from './components/layout/MainArea'
 import { TitleBar } from './components/layout/TitleBar'
 import { CommandApprovalDialog } from './components/workspace/CommandApprovalDialog'
 import { FileActionApprovalDialog } from './components/workspace/FileActionApprovalDialog'
+import i18n, { getDefaultLanguage } from '@/i18n/config'
 import { initMCPSync } from './stores/mcp-tool-store'
 import { useWorkspaceStore } from './stores/workspace-store'
 import { useConversationStore } from './stores/conversation-store'
 import { useSkillStore } from './stores/skill-store'
 import { useShortcuts } from './hooks/use-shortcuts'
 import type { ViewMode, SettingsSection } from './components/settings/SettingsNavRail'
+
+// 初始化 i18n
+const initI18n = async () => {
+  const defaultLang = getDefaultLanguage()
+  if (i18n.language !== defaultLang) {
+    await i18n.changeLanguage(defaultLang)
+  }
+}
+
+// 应用启动时初始化
+initI18n()
 
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('chat')

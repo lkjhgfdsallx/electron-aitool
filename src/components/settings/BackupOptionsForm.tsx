@@ -4,7 +4,8 @@
  * 提供模块选择和敏感数据剥离选项，供本地备份和 WebDAV 上传共用。
  */
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useAppTranslation } from '@/i18n/hooks'
 import type { BackupDataModule, SensitiveStripOptions } from '../../types/webdav'
 import { DEFAULT_BACKUP_MODULES } from '../../types/webdav'
 
@@ -43,9 +44,18 @@ export function BackupOptionsForm({
   onSubmit,
   disabled = false
 }: BackupOptionsFormProps) {
+  const { t } = useAppTranslation()
   const [selectedModules, setSelectedModules] = useState<BackupDataModule[]>([...defaultModules])
   const [sensitive, setSensitive] = useState<SensitiveStripOptions>({ ...defaultSensitive })
   const [expanded, setExpanded] = useState(false)
+
+  const moduleLabels = useMemo<Record<BackupDataModule, string>>(() => ({
+    localStorage: t('settings.settingsAndConfig'),
+    conversations: t('settings.conversationMessages'),
+    knowledgeBase: t('settings.knowledgeBase'),
+    reports: t('settings.analysisReports'),
+    skills: 'Skills'
+  }), [t])
 
   /** 切换模块选择 */
   const toggleModule = (moduleId: BackupDataModule) => {
@@ -75,7 +85,7 @@ export function BackupOptionsForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (selectedModules.length === 0) {
-      alert('请至少选择一个备份模块')
+      alert(t('settings.pleaseSelectAtLeastOneModule'))
       return
     }
     onSubmit(selectedModules, sensitive)
@@ -86,7 +96,7 @@ export function BackupOptionsForm({
       {/* 模块选择 */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-foreground">备份模块</label>
+          <label className="text-sm font-medium text-foreground">{t('settings.backupModules')}</label>
           <div className="flex gap-2">
             <button
               type="button"
@@ -94,7 +104,7 @@ export function BackupOptionsForm({
               disabled={disabled}
               className="text-xs text-primary hover:underline disabled:opacity-50"
             >
-              全选
+              {t('settings.selectAllModules')}
             </button>
             <button
               type="button"
@@ -102,7 +112,7 @@ export function BackupOptionsForm({
               disabled={disabled}
               className="text-xs text-muted hover:underline disabled:opacity-50"
             >
-              清空
+              {t('settings.clearSelection')}
             </button>
           </div>
         </div>
@@ -125,7 +135,7 @@ export function BackupOptionsForm({
                 className="sr-only"
               />
               <span className="text-sm">{MODULE_ICONS[moduleId]}</span>
-              <span className="text-sm">{MODULE_LABELS[moduleId]}</span>
+              <span className="text-sm">{moduleLabels[moduleId]}</span>
             </label>
           ))}
         </div>
@@ -139,13 +149,13 @@ export function BackupOptionsForm({
           className="flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors"
         >
           <span className={`transition-transform ${expanded ? 'rotate-90' : ''}`}>▶</span>
-          敏感数据剥离选项
+          {t('settings.sensitiveDataStripping')}
         </button>
 
         {expanded && (
           <div className="mt-2 space-y-2 p-3 bg-muted/30 rounded border border-dashed">
             <p className="text-xs text-muted-foreground">
-              勾选此项将在备份时移除对应的敏感信息，保护数据安全。
+              {t('settings.sensitiveDataStrippingHint')}
             </p>
 
             <label className="flex items-center gap-2 cursor-pointer">
@@ -157,7 +167,7 @@ export function BackupOptionsForm({
                 className="rounded border-border"
               />
               <span className="text-sm">
-                移除 API Key（global-config + AI Provider）
+                {t('settings.removeApiKeys')}
               </span>
             </label>
 
@@ -170,7 +180,7 @@ export function BackupOptionsForm({
                 className="rounded border-border"
               />
               <span className="text-sm">
-                移除 MCP 服务器凭据
+                {t('settings.removeMcpCredentials')}
               </span>
             </label>
           </div>
@@ -184,7 +194,7 @@ export function BackupOptionsForm({
           disabled={disabled || selectedModules.length === 0}
           className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          确认选择
+          {t('settings.confirmSelection')}
         </button>
       </div>
     </form>

@@ -15,6 +15,7 @@ import {
   getAgentCategoryMeta,
   type AgentCategory,
 } from '../../utils/agent-utils'
+import { useAppTranslation } from '@/i18n/hooks'
 
 /** 图标名 → lucide 组件映射 */
 const ICON_MAP = {
@@ -55,10 +56,11 @@ export function AgentCategoryBadge({
   iconSize = 9,
   className = '',
 }: AgentCategoryBadgeProps) {
+  const { t } = useAppTranslation()
   const resolved = category ?? (agent ? getAgentCategory(agent) : 'custom')
   const meta = getAgentCategoryMeta(resolved)
   const Icon = ICON_MAP[meta.icon]
-  const text = short ? meta.shortLabel : meta.label
+  const text = t(short ? meta.shortLabelKey : meta.labelKey)
 
   return (
     <span

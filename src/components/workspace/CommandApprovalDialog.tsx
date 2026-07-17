@@ -9,58 +9,56 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { CommandApprovalResult, CommandRiskLevel } from '../../types'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- 风险等级样式映射 ----
 
 const RISK_CONFIG: Record<CommandRiskLevel, {
-  label: string
+  labelKey: string
   color: string
   bgColor: string
   borderColor: string
   icon: string
-  description: string
+  descriptionKey: string
 }> = {
   safe: {
-    label: '安全',
+    labelKey: 'workspace.riskSafe',
     color: 'text-emerald-600 dark:text-emerald-400',
     bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderColor: 'border-emerald-200 dark:border-emerald-800',
     icon: '✓',
-    description: '此命令已被识别为安全操作',
+    descriptionKey: 'workspace.riskSafeDescription',
   },
   medium: {
-    label: '中等',
+    labelKey: 'workspace.riskMedium',
     color: 'text-amber-600 dark:text-amber-400',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
     icon: '⚠',
-    description: '此命令可能产生副作用，请确认',
+    descriptionKey: 'workspace.riskMediumDescription',
   },
   high: {
-    label: '高风险',
+    labelKey: 'workspace.riskHigh',
     color: 'text-orange-600 dark:text-orange-400',
     bgColor: 'bg-orange-50 dark:bg-orange-950/30',
     borderColor: 'border-orange-200 dark:border-orange-800',
     icon: '⚡',
-    description: '此命令可能导致不可逆的变更',
+    descriptionKey: 'workspace.riskHighDescription',
   },
   critical: {
-    label: '危险',
+    labelKey: 'workspace.riskCritical',
     color: 'text-red-600 dark:text-red-400',
     bgColor: 'bg-red-50 dark:bg-red-950/30',
     borderColor: 'border-red-200 dark:border-red-800',
     icon: '✕',
-    description: '此命令具有高破坏性，强烈建议拒绝',
+    descriptionKey: 'workspace.riskCriticalDescription',
   },
 }
-
-// ---- 确认文本 ----
-
-const CONFIRM_TEXT = '我确认执行'
 
 // ---- 组件 ----
 
 export function CommandApprovalDialog() {
+  const { t } = useAppTranslation()
   const pendingApproval = useWorkspaceStore((s) => s.pendingCommandApproval)
   const resolveApproval = useWorkspaceStore((s) => s.resolveCommandApproval)
 
@@ -94,8 +92,9 @@ export function CommandApprovalDialog() {
   if (!pendingApproval) return null
 
   const risk = RISK_CONFIG[pendingApproval.riskLevel]
+  const confirmText = t('workspace.confirmExecutionText')
   const needsConfirm = pendingApproval.riskLevel === 'high' || pendingApproval.riskLevel === 'critical'
-  const canApprove = !needsConfirm || confirmInput === CONFIRM_TEXT
+  const canApprove = !needsConfirm || confirmInput === confirmText
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -114,10 +113,10 @@ export function CommandApprovalDialog() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">
-              命令执行审批
+              {t('workspace.commandApprovalTitle')}
             </h3>
             <p className={`text-xs mt-0.5 ${risk.color}`}>
-              风险等级：{risk.label} — {risk.description}
+              {t('workspace.riskLevel')}：{t(risk.labelKey)} — {t(risk.descriptionKey)}
             </p>
           </div>
           <button
@@ -140,14 +139,14 @@ export function CommandApprovalDialog() {
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
-              <span>由 <strong className="text-surface-700 dark:text-surface-300">{pendingApproval.agentName}</strong> 请求执行</span>
+              <span>{t('workspace.fileActionRequestedBy', { name: pendingApproval.agentName })}</span>
             </div>
           )}
 
           {/* 命令内容 */}
           <div>
             <label className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 block">
-              命令内容
+              {t('workspace.commandContent')}
             </label>
             <div className="relative rounded-lg bg-surface-50 dark:bg-surface-800/80 border border-surface-200 dark:border-surface-700 overflow-hidden">
               <pre className="px-4 py-3 text-sm font-mono text-surface-800 dark:text-surface-200 whitespace-pre-wrap break-all leading-relaxed">
@@ -159,7 +158,7 @@ export function CommandApprovalDialog() {
           {/* 工作目录 */}
           <div>
             <label className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 block">
-              工作目录
+              {t('workspace.workingDirectory')}
             </label>
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-50 dark:bg-surface-800/80 border border-surface-200 dark:border-surface-700">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-surface-400 shrink-0">
@@ -175,7 +174,7 @@ export function CommandApprovalDialog() {
           {pendingApproval.matchedRule && (
             <div>
               <label className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 block">
-                匹配规则
+                {t('workspace.matchedRule')}
               </label>
               <div className="px-3 py-2 rounded-lg bg-surface-50 dark:bg-surface-800/80 border border-surface-200 dark:border-surface-700">
                 <span className="text-xs text-surface-600 dark:text-surface-300">
@@ -189,13 +188,13 @@ export function CommandApprovalDialog() {
           {needsConfirm && (
             <div className={`p-3 rounded-lg ${risk.bgColor} border ${risk.borderColor}`}>
               <label className={`text-xs font-medium ${risk.color} mb-2 block`}>
-                此命令具有较高风险，请输入「{CONFIRM_TEXT}」以确认执行
+                {t('workspace.highRiskConfirmHint', { confirmText })}
               </label>
               <input
                 type="text"
                 value={confirmInput}
                 onChange={(e) => setConfirmInput(e.target.value)}
-                placeholder={CONFIRM_TEXT}
+                placeholder={confirmText}
                 className="w-full px-3 py-2 text-sm rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 text-surface-800 dark:text-surface-200 placeholder-surface-400 dark:placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-orange-400 dark:focus:ring-orange-500"
                 autoFocus
               />
@@ -216,7 +215,7 @@ export function CommandApprovalDialog() {
                 <line x1="15" y1="9" x2="9" y2="15" />
                 <line x1="9" y1="9" x2="15" y2="15" />
               </svg>
-              拒绝
+              {t('workspace.deny')}
             </button>
 
             {/* 永远拒绝 */}
@@ -228,7 +227,7 @@ export function CommandApprovalDialog() {
                 <circle cx="12" cy="12" r="10" />
                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
               </svg>
-              永远拒绝
+              {t('workspace.denyAlways')}
             </button>
 
             {/* 批准一次 */}
@@ -240,7 +239,7 @@ export function CommandApprovalDialog() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-              批准一次
+              {t('workspace.approveOnce')}
             </button>
 
             {/* 始终批准 */}
@@ -253,7 +252,7 @@ export function CommandApprovalDialog() {
                 <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
                 <path d="M9 12l2 2 4-4" />
               </svg>
-              始终批准
+              {t('workspace.alwaysApprove')}
             </button>
           </div>
         </div>

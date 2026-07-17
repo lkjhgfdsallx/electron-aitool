@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { PromptVariableEngine } from '../../services/prompt-variable-engine'
 import type { Prompt, PromptVariable, PromptRuntimeContext } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface VariableFillDialogProps {
   prompt: Prompt
@@ -16,6 +17,7 @@ interface VariableFillDialogProps {
 }
 
 export function VariableFillDialog({ prompt, context, onSubmit, onCancel }: VariableFillDialogProps) {
+  const { t } = useAppTranslation()
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     // 用默认值初始化
     const init: Record<string, unknown> = {}
@@ -55,18 +57,25 @@ export function VariableFillDialog({ prompt, context, onSubmit, onCancel }: Vari
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl w-[420px] max-h-[80vh] flex flex-col overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="variable-fill-dialog-title"
+        className="bg-white dark:bg-surface-800 rounded-2xl shadow-2xl w-[420px] max-h-[80vh] flex flex-col overflow-hidden"
+      >
         {/* 标题 */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-surface-200/80 dark:border-surface-700/60">
           <div>
-            <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
+            <h3 id="variable-fill-dialog-title" className="text-sm font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
               <Variable size={16} className="text-accent-500" />
-              填写变量
+              {t('chat.fillVariables')}
             </h3>
             <p className="text-xs text-muted mt-0.5">{prompt.name}</p>
           </div>
           <button
             onClick={onCancel}
+            aria-label={t('common.close')}
+            title={t('common.close')}
             className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted transition-colors"
           >
             <X size={16} />
@@ -90,10 +99,10 @@ export function VariableFillDialog({ prompt, context, onSubmit, onCancel }: Vari
               <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
               <div className="text-xs text-amber-700 dark:text-amber-300">
                 {validation.missing.length > 0 && (
-                  <p>请填写必填变量：{validation.missing.join('、')}</p>
+                  <p>{t('chat.requiredVariablesMissing', { variables: validation.missing.join('、') })}</p>
                 )}
                 {validation.invalid.length > 0 && (
-                  <p>格式不正确：{validation.invalid.join('、')}</p>
+                  <p>{t('chat.invalidVariables', { variables: validation.invalid.join('、') })}</p>
                 )}
               </div>
             </div>
@@ -101,7 +110,7 @@ export function VariableFillDialog({ prompt, context, onSubmit, onCancel }: Vari
 
           {/* 渲染预览 */}
           <div>
-            <p className="text-xs text-muted mb-1.5">渲染预览</p>
+            <p className="text-xs text-muted mb-1.5">{t('chat.renderPreview')}</p>
             <div className="bg-surface-50 dark:bg-surface-900 rounded-lg border border-surface-200/80 dark:border-surface-700/60 p-3 max-h-32 overflow-y-auto">
               <pre className="text-[11px] text-surface-600 dark:text-surface-400 whitespace-pre-wrap font-mono leading-relaxed">
                 {preview.content.slice(0, 500)}
@@ -118,13 +127,13 @@ export function VariableFillDialog({ prompt, context, onSubmit, onCancel }: Vari
             disabled={!validation.valid}
             className="flex items-center gap-1.5 px-4 py-1.5 bg-accent-500 text-white rounded-xl hover:bg-accent-600 disabled:opacity-50 transition-colors text-sm"
           >
-            <Check size={14} /> 插入提示词
+            <Check size={14} /> {t('chat.insertPrompt')}
           </button>
           <button
             onClick={onCancel}
             className="px-4 py-1.5 text-sm text-muted border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
           >
-            取消
+            {t('common.cancel')}
           </button>
         </div>
       </div>
@@ -143,6 +152,7 @@ function VariableField({
   value: unknown
   onChange: (val: unknown) => void
 }) {
+  const { t } = useAppTranslation()
   const strValue = value !== undefined && value !== null ? String(value) : ''
 
   return (
@@ -158,6 +168,8 @@ function VariableField({
       {variable.type === 'boolean' ? (
         <button
           onClick={() => onChange(strValue === 'true' ? 'false' : 'true')}
+          aria-label={variable.label || variable.name}
+          aria-pressed={strValue === 'true'}
           className={`relative w-9 h-5 rounded-full transition-colors ${
             strValue === 'true' ? 'bg-accent-500' : 'bg-surface-300 dark:bg-surface-600'
           }`}
@@ -174,7 +186,7 @@ function VariableField({
           onChange={(e) => onChange(e.target.value)}
           className="w-full px-3 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
         >
-          <option value="">{variable.placeholder || '请选择'}</option>
+          <option value="">{variable.placeholder || t('chat.selectVariableOption')}</option>
           {variable.options?.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -185,7 +197,7 @@ function VariableField({
         <textarea
           value={strValue}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={variable.placeholder}
+          placeholder={variable.placeholder || t('chat.variableInputPlaceholder', { name: variable.label || variable.name })}
           rows={3}
           className="w-full px-3 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 resize-y font-mono"
         />
@@ -194,7 +206,7 @@ function VariableField({
           type={variable.type === 'number' ? 'number' : 'text'}
           value={strValue}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={variable.placeholder || `输入 ${variable.label || variable.name}`}
+          placeholder={variable.placeholder || t('chat.variableInputPlaceholder', { name: variable.label || variable.name })}
           className="w-full px-3 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
         />
       )}

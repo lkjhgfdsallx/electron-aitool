@@ -8,6 +8,7 @@ import { openDB } from 'idb'
 import { getModelFileCacheStats, clearModelFileCache } from './embedding-service'
 import { conversationDb } from './conversation-db'
 import { useConversationStore } from '../stores/conversation-store'
+import i18n from '../i18n/config'
 
 // ==================== 类型 ====================
 
@@ -28,6 +29,9 @@ export interface CacheRegion {
   /** 是否可清理 */
   clearable: boolean
 }
+
+const cacheRegionText = (regionKey: string, field: 'name' | 'description'): string =>
+  i18n.t(`settings.data.cacheRegions.${regionKey}.${field}`)
 
 // ==================== 空间统计 ====================
 
@@ -58,8 +62,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   } catch { /* ignore */ }
   regions.push({
     key: 'conversations',
-    name: '对话元数据',
-    description: '对话列表元数据（标题、时间、Agent 等配置）',
+    name: cacheRegionText('conversations', 'name'),
+    description: cacheRegionText('conversations', 'description'),
     storage: 'localStorage',
     sizeBytes: convSize,
     recordCount: convCount,
@@ -77,8 +81,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
     }
     regions.push({
       key: 'conversation-messages',
-      name: '对话消息数据',
-      description: '所有对话的消息内容（逐条存储在 IndexedDB 中）',
+      name: cacheRegionText('conversationMessages', 'name'),
+      description: cacheRegionText('conversationMessages', 'description'),
       storage: 'indexedDB',
       sizeBytes: msgSize,
       recordCount: msgCount,
@@ -96,8 +100,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   } catch { /* ignore */ }
   regions.push({
     key: 'ai-providers-models',
-    name: 'AI 源模型缓存',
-    description: 'AI Provider 配置及已获取的模型列表',
+    name: cacheRegionText('aiProvidersModels', 'name'),
+    description: cacheRegionText('aiProvidersModels', 'description'),
     storage: 'localStorage',
     sizeBytes: aiProvSize,
     recordCount: modelCount,
@@ -108,8 +112,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   const configSize = getLocalStorageItemSize('global-config')
   regions.push({
     key: 'global-config',
-    name: '全局配置',
-    description: 'API Key、MCP 服务器、模型参数等配置',
+    name: cacheRegionText('globalConfig', 'name'),
+    description: cacheRegionText('globalConfig', 'description'),
     storage: 'localStorage',
     sizeBytes: configSize,
     recordCount: 1,
@@ -120,8 +124,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   const uiSize = getLocalStorageItemSize('ui-preferences')
   regions.push({
     key: 'ui-preferences',
-    name: '界面偏好设置',
-    description: '主题、字体、快捷键等界面配置',
+    name: cacheRegionText('uiPreferences', 'name'),
+    description: cacheRegionText('uiPreferences', 'description'),
     storage: 'localStorage',
     sizeBytes: uiSize,
     recordCount: 1,
@@ -139,8 +143,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   } catch { /* ignore */ }
   regions.push({
     key: 'agent-store',
-    name: 'Agent 与提示词',
-    description: 'Agent 配置和提示词模板',
+    name: cacheRegionText('agentStore', 'name'),
+    description: cacheRegionText('agentStore', 'description'),
     storage: 'localStorage',
     sizeBytes: agentSize,
     recordCount: agentCount + promptCount,
@@ -156,8 +160,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   } catch { /* ignore */ }
   regions.push({
     key: 'custom-tools',
-    name: '自定义工具',
-    description: '用户自定义的工具定义',
+    name: cacheRegionText('customTools', 'name'),
+    description: cacheRegionText('customTools', 'description'),
     storage: 'localStorage',
     sizeBytes: toolSize,
     recordCount: toolCount,
@@ -173,8 +177,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
   } catch { /* ignore */ }
   regions.push({
     key: 'tool-stats',
-    name: '工具调用统计',
-    description: '各工具的调用次数、成功率、耗时统计',
+    name: cacheRegionText('toolStats', 'name'),
+    description: cacheRegionText('toolStats', 'description'),
     storage: 'localStorage',
     sizeBytes: statsSize,
     recordCount: statsCount,
@@ -205,8 +209,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
 
     regions.push({
       key: 'kb-files',
-      name: '知识库文件数据',
-      description: '已上传的原始文件二进制数据',
+      name: cacheRegionText('kbFiles', 'name'),
+      description: cacheRegionText('kbFiles', 'description'),
       storage: 'indexedDB',
       sizeBytes: kbFileSize,
       recordCount: fileMetadata.length,
@@ -215,8 +219,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
 
     regions.push({
       key: 'kb-embeddings',
-      name: 'Embeddings 向量缓存',
-      description: '知识库文件的向量分块和语义嵌入',
+      name: cacheRegionText('kbEmbeddings', 'name'),
+      description: cacheRegionText('kbEmbeddings', 'description'),
       storage: 'indexedDB',
       sizeBytes: chunksSize,
       recordCount: chunks.length,
@@ -232,8 +236,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
       const skillsSize = new Blob([JSON.stringify(skills)]).size
       regions.push({
         key: 'skills-data',
-        name: 'Skills 技能数据',
-        description: '已导入的 Skills 技能包及其资源文件',
+        name: cacheRegionText('skillsData', 'name'),
+        description: cacheRegionText('skillsData', 'description'),
         storage: 'indexedDB',
         sizeBytes: skillsSize,
         recordCount: skills.length,
@@ -249,8 +253,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
     const reportsSize = reports.reduce((sum, r) => sum + new Blob([r.html || '']).size, 0)
     regions.push({
       key: 'site-reports',
-      name: '网站分析报告',
-      description: '已生成的网站分析 HTML 报告',
+      name: cacheRegionText('siteReports', 'name'),
+      description: cacheRegionText('siteReports', 'description'),
       storage: 'indexedDB',
       sizeBytes: reportsSize,
       recordCount: reports.length,
@@ -263,8 +267,8 @@ export async function getCacheStats(): Promise<CacheRegion[]> {
     const modelCacheStats = await getModelFileCacheStats()
     regions.push({
       key: 'model-files',
-      name: '本地 Embedding 模型缓存',
-      description: 'transformers.js 本地模型文件（ONNX、tokenizer 等），避免重复下载',
+      name: cacheRegionText('modelFiles', 'name'),
+      description: cacheRegionText('modelFiles', 'description'),
       storage: 'indexedDB',
       sizeBytes: modelCacheStats.sizeBytes,
       recordCount: modelCacheStats.recordCount,
@@ -291,8 +295,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   } catch { /* ignore */ }
   yield {
     key: 'conversations',
-    name: '对话元数据',
-    description: '对话列表元数据（标题、时间、Agent 等配置）',
+    name: cacheRegionText('conversations', 'name'),
+    description: cacheRegionText('conversations', 'description'),
     storage: 'localStorage',
     sizeBytes: convSize,
     recordCount: convCount,
@@ -309,8 +313,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
     }
     yield {
       key: 'conversation-messages',
-      name: '对话消息数据',
-      description: '所有对话的消息内容（逐条存储在 IndexedDB 中）',
+      name: cacheRegionText('conversationMessages', 'name'),
+      description: cacheRegionText('conversationMessages', 'description'),
       storage: 'indexedDB',
       sizeBytes: msgSize,
       recordCount: msgCount,
@@ -328,8 +332,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   } catch { /* ignore */ }
   yield {
     key: 'ai-providers-models',
-    name: 'AI 源模型缓存',
-    description: 'AI Provider 配置及已获取的模型列表',
+    name: cacheRegionText('aiProvidersModels', 'name'),
+    description: cacheRegionText('aiProvidersModels', 'description'),
     storage: 'localStorage',
     sizeBytes: aiProvSize,
     recordCount: modelCount,
@@ -340,8 +344,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   const configSize = getLocalStorageItemSize('global-config')
   yield {
     key: 'global-config',
-    name: '全局配置',
-    description: 'API Key、MCP 服务器、模型参数等配置',
+    name: cacheRegionText('globalConfig', 'name'),
+    description: cacheRegionText('globalConfig', 'description'),
     storage: 'localStorage',
     sizeBytes: configSize,
     recordCount: 1,
@@ -352,8 +356,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   const uiSize = getLocalStorageItemSize('ui-preferences')
   yield {
     key: 'ui-preferences',
-    name: '界面偏好设置',
-    description: '主题、字体、快捷键等界面配置',
+    name: cacheRegionText('uiPreferences', 'name'),
+    description: cacheRegionText('uiPreferences', 'description'),
     storage: 'localStorage',
     sizeBytes: uiSize,
     recordCount: 1,
@@ -371,8 +375,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   } catch { /* ignore */ }
   yield {
     key: 'agent-store',
-    name: 'Agent 与提示词',
-    description: 'Agent 配置和提示词模板',
+    name: cacheRegionText('agentStore', 'name'),
+    description: cacheRegionText('agentStore', 'description'),
     storage: 'localStorage',
     sizeBytes: agentSize,
     recordCount: agentCount + promptCount,
@@ -388,8 +392,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   } catch { /* ignore */ }
   yield {
     key: 'custom-tools',
-    name: '自定义工具',
-    description: '用户自定义的工具定义',
+    name: cacheRegionText('customTools', 'name'),
+    description: cacheRegionText('customTools', 'description'),
     storage: 'localStorage',
     sizeBytes: toolSize,
     recordCount: toolCount,
@@ -405,8 +409,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
   } catch { /* ignore */ }
   yield {
     key: 'tool-stats',
-    name: '工具调用统计',
-    description: '各工具的调用次数、成功率、耗时统计',
+    name: cacheRegionText('toolStats', 'name'),
+    description: cacheRegionText('toolStats', 'description'),
     storage: 'localStorage',
     sizeBytes: statsSize,
     recordCount: statsCount,
@@ -434,8 +438,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
 
     yield {
       key: 'kb-files',
-      name: '知识库文件数据',
-      description: '已上传的原始文件二进制数据',
+      name: cacheRegionText('kbFiles', 'name'),
+      description: cacheRegionText('kbFiles', 'description'),
       storage: 'indexedDB',
       sizeBytes: kbFileSize,
       recordCount: fileMetadata.length,
@@ -446,8 +450,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
     const chunksSize = new Blob([JSON.stringify(chunks)]).size
     yield {
       key: 'kb-embeddings',
-      name: 'Embeddings 向量缓存',
-      description: '知识库文件的向量分块和语义嵌入',
+      name: cacheRegionText('kbEmbeddings', 'name'),
+      description: cacheRegionText('kbEmbeddings', 'description'),
       storage: 'indexedDB',
       sizeBytes: chunksSize,
       recordCount: chunks.length,
@@ -463,8 +467,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
       const skillsSize = new Blob([JSON.stringify(skills)]).size
       yield {
         key: 'skills-data',
-        name: 'Skills 技能数据',
-        description: '已导入的 Skills 技能包及其资源文件',
+        name: cacheRegionText('skillsData', 'name'),
+        description: cacheRegionText('skillsData', 'description'),
         storage: 'indexedDB',
         sizeBytes: skillsSize,
         recordCount: skills.length,
@@ -480,8 +484,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
     const reportsSize = reports.reduce((sum, r) => sum + new Blob([r.html || '']).size, 0)
     yield {
       key: 'site-reports',
-      name: '网站分析报告',
-      description: '已生成的网站分析 HTML 报告',
+      name: cacheRegionText('siteReports', 'name'),
+      description: cacheRegionText('siteReports', 'description'),
       storage: 'indexedDB',
       sizeBytes: reportsSize,
       recordCount: reports.length,
@@ -494,8 +498,8 @@ export async function* getCacheStatsStream(): AsyncGenerator<CacheRegion> {
     const modelCacheStats = await getModelFileCacheStats()
     yield {
       key: 'model-files',
-      name: '本地 Embedding 模型缓存',
-      description: 'transformers.js 本地模型文件（ONNX、tokenizer 等），避免重复下载',
+      name: cacheRegionText('modelFiles', 'name'),
+      description: cacheRegionText('modelFiles', 'description'),
       storage: 'indexedDB',
       sizeBytes: modelCacheStats.sizeBytes,
       recordCount: modelCacheStats.recordCount,

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Globe, LogIn, Settings2, Play, ChevronDown, ChevronUp, Shield, Loader2 } from 'lucide-react'
+import { useAppTranslation } from '@/i18n/hooks'
 
 export interface SiteAnalyzerFormData {
   targetUrl: string
@@ -41,6 +42,7 @@ const DEFAULT_VALUES: SiteAnalyzerFormData = {
 }
 
 export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFormProps) {
+  const { t } = useAppTranslation()
   const [form, setForm] = useState<SiteAnalyzerFormData>(DEFAULT_VALUES)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -61,32 +63,32 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
     const newErrors: Record<string, string> = {}
 
     if (!form.targetUrl.trim()) {
-      newErrors.targetUrl = '请输入目标网址'
+      newErrors.targetUrl = t('special.enterTargetUrl')
     } else {
       try {
         new URL(form.targetUrl)
       } catch {
-        newErrors.targetUrl = '请输入有效的URL（如 https://example.com）'
+        newErrors.targetUrl = t('special.invalidTargetUrl')
       }
     }
 
     if (form.loginType === 'password') {
-      if (!form.username.trim()) newErrors.username = '请输入用户名'
-      if (!form.password.trim()) newErrors.password = '请输入密码'
+      if (!form.username.trim()) newErrors.username = t('special.enterUsername')
+      if (!form.password.trim()) newErrors.password = t('special.enterPassword')
     }
 
     if (form.loginType === 'cookie') {
       if (!form.cookie.trim() && !form.token.trim()) {
-        newErrors.cookie = '请输入Cookie或Token（至少一项）'
+        newErrors.cookie = t('special.cookieOrTokenRequired')
       }
     }
 
     if (form.maxDepth < 1 || form.maxDepth > 10) {
-      newErrors.maxDepth = '爬取深度范围：1-10'
+      newErrors.maxDepth = t('special.crawlDepthRange')
     }
 
     if (form.maxPages < 1 || form.maxPages > 10000) {
-      newErrors.maxPages = '页面数量范围：1-10000'
+      newErrors.maxPages = t('special.maxPagesRange')
     }
 
     setErrors(newErrors)
@@ -105,10 +107,10 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
       <div className="bg-gradient-to-r from-blue-500 to-indigo-600 px-6 py-4">
         <div className="flex items-center gap-2 text-white">
           <Globe size={20} />
-          <h3 className="text-lg font-semibold">网站功能分析</h3>
+          <h3 className="text-lg font-semibold">{t('special.siteAnalyzerTitle')}</h3>
         </div>
         <p className="text-blue-100 text-sm mt-1">
-          配置分析参数，AI 将自动爬取并分析目标网站的功能模块和 API 接口
+          {t('special.siteAnalyzerDescription')}
         </p>
       </div>
 
@@ -117,13 +119,13 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
         <section>
           <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
             <Globe size={16} className="text-blue-500" />
-            基本配置
+            {t('special.basicConfiguration')}
           </h4>
 
           {/* 目标网址 */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-              目标网址 <span className="text-red-500">*</span>
+              {t('special.targetUrl')} <span className="text-red-500">*</span>
             </label>
             <input
               type="url"
@@ -147,15 +149,15 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
         <section>
           <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
             <LogIn size={16} className="text-green-500" />
-            登录方式
+            {t('special.loginMethod')}
           </h4>
 
           {/* 登录类型选择 */}
           <div className="grid grid-cols-3 gap-2 mb-4">
             {([
-              { value: 'manual', label: '手动登录', desc: '打开浏览器后自己登录' },
-              { value: 'password', label: '账号密码', desc: '自动填写账号密码' },
-              { value: 'cookie', label: 'Cookie/Token', desc: '导入已有登录态' }
+              { value: 'manual', label: t('special.loginManual'), desc: t('special.loginManualDescription') },
+              { value: 'password', label: t('special.loginPassword'), desc: t('special.loginPasswordDescription') },
+              { value: 'cookie', label: t('special.loginCookie'), desc: t('special.loginCookieDescription') }
             ] as const).map((opt) => (
               <button
                 key={opt.value}
@@ -183,18 +185,18 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
             <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 mb-2">
                 <Shield size={14} />
-                <span>凭证仅用于本次分析，不会被存储</span>
+                <span>{t('special.credentialsNotStored')}</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    用户名 <span className="text-red-500">*</span>
+                    {t('special.username')} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={form.username}
                     onChange={(e) => updateField('username', e.target.value)}
-                    placeholder="请输入用户名"
+                    placeholder={t('special.enterUsername')}
                     disabled={disabled}
                     className={`w-full px-3 py-2 text-sm rounded-lg border ${
                       errors.username ? 'border-red-300' : 'border-gray-300 dark:border-gray-600'
@@ -204,13 +206,13 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    密码 <span className="text-red-500">*</span>
+                    {t('special.password')} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="password"
                     value={form.password}
                     onChange={(e) => updateField('password', e.target.value)}
-                    placeholder="请输入密码"
+                    placeholder={t('special.enterPassword')}
                     disabled={disabled}
                     className={`w-full px-3 py-2 text-sm rounded-lg border ${
                       errors.password ? 'border-red-300' : 'border-gray-300 dark:border-gray-600'
@@ -226,11 +228,11 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
             <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 mb-2">
                 <Shield size={14} />
-                <span>凭证仅用于本次分析，不会被存储</span>
+                <span>{t('special.credentialsNotStored')}</span>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Cookie 字符串
+                  {t('special.cookieString')}
                 </label>
                 <textarea
                   value={form.cookie}
@@ -246,7 +248,7 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Bearer Token（可选，与Cookie二选一）
+                  {t('special.bearerTokenOptional')}
                 </label>
                 <input
                   type="text"
@@ -263,7 +265,7 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
           {form.loginType === 'manual' && (
             <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
               <p className="text-xs text-blue-700 dark:text-blue-300">
-                💡 浏览器打开后，请在弹出的窗口中手动完成登录。登录完成后，分析器将自动继续爬取。
+                {t('special.manualLoginHint')}
               </p>
             </div>
           )}
@@ -273,13 +275,13 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
         <section>
           <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
             <Settings2 size={16} className="text-purple-500" />
-            分析范围
+            {t('special.analysisScope')}
           </h4>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                爬取深度
+                {t('special.crawlingDepth')}
               </label>
               <input
                 type="number"
@@ -293,11 +295,11 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
                 } bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200`}
               />
               {errors.maxDepth && <p className="mt-1 text-xs text-red-500">{errors.maxDepth}</p>}
-              <p className="mt-1 text-xs text-gray-400">首页=0，建议 2-4</p>
+              <p className="mt-1 text-xs text-gray-400">{t('special.crawlDepthHint')}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                最大页面数
+                {t('special.maxPages')}
               </label>
               <input
                 type="number"
@@ -311,11 +313,11 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
                 } bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200`}
               />
               {errors.maxPages && <p className="mt-1 text-xs text-red-500">{errors.maxPages}</p>}
-              <p className="mt-1 text-xs text-gray-400">建议 50-200</p>
+              <p className="mt-1 text-xs text-gray-400">{t('special.maxPagesHint')}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                爬取间隔 (ms)
+                {t('special.crawlDelay')}
               </label>
               <input
                 type="number"
@@ -327,7 +329,7 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
                 disabled={disabled}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
-              <p className="mt-1 text-xs text-gray-400">越小越快，但对服务器压力越大</p>
+              <p className="mt-1 text-xs text-gray-400">{t('special.crawlDelayHint')}</p>
             </div>
           </div>
         </section>
@@ -338,9 +340,10 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            aria-expanded={showAdvanced}
           >
             {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            高级配置（可选）
+            {t('special.advancedConfiguration')}
           </button>
 
           {showAdvanced && (
@@ -349,26 +352,26 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    URL包含规则（正则）
+                    {t('special.urlIncludePatterns')}
                   </label>
                   <input
                     type="text"
                     value={form.urlIncludePatterns}
                     onChange={(e) => updateField('urlIncludePatterns', e.target.value)}
-                    placeholder="/api/.*  （每行一个）"
+                    placeholder={`/api/.*  ${t('special.onePerLine')}`}
                     disabled={disabled}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    URL排除规则（正则）
+                    {t('special.urlExcludePatterns')}
                   </label>
                   <input
                     type="text"
                     value={form.urlExcludePatterns}
                     onChange={(e) => updateField('urlExcludePatterns', e.target.value)}
-                    placeholder=".*\\.pdf$  （每行一个）"
+                    placeholder={`.*\\.pdf$  ${t('special.onePerLine')}`}
                     disabled={disabled}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
@@ -379,7 +382,7 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    代理服务器
+                    {t('special.proxy')}
                   </label>
                   <input
                     type="text"
@@ -392,13 +395,13 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    自定义 User-Agent
+                    {t('special.customUserAgent')}
                   </label>
                   <input
                     type="text"
                     value={form.userAgent}
                     onChange={(e) => updateField('userAgent', e.target.value)}
-                    placeholder="留空使用默认值"
+                    placeholder={t('special.useDefaultValue')}
                     disabled={disabled}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
@@ -418,8 +421,8 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
                   <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                 </label>
                 <div>
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">模拟人类行为</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">启用随机滚动、鼠标移动等，降低被反爬虫检测的风险</div>
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('special.humanSimulation')}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">{t('special.simulateHumanDescription')}</div>
                 </div>
               </div>
             </div>
@@ -438,12 +441,12 @@ export function SiteAnalyzerForm({ onSubmit, disabled = false }: SiteAnalyzerFor
           {disabled ? (
             <>
               <Loader2 size={18} className="animate-spin" />
-              分析中...
+              {t('special.analyzing')}
             </>
           ) : (
             <>
               <Play size={18} />
-              开始分析
+              {t('special.startAnalysis')}
             </>
           )}
         </button>

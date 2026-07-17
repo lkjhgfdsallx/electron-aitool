@@ -50,13 +50,14 @@ import {
   groupAgentsByCategory,
   getAgentCategoryMeta,
 } from '../../utils/agent-utils'
+import { useAppTranslation } from '@/i18n/hooks'
 
 const AVATAR_OPTIONS = ['🤖', '🧠', '💻', '📝', '🔍', '🎨', '📊', '🔧', '🌐', '📚', '🎯', '⚡', '🛡️', '🧪', '🎮', '🎵']
 
-const PLANNING_STRATEGIES: { value: PlanningStrategy; label: string; description: string }[] = [
-  { value: 'react', label: '逐步推理（ReAct）', description: '思考-行动-观察，适合复杂任务' },
-  { value: 'plan-and-execute', label: '先拆解再执行', description: '先制定计划，再逐步执行子任务' },
-  { value: 'trial-and-error', label: '试错重试', description: '大胆尝试，失败后回退重试' }
+const PLANNING_STRATEGIES: { value: PlanningStrategy; labelKey: string; descriptionKey: string }[] = [
+  { value: 'react', labelKey: 'agent.planningReact', descriptionKey: 'agent.planningReactDescription' },
+  { value: 'plan-and-execute', labelKey: 'agent.planningPlanAndExecute', descriptionKey: 'agent.planningPlanAndExecuteDescription' },
+  { value: 'trial-and-error', labelKey: 'agent.planningTrialAndError', descriptionKey: 'agent.planningTrialAndErrorDescription' }
 ]
 
 // 新建全局 Agent 时默认选中所有通用/Agent 工具；工作区模式会额外加入工作区专用工具
@@ -108,6 +109,7 @@ export interface AgentManagerProps {
 }
 
 export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditingAgentId, onClose, onOpenConversation }: AgentManagerProps) {
+  const { t } = useAppTranslation()
   const {
     agents: globalAgents, createAgent: createGlobalAgent, updateAgent: updateGlobalAgent, deleteAgent: deleteGlobalAgent,
     duplicateAgent: duplicateGlobalAgent, toggleAgentEnabled: toggleGlobalAgentEnabled,
@@ -125,9 +127,9 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   const handleResetAgentToDefault = async (agentId: string) => {
     const agentName = agents.find((a) => a.id === agentId)?.name
     const ok = await confirm({
-      title: '恢复默认状态',
-      message: `确定要将 Agent"${agentName}"恢复为默认状态吗？\n\n此操作将丢失所有自定义修改。`,
-      confirmLabel: '恢复',
+      title: t('agent.resetDefaultTitle'),
+      message: t('agent.resetDefaultMessage', { name: agentName }),
+      confirmLabel: t('agent.restore'),
       variant: 'warning',
     })
     if (ok) {
@@ -139,9 +141,9 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   // 恢复所有预设 Agent 到默认状态
   const handleResetAllDefaults = async () => {
     const ok = await confirm({
-      title: '恢复所有预设 Agent',
-      message: '确定要恢复所有预设 Agent 到默认状态吗？\n\n此操作将丢失所有预设 Agent 的自定义修改。',
-      confirmLabel: '恢复全部',
+      title: t('agent.resetAllDefaultsTitle'),
+      message: t('agent.resetAllDefaultsMessage'),
+      confirmLabel: t('agent.restoreAll'),
       variant: 'warning',
     })
     if (ok) {
@@ -252,7 +254,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         await createAgent(agentForm)
       }
     } catch (err) {
-      alert(`保存失败: ${err instanceof Error ? err.message : String(err)}`)
+      alert(t('agent.saveFailed', { error: err instanceof Error ? err.message : String(err) }))
       return
     }
     setIsCreating(false)
@@ -262,16 +264,16 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
 
   const handleDeleteAgent = async (id: string) => {
     const ok = await confirm({
-      title: '删除 Agent',
-      message: '确定删除此 Agent？',
-      confirmLabel: '删除',
+      title: t('agent.deleteAgentTitle'),
+      message: t('agent.deleteAgentMessage'),
+      confirmLabel: t('common.delete'),
       variant: 'danger',
     })
     if (ok) {
       try {
         await deleteAgentFn(id)
       } catch (err) {
-        alert(`删除失败: ${err instanceof Error ? err.message : String(err)}`)
+        alert(t('agent.deleteFailed', { error: err instanceof Error ? err.message : String(err) }))
       }
     }
   }
@@ -279,7 +281,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
   const handlePromoteToGlobal = (id: string) => {
     const promoted = promoteToGlobal(id)
     if (promoted) {
-      alert(`已将 Agent "${promoted.name}" 提升为全局 Agent`)
+      alert(t('agent.promotedToGlobal', { name: promoted.name }))
     }
   }
 
@@ -308,7 +310,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         const data = JSON.parse(text) as AgentProfile[]
         importGlobalAgents(data)
       } catch {
-        alert('导入失败')
+        alert(t('agent.importFailed'))
       }
     }
     input.click()
@@ -323,7 +325,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         <div className="flex-shrink-0 px-1 pb-4">
           <SettingsHeader
             icon={Bot}
-            title={editingAgent ? '编辑 Agent' : '新建 Agent'}
+            title={editingAgent ? t('agent.editAgent') : t('agent.createAgent')}
             actions={
               <button
                 onClick={handleCloseEditor}
@@ -340,13 +342,13 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 基本信息 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-4">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Bot size={14} /> 基本信息
+              <Bot size={14} /> {t('agent.basicInfo')}
             </h3>
             <div className="space-y-3">
               <div className="flex gap-3">
                 {/* 头像选择 */}
                 <div>
-                  <label className="block text-xs text-muted mb-1.5">头像</label>
+                  <label className="block text-xs text-muted mb-1.5">{t('agent.avatar')}</label>
                   <div className="flex flex-wrap gap-1 w-24">
                     {AVATAR_OPTIONS.map((emoji) => (
                       <button
@@ -364,23 +366,23 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                   </div>
                 </div>
                 <div className="flex-1">
-                  <label className="block text-xs text-muted mb-1.5">名称 *</label>
+                  <label className="block text-xs text-muted mb-1.5">{t('agent.nameRequired')}</label>
                   <input
                     type="text"
                     value={agentForm.name}
                     onChange={(e) => setAgentForm({ ...agentForm, name: e.target.value })}
-                    placeholder="我的 Agent"
+                    placeholder={t('agent.namePlaceholder')}
                     className="w-full px-3 py-2 text-sm border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-muted mb-1.5">描述</label>
+                <label className="block text-xs text-muted mb-1.5">{t('agent.description')}</label>
                 <input
                   type="text"
                   value={agentForm.description}
                   onChange={(e) => setAgentForm({ ...agentForm, description: e.target.value })}
-                  placeholder="简短描述这个 Agent 的用途"
+                  placeholder={t('agent.descriptionPlaceholder')}
                   className="w-full px-3 py-2 text-sm border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
                 />
               </div>
@@ -390,12 +392,12 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 系统提示词 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <FileText size={14} /> 系统提示词
+              <FileText size={14} /> {t('agent.systemPrompt')}
             </h3>
             <textarea
               value={agentForm.systemPrompt}
               onChange={(e) => setAgentForm({ ...agentForm, systemPrompt: e.target.value })}
-              placeholder="定义 Agent 的身份、目标、行为规范和输出格式要求...&#10;&#10;例如：你是一个专业的代码审查助手，擅长发现代码中的潜在问题..."
+              placeholder={t('agent.systemPromptPlaceholder')}
               rows={6}
               className="w-full px-3 py-2 text-sm border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 resize-y font-mono"
             />
@@ -404,11 +406,11 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 工具集 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Wrench size={14} /> 工具集
+              <Wrench size={14} /> {t('agent.toolset')}
             </h3>
             <div className="space-y-2">
               {/* 通用工具 */}
-              <div className="text-xs font-medium text-muted px-1 pt-1">通用工具</div>
+              <div className="text-xs font-medium text-muted px-1 pt-1">{t('agent.generalTools')}</div>
               {VISIBLE_BUILT_IN_TOOLS.map((tool) => (
                 <label
                   key={tool.id}
@@ -436,7 +438,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               {isWorkspaceMode && (
                 <>
                   {/* 工作区专用工具 */}
-                  <div className="text-xs font-medium text-muted px-1 pt-2">工作区专用工具</div>
+                  <div className="text-xs font-medium text-muted px-1 pt-2">{t('agent.workspaceSpecificTools')}</div>
                   {WORKSPACE_TOOLS.map((tool) => (
                     <label
                       key={tool.id}
@@ -464,7 +466,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               )}
 
               {/* Agent 专属工具 */}
-              <div className="text-xs font-medium text-muted px-1 pt-2">Agent 专属工具</div>
+              <div className="text-xs font-medium text-muted px-1 pt-2">{t('agent.agentSpecificTools')}</div>
               {AGENT_BUILTIN_TOOLS.map((tool) => (
                 <label
                   key={tool.id}
@@ -494,14 +496,14 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 挂载知识库 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <BookOpen size={14} /> 挂载知识库
+              <BookOpen size={14} /> {t('agent.attachKnowledgeBase')}
             </h3>
             <p className="text-xs text-muted">
-              选择 Agent 可访问的知识库集合。不选择任何集合时，Agent 将搜索全部知识库。
+              {t('agent.knowledgeBaseHint')}
             </p>
             <div className="space-y-2">
               {collections.length === 0 ? (
-                <p className="text-xs text-muted py-2">暂无知识库集合，请先在知识库中创建。</p>
+                <p className="text-xs text-muted py-2">{t('agent.noKnowledgeBaseCollections')}</p>
               ) : (
                 collections.map((col) => {
                   const isSelected = (agentForm.knowledgeBaseIds ?? []).includes(col.id)
@@ -544,14 +546,14 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 绑定 Skills */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Zap size={14} /> 绑定技能（Skills）
+              <Zap size={14} /> {t('agent.bindSkills')}
             </h3>
             <p className="text-xs text-muted">
-              选择此 Agent 可使用的专业技能。绑定后，Agent 会了解这些技能的存在并在适当时主动加载。
+              {t('agent.bindSkillsHint')}
             </p>
             <div className="space-y-2">
               {skills.length === 0 ? (
-                <p className="text-xs text-muted py-2">暂无可用技能，请先在 Skills 管理中创建。</p>
+                <p className="text-xs text-muted py-2">{t('agent.noSkillsAvailable')}</p>
               ) : (
                 skills.filter((s) => s.enabled).map((skill) => {
                   const isSelected = (agentForm.enabledSkillIds ?? []).includes(skill.dirPath)
@@ -590,7 +592,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 规划策略 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Brain size={14} /> 规划策略
+              <Brain size={14} /> {t('agent.planningStrategy')}
             </h3>
             <div className="space-y-2">
               {PLANNING_STRATEGIES.map((s) => (
@@ -611,8 +613,8 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                     className="mt-0.5 accent-500"
                   />
                   <div>
-                    <span className="text-sm font-medium">{s.label}</span>
-                    <p className="text-xs text-muted mt-0.5">{s.description}</p>
+                    <span className="text-sm font-medium">{t(s.labelKey)}</span>
+                    <p className="text-xs text-muted mt-0.5">{t(s.descriptionKey)}</p>
                   </div>
                 </label>
               ))}
@@ -622,12 +624,12 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 记忆配置 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Database size={14} /> 记忆配置
+              <Database size={14} /> {t('agent.memorySettings')}
             </h3>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-muted mb-1.5">
-                  历史轮数：{agentForm.memoryConfig.historyTurns}
+                  {t('agent.historyTurns', { count: agentForm.memoryConfig.historyTurns })}
                 </label>
                 <input
                   type="range"
@@ -645,8 +647,8 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               </div>
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
                 <div>
-                  <span className="text-sm">长期记忆</span>
-                  <p className="text-xs text-muted">启用后将重要事实写入本地记忆并可注入上下文</p>
+                  <span className="text-sm">{t('agent.longTermMemory')}</span>
+                  <p className="text-xs text-muted">{t('agent.longTermMemoryHint')}</p>
                 </div>
                 <button
                   onClick={() =>
@@ -665,10 +667,8 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               </label>
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
                 <div>
-                  <span className="text-sm">跨会话记忆</span>
-                  <p className="text-xs text-muted">
-                    开启：同一 Agent 在不同对话间共享记忆；关闭：记忆仅限当前对话
-                  </p>
+                  <span className="text-sm">{t('agent.crossSessionMemory')}</span>
+                  <p className="text-xs text-muted">{t('agent.crossSessionMemoryHint')}</p>
                 </div>
                 <button
                   type="button"
@@ -691,7 +691,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                 <>
                   <div>
                     <label className="block text-xs text-muted mb-1.5">
-                      自动注入最多条数：{agentForm.memoryConfig.maxInjectEntries ?? 30}
+                      {t('agent.maxAutoInjectEntries', { count: agentForm.memoryConfig.maxInjectEntries ?? 30 })}
                     </label>
                     <input
                       type="range"
@@ -710,11 +710,11 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       }
                       className="w-full accent-500"
                     />
-                    <p className="text-[11px] text-muted mt-1">默认 30；过大可能占用上下文窗口</p>
+                    <p className="text-[11px] text-muted mt-1">{t('agent.maxInjectEntriesHint')}</p>
                   </div>
                   <div>
                     <label className="block text-xs text-muted mb-1.5">
-                      自动注入最大字符数：{agentForm.memoryConfig.maxInjectChars ?? 4000}
+                      {t('agent.maxAutoInjectChars', { count: agentForm.memoryConfig.maxInjectChars ?? 4000 })}
                     </label>
                     <input
                       type="range"
@@ -733,14 +733,12 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                       }
                       className="w-full accent-500"
                     />
-                    <p className="text-[11px] text-muted mt-1">默认 4000；按条累计截断</p>
+                    <p className="text-[11px] text-muted mt-1">{t('agent.maxInjectCharsHint')}</p>
                   </div>
                   <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
                     <div>
-                      <span className="text-sm">暂停时阻断召回</span>
-                      <p className="text-xs text-muted">
-                        高级：本对话暂停注入时，同时禁止 recall / list_memories（默认仅跳过自动注入）
-                      </p>
+                      <span className="text-sm">{t('agent.pauseBlocksRecall')}</span>
+                      <p className="text-xs text-muted">{t('agent.pauseBlocksRecallHint')}</p>
                     </div>
                     <button
                       type="button"
@@ -775,12 +773,12 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 终止条件 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Clock size={14} /> 终止条件
+              <Clock size={14} /> {t('agent.terminationSettings')}
             </h3>
             <div className="space-y-3">
               <div>
                 <label className="block text-xs text-muted mb-1.5">
-                  最大步数：{agentForm.termination.maxSteps}
+                  {t('agent.maxSteps', { count: agentForm.termination.maxSteps })}
                 </label>
                 <input
                   type="range"
@@ -799,7 +797,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               </div>
               <div>
                 <label className="block text-xs text-muted mb-1.5">
-                  超时秒数（0 = 不限）：{agentForm.termination.timeoutSeconds}
+                  {t('agent.timeoutSeconds', { count: agentForm.termination.timeoutSeconds })}
                 </label>
                 <input
                   type="range"
@@ -818,8 +816,8 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
               </div>
               <label className="flex items-center justify-between p-2 rounded-lg border border-surface-200/80 dark:border-surface-700/60 cursor-pointer">
                 <div>
-                  <span className="text-sm">目标达成自动停止</span>
-                  <p className="text-xs text-muted">Agent 判断任务完成后自动终止</p>
+                  <span className="text-sm">{t('agent.autoStopOnGoal')}</span>
+                  <p className="text-xs text-muted">{t('agent.autoStopOnGoalHint')}</p>
                 </div>
                 <button
                   onClick={() =>
@@ -842,19 +840,19 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 模型配置 */}
           <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
             <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Settings size={14} /> 模型配置（可选，留空使用全局配置）
+              <Settings size={14} /> {t('agent.modelConfiguration')}
             </h3>
             <div className="space-y-3">
               <div className="relative">
-                <label className="block text-xs text-muted mb-1.5">AI 源</label>
+                <label className="block text-xs text-muted mb-1.5">{t('agent.aiProvider')}</label>
                 <button
                   onClick={() => setProviderDropdownOpen(!providerDropdownOpen)}
                   className="w-full px-3 py-2 text-sm text-left border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 flex items-center justify-between"
                 >
                   <span className={agentForm.modelConfig.providerId ? '' : 'text-muted'}>
                     {agentForm.modelConfig.providerId
-                      ? providers.find((p) => p.id === agentForm.modelConfig.providerId)?.name || '未知'
-                      : '使用全局配置'}
+                      ? providers.find((p) => p.id === agentForm.modelConfig.providerId)?.name || t('agent.unknown')
+                      : t('agent.useGlobalConfiguration')}
                   </span>
                   <ChevronDown size={14} className={`text-muted transition-transform flex-shrink-0 ${providerDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -867,7 +865,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                         setProviderDropdownOpen(false)
                       }}
                     >
-                      <span className="text-muted">使用全局配置</span>
+                      <span className="text-muted">{t('agent.useGlobalConfiguration')}</span>
                     </div>
                     {providers.map((p) => (
                       <div
@@ -893,11 +891,11 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                 const defaultModel = selectedProvider.models?.find((m) => m.id === selectedProvider.defaultModelId)
                 return (
                   <div className="px-3 py-2 text-xs bg-surface-50 dark:bg-surface-900/50 rounded-lg border border-surface-200/80 dark:border-surface-700/60">
-                    <span className="text-muted">使用模型：</span>
+                    <span className="text-muted">{t('agent.usingModel')}</span>
                     <span className="text-surface-700 dark:text-surface-300 font-medium">
-                      {defaultModel ? defaultModel.name : selectedProvider.defaultModelId || '未选择模型'}
+                      {defaultModel ? defaultModel.name : selectedProvider.defaultModelId || t('agent.noModelSelected')}
                     </span>
-                    <span className="text-muted ml-2">（在 AI 源管理中配置）</span>
+                    <span className="text-muted ml-2">{t('agent.configureInAiProviderManager')}</span>
                   </div>
                 )
               })()}
@@ -909,12 +907,12 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         <div className="space-y-4 p-4 bg-surface-50/50 dark:bg-surface-900/30 rounded-xl border border-surface-200/80 dark:border-surface-700/60">
           <div className="flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-200">
             <Zap size={16} className="text-accent-500" />
-            高级策略
+            {t('agent.advancedStrategies')}
           </div>
 
           {/* 上下文压缩策略 */}
           <div className="space-y-2">
-            <label className="block text-xs text-muted">上下文压缩策略</label>
+            <label className="block text-xs text-muted">{t('agent.contextPolicy')}</label>
             <div className="flex items-center gap-2">
               <select
                 value={agentForm.contextPolicy?.strategy ?? 'fixed'}
@@ -927,11 +925,11 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                 }}
                 className="text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1"
               >
-                <option value="fixed">fixed（丢弃早期消息）</option>
-                <option value="compress">compress（LLM 摘要压缩）</option>
+                <option value="fixed">{t('agent.contextFixed')}</option>
+                <option value="compress">{t('agent.contextCompress')}</option>
               </select>
               <label className="flex items-center gap-1 text-xs text-muted">
-                最大 tokens：
+                {t('agent.maxTokens')}
                 <input
                   type="number"
                   min="1000"
@@ -950,7 +948,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                 />
               </label>
               <label className="flex items-center gap-1 text-xs text-muted">
-                保留最近：
+                {t('agent.keepRecentTurns')}
                 <input
                   type="number"
                   min="1"
@@ -967,14 +965,14 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                   }
                   className="w-14 text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-1.5 py-1"
                 />
-                条
+                {t('agent.turnsUnit')}
               </label>
             </div>
           </div>
 
           {/* 审批策略 */}
           <div className="space-y-2">
-            <label className="block text-xs text-muted">文件操作审批策略</label>
+            <label className="block text-xs text-muted">{t('agent.fileApprovalPolicy')}</label>
             <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-1.5 text-xs">
                 <input
@@ -991,7 +989,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                   }
                   className="accent-500"
                 />
-                自动批准读操作
+                {t('agent.autoApproveRead')}
               </label>
               <label className="flex items-center gap-1.5 text-xs">
                 <input
@@ -1008,7 +1006,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                   }
                   className="accent-500"
                 />
-                自动批准写操作
+                {t('agent.autoApproveWrite')}
               </label>
             </div>
           </div>
@@ -1016,7 +1014,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
           {/* 并行子任务上限 */}
           <div className="space-y-1">
             <label className="block text-xs text-muted">
-              并行子任务上限：{agentForm.maxParallelSubtasks ?? 3}
+              {t('agent.maxParallelSubtasks', { count: agentForm.maxParallelSubtasks ?? 3 })}
             </label>
             <input
               type="range"
@@ -1032,7 +1030,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
 
           {/* 工作流状态机编辑器 */}
           <div className="space-y-2">
-            <label className="block text-xs text-muted">工作流状态机</label>
+            <label className="block text-xs text-muted">{t('agent.workflowStateMachine')}</label>
             <AgentWorkflowEditor
               workflow={agentForm.workflow}
               onChange={(wf) => setAgentForm({ ...agentForm, workflow: wf })}
@@ -1051,9 +1049,9 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         <SettingsSaveBar
           onSave={handleSaveAgent}
           isDirty={agentForm.name.trim().length > 0}
-          saveLabel={editingAgent ? '保存修改' : '创建 Agent'}
+          saveLabel={editingAgent ? t('agent.saveChanges') : t('agent.createAgentAction')}
           onReset={() => handleCloseEditor()}
-          resetLabel="取消"
+          resetLabel={t('common.cancel')}
         />
       </div>
     )
@@ -1066,26 +1064,26 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
       {/* 标题 + 操作栏 */}
       <SettingsHeader
         icon={isWorkspaceMode ? FolderOpen : Bot}
-        title={isWorkspaceMode ? '工作区 Agent' : 'Agent 管理'}
+        title={isWorkspaceMode ? t('agent.workspaceAgents') : t('agent.agentManagement')}
         description={isWorkspaceMode
-          ? '管理工作区独立 Agent，可提升为全局 Agent'
-          : '创建和管理 AI Agent，配置其行为、工具和记忆策略'}
+          ? t('agent.workspaceAgentsDescription')
+          : t('agent.agentManagementDescription')}
         actions={
           <>
             {!isWorkspaceMode && (
               <button
                 onClick={handleResetAllDefaults}
                 className="flex items-center gap-1 px-3 py-1.5 text-sm border border-accent-300 dark:border-accent-700 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
-                title="恢复所有预设 Agent 到默认状态"
+                title={t('agent.restoreAllDefaultsTitle')}
               >
-                <Sparkles size={14} /> 恢复默认
+                <Sparkles size={14} /> {t('agent.restoreAllDefaults')}
               </button>
             )}
             <button
               onClick={handleCreateAgent}
               className="flex items-center gap-1 px-3 py-1.5 text-sm bg-accent-500 text-white rounded-xl hover:bg-accent-600 transition-colors"
             >
-              <Plus size={14} /> 新建 Agent
+              <Plus size={14} /> {t('agent.createAgent')}
             </button>
             {!isWorkspaceMode && (
               <>
@@ -1093,13 +1091,13 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                   onClick={handleImportAgents}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
                 >
-                  <Upload size={14} /> 导入
+                  <Upload size={14} /> {t('agent.importAgents')}
                 </button>
                 <button
                   onClick={handleExportAgents}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
                 >
-                  <Download size={14} /> 导出
+                  <Download size={14} /> {t('agent.exportAgents')}
                 </button>
               </>
             )}
@@ -1112,8 +1110,8 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8">
           <SettingsEmptyState
             icon={Bot}
-            title="暂无 Agent"
-            description={'点击"新建 Agent"创建你的第一个智能助手'}
+            title={t('agent.noAgents')}
+            description={t('agent.noAgentsHint')}
             iconSize={36}
           />
         </div>
@@ -1128,7 +1126,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                 <div className="flex items-center gap-1.5 px-1 pb-2">
                   <GroupIcon size={13} className="text-surface-400 dark:text-surface-500" />
                   <span className="text-xs font-semibold text-surface-600 dark:text-surface-400">
-                    {meta.label}
+                    {t(meta.labelKey)}
                   </span>
                   <span className="text-[11px] text-muted">({groupAgents.length})</span>
                 </div>
@@ -1149,7 +1147,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                             <AgentCategoryBadge agent={agent} short />
                             {!agent.enabled && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-100 text-muted dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60">
-                                已禁用
+                                {t('agent.disabled')}
                               </span>
                             )}
                           </div>
@@ -1172,7 +1170,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                           <button
                             onClick={() => handleResetAgentToDefault(agent.id)}
                             className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/30 text-accent-500"
-                            title="恢复为默认 Agent"
+                            title={t('agent.restoreDefaultAgent')}
                           >
                             <Sparkles size={14} />
                           </button>
@@ -1182,14 +1180,14 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                           className={`p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 ${
                             agent.enabled ? 'text-green-500' : 'text-muted'
                           }`}
-                          title={agent.enabled ? '禁用' : '启用'}
+                          title={agent.enabled ? t('common.disable') : t('common.enable')}
                         >
                           {agent.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                         </button>
                         <button
                           onClick={() => handleEditAgent(agent)}
                           className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
-                          title="编辑"
+                          title={t('common.edit')}
                         >
                           <Edit2 size={14} />
                         </button>
@@ -1197,7 +1195,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                           <button
                             onClick={() => duplicateAgentFn(agent.id)}
                             className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
-                            title="复制"
+                            title={t('chat.copy')}
                           >
                             <Copy size={14} />
                           </button>
@@ -1206,7 +1204,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                           <button
                             onClick={() => handlePromoteToGlobal(agent.id)}
                             className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/20 text-accent-500"
-                            title="提升为全局 Agent"
+                            title={t('agent.promoteToGlobal')}
                           >
                             <ArrowUpToLine size={14} />
                           </button>
@@ -1214,7 +1212,7 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                         <button
                           onClick={() => handleDeleteAgent(agent.id)}
                           className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-500"
-                          title="删除"
+                          title={t('common.delete')}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1240,11 +1238,12 @@ interface PromptSectionsEditorProps {
 }
 
 function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps) {
+  const { t } = useAppTranslation()
   const handleAdd = () => {
     const newSection: PromptSection = {
       id: crypto.randomUUID(),
       type: 'custom',
-      title: `段落 ${sections.length + 1}`,
+      title: t('agent.promptSectionTitle', { count: sections.length + 1 }),
       content: '',
       enabled: true,
       order: sections.length,
@@ -1273,17 +1272,17 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="block text-xs text-muted">提示词段落（按 order 拼接到系统提示词）</label>
+        <label className="block text-xs text-muted">{t('agent.promptSections')}</label>
         <button
           type="button"
           onClick={handleAdd}
           className="inline-flex items-center gap-1 text-xs text-accent-600 hover:text-accent-700"
         >
-          <Plus size={12} /> 添加段落
+          <Plus size={12} /> {t('agent.addPromptSection')}
         </button>
       </div>
       {sections.length === 0 && (
-        <p className="text-[11px] text-surface-400 italic">暂无段落</p>
+        <p className="text-[11px] text-surface-400 italic">{t('agent.noPromptSections')}</p>
       )}
       <div className="space-y-1.5">
         {sections.map((section, idx) => (
@@ -1298,7 +1297,7 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
                 type="button"
                 onClick={() => handleUpdate(idx, { enabled: !section.enabled })}
                 className={section.enabled ? 'text-accent-500' : 'text-surface-400'}
-                title={section.enabled ? '禁用' : '启用'}
+                title={section.enabled ? t('common.disable') : t('common.enable')}
               >
                 {section.enabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
               </button>
@@ -1306,7 +1305,7 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
                 type="text"
                 value={section.title ?? ''}
                 onChange={(e) => handleUpdate(idx, { title: e.target.value })}
-                placeholder="段落标题"
+                placeholder={t('agent.promptSectionTitlePlaceholder')}
                 className="flex-1 text-xs font-medium rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-2 py-0.5"
               />
               <div className="flex items-center gap-0.5">
@@ -1315,7 +1314,7 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
                   onClick={() => handleMove(idx, -1)}
                   disabled={idx === 0}
                   className="text-surface-400 hover:text-surface-600 disabled:opacity-30 text-xs px-1"
-                  title="上移"
+                  title={t('agent.moveUp')}
                 >
                   ↑
                 </button>
@@ -1324,7 +1323,7 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
                   onClick={() => handleMove(idx, 1)}
                   disabled={idx === sections.length - 1}
                   className="text-surface-400 hover:text-surface-600 disabled:opacity-30 text-xs px-1"
-                  title="下移"
+                  title={t('agent.moveDown')}
                 >
                   ↓
                 </button>
@@ -1332,7 +1331,7 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
                   type="button"
                   onClick={() => handleDelete(idx)}
                   className="text-surface-400 hover:text-red-500"
-                  title="删除"
+                  title={t('common.delete')}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -1342,7 +1341,7 @@ function PromptSectionsEditor({ sections, onChange }: PromptSectionsEditorProps)
               value={section.content}
               onChange={(e) => handleUpdate(idx, { content: e.target.value })}
               rows={2}
-              placeholder="段落内容…"
+              placeholder={t('agent.promptSectionContentPlaceholder')}
               className="w-full text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-2 py-1 font-mono resize-y"
             />
           </div>

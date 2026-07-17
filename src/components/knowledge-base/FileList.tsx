@@ -16,6 +16,8 @@ import {
 import type { KnowledgeBaseFile, FileTypeCategory } from '../../types'
 import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
+import { useAppTranslation } from '@/i18n/hooks'
+import { formatRelativeTime } from '@/utils/format-time'
 
 const FILE_TYPE_ICONS: Record<string, typeof FileText> = {
   document: FileText,
@@ -42,29 +44,18 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
-  return date.toLocaleDateString('zh-CN')
-}
-
-const statusLabel: Record<KnowledgeBaseFile['status'], { text: string; color: string }> = {
-  uploading: { text: '上传中', color: 'text-blue-500' },
-  processing: { text: '处理中', color: 'text-amber-500' },
-  ready: { text: '就绪', color: 'text-emerald-500' },
-  error: { text: '错误', color: 'text-red-500' }
+const statusColor: Record<KnowledgeBaseFile['status'], string> = {
+  uploading: 'text-blue-500',
+  processing: 'text-amber-500',
+  ready: 'text-emerald-500',
+  error: 'text-red-500'
 }
 
 /** 文件操作菜单的模式 */
 type MenuMode = 'main' | 'move' | 'copy'
 
 export function FileList() {
+  const { t } = useAppTranslation()
   const {
     isLoading,
     selectedFileId,
@@ -102,11 +93,11 @@ export function FileList() {
   const handleDelete = useCallback(
     async (e: React.MouseEvent, id: string) => {
       e.stopPropagation()
-      if (confirm('确定删除此文件及其所有向量数据？')) {
+      if (confirm(t('knowledgeBase.deleteFileConfirm'))) {
         await deleteFile(id)
       }
     },
-    [deleteFile]
+    [deleteFile, t]
   )
 
   const handleOpenMenu = useCallback((e: React.MouseEvent, fileId: string) => {
@@ -159,7 +150,7 @@ export function FileList() {
     return (
       <div className="text-center text-muted py-8">
         <FileText size={32} className="mx-auto mb-2 opacity-30" />
-        <p className="text-xs">暂无文件</p>
+        <p className="text-xs">{t('knowledgeBase.noFiles')}</p>
       </div>
     )
   }
@@ -169,7 +160,10 @@ export function FileList() {
       {filteredFiles.map((file) => {
         const iconKey = getFileIconKey(file.name)
         const Icon = FILE_TYPE_ICONS[iconKey] ?? File
-        const status = statusLabel[file.status]
+        const status = {
+          text: file.status === 'error' ? t('common.error') : t(`knowledgeBase.${file.status}`),
+          color: statusColor[file.status]
+        }
         const isSelected = selectedFileId === file.id
         const isMenuOpen = menuFileId === file.id
 
@@ -207,9 +201,9 @@ export function FileList() {
                 <div className="flex items-center gap-2 mt-1 text-[11px] text-surface-400 dark:text-surface-500">
                   <span>{formatFileSize(file.size)}</span>
                   <span>·</span>
-                  <span>{file.chunkCount} 块</span>
+                  <span>{t('knowledgeBase.chunksCount', { count: file.chunkCount })}</span>
                   <span>·</span>
-                  <span>{formatTime(file.uploadedAt)}</span>
+                  <span>{formatRelativeTime(file.uploadedAt)}</span>
                 </div>
                 {file.status !== 'ready' && (
                   <div className="flex items-center gap-1 mt-1">
@@ -226,7 +220,8 @@ export function FileList() {
                   <button
                     onClick={(e) => handleOpenMenu(e, file.id)}
                     className="p-1 rounded opacity-0 group-hover:opacity-100 text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700 transition-all"
-                    title="更多操作"
+                    title={t('knowledgeBase.moreFileActions')}
+                    aria-label={t('knowledgeBase.moreFileActions')}
                   >
                     <MoreHorizontal size={13} />
                   </button>
@@ -249,7 +244,7 @@ export function FileList() {
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700/60 transition-colors"
                               >
                                 <FolderInput size={14} className="text-blue-500" />
-                                移动到集合…
+                                {t('knowledgeBase.moveToCollection')}
                               </button>
                             )
                           })()}
@@ -263,7 +258,7 @@ export function FileList() {
                                 className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700/60 transition-colors"
                               >
                                 <Copy size={14} className="text-emerald-500" />
-                                复制到集合…
+                                {t('knowledgeBase.copyToCollection')}
                               </button>
                             )
                           })()}
@@ -278,7 +273,7 @@ export function FileList() {
                             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
                           >
                             <Trash2 size={14} />
-                            删除文件
+                            {t('knowledgeBase.deleteFile')}
                           </button>
                         </>
                       )}
@@ -291,7 +286,7 @@ export function FileList() {
                             className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700/60 transition-colors"
                           >
                             <ArrowLeft size={12} />
-                            返回
+                            {t('common.back')}
                           </button>
                           <div className="border-t border-surface-100 dark:border-surface-700 my-1" />
                           {/* 目标集合列表 */}
@@ -314,7 +309,7 @@ export function FileList() {
                             </button>
                           ))}
                           {getTargetCollections(file.collectionId).length === 0 && (
-                            <p className="px-3 py-2 text-xs text-surface-400">暂无其他可用集合</p>
+                            <p className="px-3 py-2 text-xs text-surface-400">{t('knowledgeBase.noOtherCollections')}</p>
                           )}
                         </>
                       )}
@@ -326,7 +321,8 @@ export function FileList() {
                 <button
                   onClick={(e) => handleDelete(e, file.id)}
                   className="p-1 rounded opacity-0 group-hover:opacity-100 text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-all flex-shrink-0"
-                  title="删除文件"
+                  title={t('knowledgeBase.deleteFile')}
+                  aria-label={t('knowledgeBase.deleteFile')}
                 >
                   <Trash2 size={13} />
                 </button>

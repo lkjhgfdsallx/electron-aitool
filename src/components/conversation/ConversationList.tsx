@@ -14,9 +14,10 @@ import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { exportConversation, type ExportFormat } from '../../services/export-service'
 import { formatRelativeTime } from '../../utils/format-time'
+import { useAppTranslation } from '@/i18n/hooks'
 import type { Conversation } from '../../types'
 
-/** 对话分组标签 */
+/** 对话分组键 */
 function getDateGroup(timestamp: number): string {
   const now = new Date()
   const date = new Date(timestamp)
@@ -24,11 +25,11 @@ function getDateGroup(timestamp: number): string {
   const msgDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   const diffDays = Math.floor((nowDate.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24))
 
-  if (diffDays === 0) return '今天'
-  if (diffDays === 1) return '昨天'
-  if (diffDays <= 7) return '本周'
-  if (diffDays <= 30) return '本月'
-  return '更早'
+  if (diffDays === 0) return 'today'
+  if (diffDays === 1) return 'yesterday'
+  if (diffDays <= 7) return 'thisWeek'
+  if (diffDays <= 30) return 'thisMonth'
+  return 'earlier'
 }
 
 /** 骨架屏组件 */
@@ -86,6 +87,7 @@ const ConversationItem = memo(function ConversationItem({
   onExport,
   onDelete
 }: ConversationItemProps) {
+  const { t } = useAppTranslation()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
 
@@ -97,7 +99,7 @@ const ConversationItem = memo(function ConversationItem({
   }, [editTitle, conv.id, onRename])
 
   // 使用缓存的预览文本，不再调用 getMessages
-  const preview = conv.lastMessagePreview || '暂无消息'
+  const preview = conv.lastMessagePreview || t('conversation.noMessages')
 
   return (
     <div
@@ -177,6 +179,8 @@ const ConversationItem = memo(function ConversationItem({
       {/* 操作按钮 & 上下文菜单 */}
       <div className="relative flex-shrink-0 mt-0.5" data-context-trigger>
         <button
+          aria-label={t('common.open')}
+          title={t('common.open')}
           onClick={(e) => {
             e.stopPropagation()
             onContextMenu(conv.id)
@@ -200,7 +204,7 @@ const ConversationItem = memo(function ConversationItem({
             }}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            <PenLine size={14} className="text-gray-400" /> 重命名
+            <PenLine size={14} className="text-gray-400" /> {t('conversation.rename')}
           </button>
           <button
             onClick={() => {
@@ -209,25 +213,25 @@ const ConversationItem = memo(function ConversationItem({
             }}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            <Pin size={14} className="text-gray-400" /> {conv.isPinned ? '取消置顶' : '置顶'}
+            <Pin size={14} className="text-gray-400" /> {conv.isPinned ? t('conversation.unpin') : t('conversation.pin')}
           </button>
           <button
             onClick={() => onExport(conv, 'markdown')}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            <FileText size={14} className="text-gray-400" /> 导出 Markdown
+            <FileText size={14} className="text-gray-400" /> {t('conversation.exportMarkdown')}
           </button>
           <button
             onClick={() => onExport(conv, 'json')}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            <FileJson size={14} className="text-gray-400" /> 导出 JSON
+            <FileJson size={14} className="text-gray-400" /> {t('conversation.exportJson')}
           </button>
           <button
             onClick={() => onExport(conv, 'html')}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            <Code size={14} className="text-gray-400" /> 导出 HTML
+            <Code size={14} className="text-gray-400" /> {t('conversation.exportHtml')}
           </button>
           <div className="mx-3 my-1 border-t border-surface-100 dark:border-surface-700" />
           <button
@@ -237,7 +241,7 @@ const ConversationItem = memo(function ConversationItem({
             }}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-sm text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
           >
-            <Trash2 size={14} /> 删除
+            <Trash2 size={14} /> {t('common.delete')}
           </button>
           </div>
         )}
@@ -249,6 +253,7 @@ const ConversationItem = memo(function ConversationItem({
 // ==================== 主组件 ====================
 
 export function ConversationList() {
+  const { t } = useAppTranslation()
   const [searchQuery, setSearchQuery] = useState('')
   const [contextMenuId, setContextMenuId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -322,14 +327,14 @@ export function ConversationList() {
     const groupMap = new Map<string, typeof filteredConversations>()
 
     for (const conv of filteredConversations) {
-      const label = conv.isPinned ? '置顶' : getDateGroup(conv.updatedAt)
+      const label = conv.isPinned ? 'pinned' : getDateGroup(conv.updatedAt)
       if (!groupMap.has(label)) {
         groupMap.set(label, [])
       }
       groupMap.get(label)!.push(conv)
     }
 
-    const order = ['置顶', '今天', '昨天', '本周', '本月', '更早']
+    const order = ['pinned', 'today', 'yesterday', 'thisWeek', 'thisMonth', 'earlier']
     for (const label of order) {
       const items = groupMap.get(label)
       if (items && items.length > 0) {
@@ -409,9 +414,9 @@ export function ConversationList() {
       if (window.electronAPI?.file?.saveFile) {
         const result = await window.electronAPI.file.saveFile(fileName, content)
         if (result.success) {
-          console.log('导出成功:', result.filePath)
+          console.log('Conversation export succeeded:', result.filePath)
         } else if (result.error !== '用户取消') {
-          console.error('导出失败:', result.error)
+          console.error('Conversation export failed:', result.error)
         }
       } else {
         const blob = new Blob([content], { type: mimeType })
@@ -423,7 +428,7 @@ export function ConversationList() {
         URL.revokeObjectURL(url)
       }
     } catch (error) {
-      console.error('导出失败:', error)
+      console.error('Conversation export failed:', error)
     }
     setContextMenuId(null)
   }, [getMessages])
@@ -456,7 +461,8 @@ export function ConversationList() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索对话..."
+            placeholder={t('nav.searchConversation')}
+            aria-label={t('nav.searchConversation')}
             className="w-full pl-8 pr-3 py-2 text-sm bg-surface-100 dark:bg-surface-800/80 rounded-xl border-none outline-none focus:ring-2 focus:ring-accent-500/20 text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 transition-all"
           />
         </div>
@@ -474,14 +480,14 @@ export function ConversationList() {
           <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-12">
             {searchQuery ? (
               <div className="space-y-1">
-                <p className="font-medium">没有找到匹配的对话</p>
-                <p className="text-xs">尝试其他关键词</p>
+                <p className="font-medium">{t('conversation.noMatches')}</p>
+                <p className="text-xs">{t('conversation.tryOtherKeywords')}</p>
               </div>
             ) : (
               <div className="space-y-1">
                 <MessageSquare size={28} className="mx-auto mb-2 opacity-40" />
-                <p className="font-medium">暂无对话</p>
-                <p className="text-xs">点击上方按钮创建新对话</p>
+                <p className="font-medium">{t('conversation.noConversations')}</p>
+                <p className="text-xs">{t('conversation.createConversationHint')}</p>
               </div>
             )}
           </div>
@@ -495,7 +501,7 @@ export function ConversationList() {
                       key={row.key}
                       className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider"
                     >
-                      {row.label}
+                      {t(`conversation.${row.label}`)}
                     </div>
                   )
                 }

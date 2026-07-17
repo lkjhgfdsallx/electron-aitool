@@ -7,8 +7,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Command, Hash, Users, Brain, Settings, X } from 'lucide-react'
-import { searchSlashCommands, getCategoryLabel } from '../../services/slash-command-service'
+import { searchSlashCommands } from '../../services/slash-command-service'
 import type { SlashCommand } from '../../services/slash-command-service'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface SlashCommandMenuProps {
   /** 当前输入文本（用于搜索过滤） */
@@ -38,6 +39,7 @@ export function SlashCommandMenu({
   onSelect,
   onClose,
 }: SlashCommandMenuProps) {
+  const { t } = useAppTranslation()
   const [commands, setCommands] = useState<SlashCommand[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -144,7 +146,7 @@ export function SlashCommandMenu({
         ref={menuRef}
         className="absolute bottom-full left-0 mb-2 w-80 max-h-64 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-lg overflow-hidden z-50 flex items-center justify-center"
       >
-        <div className="py-8 text-xs text-gray-400 dark:text-gray-500">加载命令中...</div>
+        <div className="py-8 text-xs text-gray-400 dark:text-gray-500">{t('chat.loadingCommands')}</div>
       </div>
     )
   }
@@ -156,7 +158,7 @@ export function SlashCommandMenu({
         className="absolute bottom-full left-0 mb-2 w-80 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-lg overflow-hidden z-50"
       >
         <div className="py-8 text-xs text-gray-400 dark:text-gray-500 text-center">
-          未找到匹配的命令
+          {t('chat.noMatchingCommands')}
         </div>
       </div>
     )
@@ -173,10 +175,12 @@ export function SlashCommandMenu({
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-100 dark:border-surface-700">
         <div className="flex items-center gap-1.5">
           <Command size={14} className="text-teal-500" />
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Slash 命令</span>
+          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{t('chat.slashCommands')}</span>
         </div>
         <button
           onClick={onClose}
+          aria-label={t('common.close')}
+          title={t('common.close')}
           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
           <X size={14} />
@@ -190,7 +194,7 @@ export function SlashCommandMenu({
             {/* 分类标题 */}
             <div className="px-3 py-1.5 text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
               {CATEGORY_ICONS[cat] || <Hash size={12} />}
-              {getCategoryLabel(cat as SlashCommand['category'])}
+              {t(`chat.commandCategory${cat.charAt(0).toUpperCase()}${cat.slice(1)}`)}
             </div>
             {/* 分类下的命令 */}
             {grouped[cat].map((cmd) => {
@@ -234,15 +238,15 @@ export function SlashCommandMenu({
       {/* 底部提示 */}
       <div className="px-3 py-1.5 border-t border-surface-100 dark:border-surface-700 text-[10px] text-gray-400 dark:text-gray-500 flex items-center gap-2">
         <kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-700 rounded font-mono">↑↓</kbd>
-        <span>导航</span>
+        <span>{t('common.navigate')}</span>
         <kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-700 rounded font-mono ml-1">
           Enter
         </kbd>
-        <span>选择</span>
+        <span>{t('common.select')}</span>
         <kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-700 rounded font-mono ml-1">
           Esc
         </kbd>
-        <span>关闭</span>
+        <span>{t('common.close')}</span>
       </div>
     </div>
   )

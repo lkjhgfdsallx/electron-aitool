@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { Workspace } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface WorkspaceSelectorProps {
   collapsed?: boolean
@@ -20,6 +21,7 @@ export function WorkspaceSelector({
   onCreateWorkspace,
   onOpenSettings,
 }: WorkspaceSelectorProps) {
+  const { t } = useAppTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -63,7 +65,8 @@ export function WorkspaceSelector({
             ? 'bg-teal-500/15 text-teal-500 hover:bg-teal-500/25'
             : 'text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800'
         }`}
-        title={activeWorkspace ? activeWorkspace.name : '选择工作区'}
+        title={activeWorkspace ? activeWorkspace.name : t('workspace.selectWorkspace')}
+        aria-label={activeWorkspace ? activeWorkspace.name : t('workspace.selectWorkspace')}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
@@ -92,7 +95,7 @@ export function WorkspaceSelector({
           <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
         </svg>
         <span className="truncate flex-1 text-left">
-          {activeWorkspace ? activeWorkspace.name : '无工作区'}
+          {activeWorkspace ? activeWorkspace.name : t('workspace.noWorkspace')}
         </span>
         <svg
           width="14"
@@ -125,7 +128,7 @@ export function WorkspaceSelector({
               <circle cx="12" cy="12" r="10" />
               <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
             </svg>
-            <span>无工作区</span>
+            <span>{t('workspace.noWorkspace')}</span>
           </button>
 
           {/* 工作区列表 */}
@@ -171,7 +174,7 @@ export function WorkspaceSelector({
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              <span>新建工作区</span>
+              <span>{t('workspace.newWorkspace')}</span>
             </button>
             {activeWorkspace && (
               <button
@@ -185,7 +188,7 @@ export function WorkspaceSelector({
                   <circle cx="12" cy="12" r="3" />
                   <path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83" />
                 </svg>
-                <span>工作区设置</span>
+                <span>{t('settings.workspaceSettings')}</span>
               </button>
             )}
           </div>

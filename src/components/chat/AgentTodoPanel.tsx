@@ -26,6 +26,7 @@ import {
   isPlanDone,
   hasPlanFailed,
 } from '../../types/agent-plan'
+import { useAppTranslation } from '@/i18n/hooks'
 
 // ==================== 任务状态配置 ====================
 
@@ -34,7 +35,7 @@ interface TaskStatusConfig {
   color: string
   bgColor: string
   borderColor: string
-  label: string
+  labelKey: 'chat.taskStatusPending' | 'chat.taskStatusInProgress' | 'chat.taskStatusCompleted' | 'chat.taskStatusFailed' | 'chat.taskStatusBlocked'
   dotColor: string
 }
 
@@ -44,7 +45,7 @@ const taskStatusConfig: Record<AgentTaskStatus, TaskStatusConfig> = {
     color: 'text-slate-400',
     bgColor: 'bg-slate-50 dark:bg-slate-900/30',
     borderColor: 'border-slate-200 dark:border-slate-700',
-    label: '待执行',
+    labelKey: 'chat.taskStatusPending',
     dotColor: 'bg-slate-300',
   },
   in_progress: {
@@ -52,7 +53,7 @@ const taskStatusConfig: Record<AgentTaskStatus, TaskStatusConfig> = {
     color: 'text-blue-500',
     bgColor: 'bg-blue-50 dark:bg-blue-950/30',
     borderColor: 'border-blue-200 dark:border-blue-800',
-    label: '进行中',
+    labelKey: 'chat.taskStatusInProgress',
     dotColor: 'bg-blue-500',
   },
   completed: {
@@ -60,7 +61,7 @@ const taskStatusConfig: Record<AgentTaskStatus, TaskStatusConfig> = {
     color: 'text-emerald-500',
     bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderColor: 'border-emerald-200 dark:border-emerald-800',
-    label: '已完成',
+    labelKey: 'chat.taskStatusCompleted',
     dotColor: 'bg-emerald-500',
   },
   failed: {
@@ -68,7 +69,7 @@ const taskStatusConfig: Record<AgentTaskStatus, TaskStatusConfig> = {
     color: 'text-danger-500',
     bgColor: 'bg-danger-50 dark:bg-danger-950/30',
     borderColor: 'border-danger-200 dark:border-danger-800',
-    label: '失败',
+    labelKey: 'chat.taskStatusFailed',
     dotColor: 'bg-danger-500',
   },
   blocked: {
@@ -76,7 +77,7 @@ const taskStatusConfig: Record<AgentTaskStatus, TaskStatusConfig> = {
     color: 'text-amber-500',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
-    label: '阻塞',
+    labelKey: 'chat.taskStatusBlocked',
     dotColor: 'bg-amber-500',
   },
 }
@@ -84,29 +85,29 @@ const taskStatusConfig: Record<AgentTaskStatus, TaskStatusConfig> = {
 // ==================== 计划整体状态徽章 ====================
 
 interface PlanStatusBadgeConfig {
-  label: string
+  labelKey: 'chat.planStatusDraft' | 'chat.planStatusApproved' | 'chat.planStatusExecuting' | 'chat.planStatusDone' | 'chat.planStatusFailed'
   className: string
 }
 
 const planStatusBadgeConfig: Record<AgentPlanStatus, PlanStatusBadgeConfig> = {
   draft: {
-    label: '草稿 · 待确认',
+    labelKey: 'chat.planStatusDraft',
     className: 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
   },
   approved: {
-    label: '已确认',
+    labelKey: 'chat.planStatusApproved',
     className: 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
   },
   executing: {
-    label: '执行中',
+    labelKey: 'chat.planStatusExecuting',
     className: 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
   },
   done: {
-    label: '已完成',
+    labelKey: 'chat.planStatusDone',
     className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
   },
   failed: {
-    label: '失败',
+    labelKey: 'chat.planStatusFailed',
     className: 'bg-danger-100 text-danger-700 dark:bg-danger-950/50 dark:text-danger-300',
   },
 }
@@ -132,6 +133,7 @@ export function AgentTodoPanel({
   onReject,
   defaultExpanded = false,
 }: AgentTodoPanelProps) {
+  const { t } = useAppTranslation()
   const [collapsed, setCollapsed] = useState(false)
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(
     () => new Set(defaultExpanded ? plan.tasks.map((t) => t.id) : []),
@@ -191,7 +193,8 @@ export function AgentTodoPanel({
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           className="mt-0.5 shrink-0 rounded p-0.5 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/40"
-          aria-label={collapsed ? '展开' : '折叠'}
+          aria-label={collapsed ? t('common.expand') : t('common.collapse')}
+          aria-expanded={!collapsed}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
@@ -199,15 +202,15 @@ export function AgentTodoPanel({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-violet-900 dark:text-violet-100">
-              执行计划
+              {t('chat.executionPlan')}
             </span>
             <span
               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}
             >
-              {badge.label}
+              {t(badge.labelKey)}
             </span>
             <span className="text-xs text-violet-500 dark:text-violet-400">
-              {completedCount}/{plan.tasks.length} 任务 · {progress}%
+              {t('chat.taskProgress', { completed: completedCount, total: plan.tasks.length, progress })}
             </span>
           </div>
           <p className="mt-1 break-words text-xs text-violet-700 dark:text-violet-300">
@@ -220,7 +223,7 @@ export function AgentTodoPanel({
             onClick={toggleAll}
             className="shrink-0 rounded px-1.5 py-0.5 text-xs text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/40"
           >
-            {expandedTasks.size === plan.tasks.length ? '全部收起' : '全部展开'}
+            {expandedTasks.size === plan.tasks.length ? t('chat.collapseAll') : t('chat.expandAll')}
           </button>
         )}
       </div>
@@ -268,7 +271,7 @@ export function AgentTodoPanel({
             className="inline-flex items-center gap-1 rounded-md border border-violet-300 px-3 py-1 text-xs font-medium text-violet-600 hover:bg-violet-100 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-900/40"
           >
             <X size={14} />
-            重新规划
+            {t('chat.replan')}
           </button>
           <button
             type="button"
@@ -276,7 +279,7 @@ export function AgentTodoPanel({
             className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-3 py-1 text-xs font-medium text-white hover:bg-violet-700 dark:bg-violet-700 dark:hover:bg-violet-600"
           >
             <Play size={14} />
-            确认并执行
+            {t('chat.approveAndExecute')}
           </button>
         </div>
       )}
@@ -287,7 +290,7 @@ export function AgentTodoPanel({
           <textarea
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="可选：说明为什么需要重新规划（反馈给 Agent）"
+            placeholder={t('chat.replanReasonPlaceholder')}
             rows={2}
             className="w-full resize-none rounded-md border border-violet-300 bg-white px-2 py-1 text-xs text-slate-700 placeholder:text-slate-400 focus:border-violet-500 focus:outline-none dark:border-violet-700 dark:bg-slate-900 dark:text-slate-200"
             autoFocus
@@ -298,7 +301,7 @@ export function AgentTodoPanel({
               onClick={handleCancelReject}
               className="rounded-md px-3 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -306,7 +309,7 @@ export function AgentTodoPanel({
               className="inline-flex items-center gap-1 rounded-md bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700"
             >
               <X size={14} />
-              确认重新规划
+              {t('chat.confirmReplan')}
             </button>
           </div>
         </div>
@@ -326,6 +329,7 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, index, plan, expanded, onToggle }: TaskCardProps) {
+  const { t } = useAppTranslation()
   const cfg = taskStatusConfig[task.status]
   const Icon = cfg.icon
   const spinning = task.status === 'in_progress'
@@ -368,7 +372,7 @@ function TaskCard({ task, index, plan, expanded, onToggle }: TaskCardProps) {
             </span>
           </div>
         </button>
-        <span className={`shrink-0 text-xs ${cfg.color}`}>{cfg.label}</span>
+        <span className={`shrink-0 text-xs ${cfg.color}`}>{t(cfg.labelKey)}</span>
       </div>
 
       {/* 展开详情 */}
@@ -380,7 +384,7 @@ function TaskCard({ task, index, plan, expanded, onToggle }: TaskCardProps) {
           {depTasks.length > 0 && (
             <div className="flex flex-wrap items-start gap-1">
               <Link2 size={12} className="mt-0.5 shrink-0 text-slate-400" />
-              <span className="text-slate-400">依赖:</span>
+              <span className="text-slate-400">{t('chat.dependencies')}</span>
               {depTasks.map((d) => {
                 const depIdx = plan.tasks.findIndex((t) => t.id === d.id)
                 const depCfg = taskStatusConfig[d.status]
@@ -399,14 +403,14 @@ function TaskCard({ task, index, plan, expanded, onToggle }: TaskCardProps) {
           {task.assigneeId && (
             <div className="flex items-center gap-1">
               <User size={12} className="shrink-0 text-slate-400" />
-              <span className="text-slate-400">分派:</span>
+              <span className="text-slate-400">{t('chat.assignedTo')}</span>
               <span className="font-mono">{task.assigneeId}</span>
             </div>
           )}
           {task.artifacts && task.artifacts.length > 0 && (
             <div className="flex flex-wrap items-start gap-1">
               <Paperclip size={12} className="mt-0.5 shrink-0 text-slate-400" />
-              <span className="text-slate-400">产物:</span>
+              <span className="text-slate-400">{t('chat.artifacts')}</span>
               {task.artifacts.map((a, i) => (
                 <code
                   key={i}

@@ -13,6 +13,7 @@ import {
 import { useAgentStore } from '../../stores/agent-store'
 import type { PromptChain, PromptChainNode, Prompt } from '../../types'
 import { useConfirmDialog, SettingsEmptyState } from './ui'
+import { useAppTranslation } from '@/i18n/hooks'
 
 // ==================== 编辑器面板 ====================
 
@@ -25,6 +26,7 @@ interface ChainEditorProps {
 }
 
 function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEditorProps) {
+  const { t } = useAppTranslation()
   const [name, setName] = useState(chain?.name ?? '')
   const [description, setDescription] = useState(chain?.description ?? '')
   const [nodes, setNodes] = useState<PromptChainNode[]>(chain?.nodes ?? [])
@@ -110,7 +112,7 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
         <div className="flex items-center gap-2">
           <Link2 size={16} className="text-accent-500" />
           <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">
-            {isNew ? '新建提示词链' : '编辑提示词链'}
+            {isNew ? t('prompt.newChain') : t('prompt.editChain')}
           </h3>
         </div>
         <button
@@ -126,22 +128,22 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
         {/* 基本信息 */}
         <div className="space-y-3">
           <div>
-            <label className="block text-xs text-muted mb-1">链名称 *</label>
+            <label className="block text-xs text-muted mb-1">{t('prompt.chainName')}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="如：需求分析 → 方案设计 → 代码生成"
+              placeholder={t('prompt.chainNamePlaceholder')}
               className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/30"
             />
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1">描述</label>
+            <label className="block text-xs text-muted mb-1">{t('prompt.chainDescription')}</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="这条链的用途说明"
+              placeholder={t('prompt.chainDescriptionPlaceholder')}
               className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500/30"
             />
           </div>
@@ -150,20 +152,20 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
         {/* 节点列表 */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <label className="text-xs text-muted font-medium">执行节点（按顺序执行）</label>
+            <label className="text-xs text-muted font-medium">{t('prompt.executionNodes')}</label>
             <button
               onClick={handleAddNode}
               className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
             >
               <Plus size={12} />
-              添加节点
+              {t('prompt.addNode')}
             </button>
           </div>
 
           {nodes.length === 0 ? (
             <SettingsEmptyState
               icon={Link2}
-              title="暂无节点，点击上方添加"
+              title={t('prompt.noNodes')}
               iconSize={32}
             />
           ) : (
@@ -182,6 +184,7 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
                   onUpdatePrompt={(promptId) => handleUpdateNodePrompt(node.id, promptId)}
                   onUpdateMapping={(key, value) => handleUpdateNodeMapping(node.id, key, value)}
                   onRemoveMapping={(key) => handleRemoveMapping(node.id, key)}
+                  t={t}
                 />
               ))}
             </div>
@@ -191,7 +194,7 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
         {/* 链预览 */}
         {nodes.length > 0 && (
           <div className="bg-surface-50 dark:bg-surface-800/40 rounded-xl p-4">
-            <p className="text-xs text-muted mb-3 font-medium">执行流程预览</p>
+            <p className="text-xs text-muted mb-3 font-medium">{t('prompt.executionFlowPreview')}</p>
             <div className="flex items-center gap-1 flex-wrap">
               {nodes.map((node, idx) => {
                 const p = prompts.find((pr) => pr.id === node.promptId)
@@ -199,7 +202,7 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
                   <div key={node.id} className="flex items-center gap-1">
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-accent-50 dark:bg-accent-950/30 text-accent-700 dark:text-accent-300 text-xs border border-accent-200/60 dark:border-accent-800/40">
                       <span className="text-muted">{idx + 1}.</span>
-                      {p?.name || '未选择'}
+                      {p?.name || t('prompt.notSelected')}
                     </span>
                     {idx < nodes.length - 1 && (
                       <ArrowRight size={12} className="text-muted" />
@@ -218,7 +221,7 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
           onClick={onClose}
           className="px-4 py-1.5 rounded-lg text-xs text-muted hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
         >
-          取消
+          {t('common.cancel')}
         </button>
         <button
           onClick={handleSave}
@@ -226,7 +229,7 @@ function ChainEditorPanel({ chain, isNew, prompts, onSave, onClose }: ChainEdito
           className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium bg-accent-500 text-white hover:bg-accent-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Save size={12} />
-          {isNew ? '创建' : '保存'}
+          {isNew ? t('common.create') : t('common.save')}
         </button>
       </div>
     </div>
@@ -247,6 +250,7 @@ interface ChainNodeCardProps {
   onUpdatePrompt: (promptId: string) => void
   onUpdateMapping: (key: string, value: string) => void
   onRemoveMapping: (key: string) => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }
 
 function ChainNodeCard({
@@ -261,6 +265,7 @@ function ChainNodeCard({
   onUpdatePrompt,
   onUpdateMapping,
   onRemoveMapping,
+  t,
 }: ChainNodeCardProps) {
   const [showMapping, setShowMapping] = useState(false)
   const [newMappingKey, setNewMappingKey] = useState('')
@@ -291,10 +296,10 @@ function ChainNodeCard({
           onChange={(e) => onUpdatePrompt(e.target.value)}
           className="flex-1 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs focus:outline-none focus:ring-2 focus:ring-accent-500/30"
         >
-          <option value="">-- 选择提示词 --</option>
+          <option value="">{t('prompt.selectPrompt')}</option>
           {prompts.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} {p.variables.length > 0 ? `(${p.variables.length} 个变量)` : ''}
+              {p.name} {p.variables.length > 0 ? `(${t('prompt.variablesCount', { count: p.variables.length })})` : ''}
             </option>
           ))}
         </select>
@@ -303,7 +308,7 @@ function ChainNodeCard({
             onClick={onMoveUp}
             disabled={index === 0}
             className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-muted disabled:opacity-30 transition-colors"
-            title="上移"
+            title={t('prompt.moveUp')}
           >
             <ChevronUp size={12} />
           </button>
@@ -311,14 +316,14 @@ function ChainNodeCard({
             onClick={onMoveDown}
             disabled={index === totalNodes - 1}
             className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-muted disabled:opacity-30 transition-colors"
-            title="下移"
+            title={t('prompt.moveDown')}
           >
             <ChevronDown size={12} />
           </button>
           <button
             onClick={onRemove}
             className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500 transition-colors"
-            title="删除"
+            title={t('common.delete')}
           >
             <Trash2 size={12} />
           </button>
@@ -351,13 +356,13 @@ function ChainNodeCard({
                 onClick={() => setShowMapping(!showMapping)}
                 className="text-xs text-accent-500 hover:text-accent-600 transition-colors"
               >
-                {showMapping ? '收起' : '展开'}变量映射 ↓
+                {showMapping ? t('prompt.collapseMapping') : t('prompt.expandMapping')}{t('prompt.variableMapping')} ↓
               </button>
 
               {showMapping && (
                 <div className="mt-2 space-y-2 p-2 bg-surface-50 dark:bg-surface-800/40 rounded-lg">
                   <p className="text-[10px] text-muted">
-                    将上一步输出的变量映射到当前节点的变量
+                    {t('prompt.variableMappingDesc')}
                   </p>
                   {Object.entries(node.variableMapping ?? {}).map(([key, value]) => (
                     <div key={key} className="flex items-center gap-1.5">
@@ -378,7 +383,7 @@ function ChainNodeCard({
                       onChange={(e) => setNewMappingKey(e.target.value)}
                       className="px-1.5 py-1 rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-[10px] w-[80px]"
                     >
-                      <option value="">变量</option>
+                      <option value="">{t('prompt.variables')}</option>
                       {selectedPrompt.variables.map((v) => (
                         <option key={v.name} value={v.name}>{v.name}</option>
                       ))}
@@ -389,11 +394,11 @@ function ChainNodeCard({
                       onChange={(e) => setNewMappingValue(e.target.value)}
                       className="px-1.5 py-1 rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-[10px] flex-1"
                     >
-                      <option value="">上一步输出</option>
+                      <option value="">{t('prompt.previousOutput')}</option>
                       {prevVariables.map((v) => (
                         <option key={v.name} value={`{{${v.name}}}`}>{`{{${v.name}}}`}</option>
                       ))}
-                      <option value="{{output}}">上一步完整输出</option>
+                      <option value="{{output}}">{t('prompt.previousFullOutput')}</option>
                     </select>
                     <button
                       onClick={handleAddMapping}
@@ -420,6 +425,7 @@ interface PromptChainEditorProps {
 }
 
 export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
+  const { t } = useAppTranslation()
   const {
     prompts,
     promptChains,
@@ -445,9 +451,9 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
 
   const handleDelete = useCallback(async (id: string) => {
     const ok = await confirm({
-      title: '删除提示词链',
-      message: '确定删除该提示词链？此操作不可撤销。',
-      confirmLabel: '删除',
+      title: t('prompt.deleteChain'),
+      message: t('prompt.deleteChainConfirm'),
+      confirmLabel: t('common.delete'),
       variant: 'danger',
     })
     if (ok) {
@@ -457,7 +463,7 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
         setIsCreating(false)
       }
     }
-  }, [deletePromptChain, selectedChain, confirm])
+  }, [deletePromptChain, selectedChain, confirm, t])
 
   const handleSave = useCallback(
     (data: Omit<PromptChain, 'id' | 'createdAt' | 'updatedAt'> | (Partial<PromptChain> & { id: string })) => {
@@ -487,16 +493,16 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
             <button
               onClick={onBack}
               className="p-1 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors text-muted"
-              title="返回"
+              title={t('common.back')}
             >
               <X size={14} />
             </button>
-            <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">提示词链</h3>
+            <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">{t('prompt.promptChain')}</h3>
           </div>
           <button
             onClick={handleCreate}
             className="p-1.5 rounded-lg hover:bg-accent-50 dark:hover:bg-accent-950/30 text-accent-500 transition-colors"
-            title="新建提示词链"
+            title={t('prompt.newChain')}
           >
             <Plus size={14} />
           </button>
@@ -506,8 +512,8 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
           {promptChains.length === 0 ? (
             <SettingsEmptyState
               icon={Link2}
-              title="暂无提示词链"
-              description="点击 + 创建"
+              title={t('prompt.noChains')}
+              description={t('prompt.createChainHint')}
               iconSize={32}
             />
           ) : (
@@ -527,7 +533,7 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
                     {chain.name}
                   </p>
                   <p className="text-[10px] text-muted truncate mt-0.5">
-                    {chain.nodes.length} 个节点
+                    {t('prompt.nodesCount', { count: chain.nodes.length })}
                   </p>
                 </div>
                 <button
@@ -536,7 +542,7 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
                     handleDelete(chain.id)
                   }}
                   className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-400 transition-all"
-                  title="删除"
+                  title={t('common.delete')}
                 >
                   <Trash2 size={10} />
                 </button>
@@ -560,8 +566,8 @@ export function PromptChainEditor({ onBack }: PromptChainEditorProps) {
           <div className="flex items-center justify-center h-full text-muted">
             <div className="text-center">
               <Link2 size={48} className="mx-auto mb-3 opacity-20" />
-              <p className="text-sm">选择左侧提示词链进行编辑</p>
-              <p className="text-xs mt-1">或点击 + 创建新链</p>
+              <p className="text-sm">{t('prompt.selectChainToEdit')}</p>
+              <p className="text-xs mt-1">{t('prompt.orCreateNewChain')}</p>
             </div>
           </div>
         )}

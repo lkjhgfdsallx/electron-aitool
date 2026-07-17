@@ -18,6 +18,7 @@ import type {
   TransitionConditionType,
 } from '../../types'
 import { validateWorkflow, isTerminalState } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface AgentWorkflowEditorProps {
   /** 当前工作流（未配置时为 undefined） */
@@ -28,24 +29,24 @@ interface AgentWorkflowEditorProps {
   availableTools?: Array<{ id: string; name: string }>
 }
 
-const CONDITION_TYPES: { value: TransitionConditionType; label: string; hint: string }[] = [
-  { value: 'tool_called', label: '调用工具', hint: '当指定工具被调用时触发' },
-  { value: 'tool_result', label: '工具结果', hint: '当指定工具返回（可限定成功/失败）时触发' },
-  { value: 'plan_status', label: '计划状态', hint: '当计划进入指定状态时触发' },
-  { value: 'message_contains', label: '消息包含', hint: '当 LLM 输出包含关键词时触发' },
-  { value: 'always', label: '始终', hint: '无条件触发（兜底转移）' },
+const CONDITION_TYPES: { value: TransitionConditionType; labelKey: string; hintKey: string }[] = [
+  { value: 'tool_called', labelKey: 'chat.workflowConditionToolCalled', hintKey: 'chat.workflowConditionToolCalledHint' },
+  { value: 'tool_result', labelKey: 'chat.workflowConditionToolResult', hintKey: 'chat.workflowConditionToolResultHint' },
+  { value: 'plan_status', labelKey: 'chat.workflowConditionPlanStatus', hintKey: 'chat.workflowConditionPlanStatusHint' },
+  { value: 'message_contains', labelKey: 'chat.workflowConditionMessageContains', hintKey: 'chat.workflowConditionMessageContainsHint' },
+  { value: 'always', labelKey: 'chat.workflowConditionAlways', hintKey: 'chat.workflowConditionAlwaysHint' },
 ]
 
 const PLAN_STATUSES = ['draft', 'approved', 'executing', 'done', 'failed']
 
 /** 创建空白工作流（含一个初始状态） */
-function createEmptyWorkflow(): AgentWorkflow {
+function createEmptyWorkflow(startLabel: string, doneLabel: string): AgentWorkflow {
   return {
     initial: 'start',
     terminals: ['done'],
     states: {
       start: {
-        label: '开始',
+        label: startLabel,
         allowedTools: [],
         systemPromptSection: '',
         transitions: [
@@ -56,7 +57,7 @@ function createEmptyWorkflow(): AgentWorkflow {
         ],
       },
       done: {
-        label: '完成',
+        label: doneLabel,
         transitions: [],
       },
     },
@@ -73,6 +74,7 @@ export function AgentWorkflowEditor({
   onChange,
   availableTools = [],
 }: AgentWorkflowEditorProps) {
+  const { t } = useAppTranslation()
   const [mode, setMode] = useState<'visual' | 'json'>('visual')
   const [jsonText, setJsonText] = useState('')
   const [jsonError, setJsonError] = useState<string | null>(null)
@@ -95,7 +97,7 @@ export function AgentWorkflowEditor({
 
   /** 启用工作流（创建空白模板） */
   const handleEnable = () => {
-    onChange(createEmptyWorkflow())
+    onChange(createEmptyWorkflow(t('chat.workflowInitialBadge'), t('chat.workflowTerminalBadge')))
   }
 
   /** 禁用工作流 */
@@ -214,13 +216,13 @@ export function AgentWorkflowEditor({
       const parsed = JSON.parse(jsonText) as AgentWorkflow
       const errors = validateWorkflow(parsed)
       if (errors.length > 0) {
-        setJsonError(`校验失败：${errors[0]}`)
+        setJsonError(t('chat.workflowValidationFailed', { error: errors[0] }))
         return
       }
       setJsonError(null)
       onChange(parsed)
     } catch (e) {
-      setJsonError(`JSON 解析错误：${e instanceof Error ? e.message : String(e)}`)
+      setJsonError(t('chat.workflowJsonParseError', { error: e instanceof Error ? e.message : String(e) }))
     }
   }
 
@@ -230,7 +232,7 @@ export function AgentWorkflowEditor({
       <div className="rounded-lg border border-dashed border-surface-300 dark:border-surface-600 p-6 text-center">
         <GitBranch className="w-8 h-8 mx-auto mb-2 text-surface-400" />
         <p className="text-sm text-surface-500 dark:text-surface-400 mb-3">
-          尚未为该 Agent 配置工作流状态机
+          {t('chat.workflowNotConfigured')}
         </p>
         <button
           type="button"
@@ -238,7 +240,7 @@ export function AgentWorkflowEditor({
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
-          启用工作流
+          {t('chat.enableWorkflow')}
         </button>
       </div>
     )
@@ -261,7 +263,7 @@ export function AgentWorkflowEditor({
             }`}
           >
             <Eye className="w-3.5 h-3.5" />
-            可视化
+            {t('chat.visualMode')}
           </button>
           <button
             type="button"
@@ -281,12 +283,12 @@ export function AgentWorkflowEditor({
           {validationErrors.length === 0 ? (
             <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              校验通过
+              {t('chat.workflowValidationPassed')}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400" title={validationErrors.join('\n')}>
               <AlertCircle className="w-3.5 h-3.5" />
-              {validationErrors.length} 个问题
+              {t('chat.workflowValidationIssues', { count: validationErrors.length })}
             </span>
           )}
           <button
@@ -294,7 +296,7 @@ export function AgentWorkflowEditor({
             onClick={handleDisable}
             className="text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
           >
-            禁用工作流
+            {t('chat.disableWorkflow')}
           </button>
         </div>
       </div>
@@ -313,10 +315,10 @@ export function AgentWorkflowEditor({
         <div className="space-y-3">
           {/* 全局配置：初始状态 + 终止状态 */}
           <div className="rounded-md bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 p-3 space-y-2">
-            <div className="text-xs font-semibold text-surface-700 dark:text-surface-300">全局配置</div>
+            <div className="text-xs font-semibold text-surface-700 dark:text-surface-300">{t('chat.workflowGlobalConfig')}</div>
             <div className="grid grid-cols-2 gap-2">
               <label className="block">
-                <span className="text-[11px] text-surface-500 dark:text-surface-400">初始状态</span>
+                <span className="text-[11px] text-surface-500 dark:text-surface-400">{t('chat.workflowInitialState')}</span>
                 <select
                   value={workflow.initial}
                   onChange={(e) => updateWorkflow((wf) => { wf.initial = e.target.value })}
@@ -328,7 +330,7 @@ export function AgentWorkflowEditor({
                 </select>
               </label>
               <label className="block">
-                <span className="text-[11px] text-surface-500 dark:text-surface-400">终止状态（逗号分隔）</span>
+                <span className="text-[11px] text-surface-500 dark:text-surface-400">{t('chat.workflowTerminalStates')}</span>
                 <input
                   type="text"
                   value={(workflow.terminals ?? []).join(', ')}
@@ -383,7 +385,7 @@ export function AgentWorkflowEditor({
             className="w-full inline-flex items-center justify-center gap-1.5 py-2 text-xs font-medium rounded-md border border-dashed border-surface-300 dark:border-surface-600 text-surface-500 dark:text-surface-400 hover:border-primary-400 hover:text-primary-600 transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
-            添加状态
+            {t('chat.addWorkflowState')}
           </button>
         </div>
       )}
@@ -405,14 +407,14 @@ export function AgentWorkflowEditor({
           )}
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-surface-400">
-              编辑后点击"应用"以解析并校验
+              {t('chat.workflowJsonHint')}
             </span>
             <button
               type="button"
               onClick={handleApplyJson}
               className="px-3 py-1 text-xs font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700"
             >
-              应用
+              {t('chat.applyWorkflowJson')}
             </button>
           </div>
         </div>
@@ -454,6 +456,7 @@ function StateCard({
   onAddCondition,
   onDeleteCondition,
 }: StateCardProps) {
+  const { t } = useAppTranslation()
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(stateName)
 
@@ -496,12 +499,12 @@ function StateCard({
         <div className="flex items-center gap-1">
           {isInitial && (
             <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-              初始
+              {t('chat.workflowInitialBadge')}
             </span>
           )}
           {isTerminal && (
             <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
-              终止
+              {t('chat.workflowTerminalBadge')}
             </span>
           )}
           {state.label && (
@@ -515,7 +518,8 @@ function StateCard({
               type="button"
               onClick={onDelete}
               className="text-surface-400 hover:text-red-500"
-              title="删除状态"
+              title={t('chat.deleteWorkflowState')}
+              aria-label={t('chat.deleteWorkflowState')}
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -527,7 +531,7 @@ function StateCard({
       <div className="p-3 space-y-2.5">
         {/* 标签 */}
         <label className="block">
-          <span className="text-[11px] text-surface-500 dark:text-surface-400">显示标签</span>
+          <span className="text-[11px] text-surface-500 dark:text-surface-400">{t('chat.workflowDisplayLabel')}</span>
           <input
             type="text"
             value={state.label ?? ''}
@@ -539,7 +543,7 @@ function StateCard({
         {/* 允许工具 */}
         <div>
           <span className="text-[11px] text-surface-500 dark:text-surface-400">
-            允许工具（留空 = 继承 Agent 启用工具）
+            {t('chat.workflowAllowedTools')}
           </span>
           <div className="mt-1 flex flex-wrap gap-1">
             {(state.allowedTools ?? []).map((toolId) => (
@@ -556,6 +560,7 @@ function StateCard({
                     })
                   }
                   className="text-surface-400 hover:text-red-500"
+                  aria-label={t('common.delete')}
                 >
                   ×
                 </button>
@@ -573,7 +578,7 @@ function StateCard({
               }}
               className="mt-1 text-[11px] rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-1.5 py-0.5"
             >
-              <option value="">+ 添加工具…</option>
+              <option value="">{t('chat.addWorkflowTool')}</option>
               {availableTools
                 .filter((t) => !(state.allowedTools ?? []).includes(t.id) && !(state.allowedTools ?? []).includes(t.name))
                 .map((t) => (
@@ -586,14 +591,14 @@ function StateCard({
         {/* 提示词片段 */}
         <label className="block">
           <span className="text-[11px] text-surface-500 dark:text-surface-400">
-            系统提示词片段（注入到当前轮系统提示词）
+            {t('chat.workflowSystemPromptSection')}
           </span>
           <textarea
             value={state.systemPromptSection ?? ''}
             onChange={(e) => onUpdate((s) => { s.systemPromptSection = e.target.value })}
             rows={2}
             className="mt-0.5 w-full text-xs rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-2 py-1 font-mono resize-y"
-            placeholder="例如：此时你应专注于收集需求，不要开始写代码"
+            placeholder={t('chat.workflowPromptPlaceholder')}
           />
         </label>
 
@@ -601,7 +606,7 @@ function StateCard({
         <div>
           <div className="flex items-center justify-between mb-1">
             <span className="text-[11px] font-medium text-surface-600 dark:text-surface-300">
-              转移规则（满足任一条件即转移）
+              {t('chat.workflowTransitions')}
             </span>
             <button
               type="button"
@@ -609,7 +614,7 @@ function StateCard({
               className="inline-flex items-center gap-0.5 text-[11px] text-primary-600 hover:text-primary-700"
             >
               <Plus className="w-3 h-3" />
-              转移
+              {t('chat.addWorkflowTransition')}
             </button>
           </div>
           <div className="space-y-1.5">
@@ -631,7 +636,7 @@ function StateCard({
               />
             ))}
             {state.transitions.length === 0 && (
-              <div className="text-[11px] text-surface-400 italic px-1">无转移规则</div>
+              <div className="text-[11px] text-surface-400 italic px-1">{t('chat.noWorkflowTransitions')}</div>
             )}
           </div>
         </div>
@@ -661,6 +666,8 @@ function TransitionRow({
   onAddCondition,
   onDeleteCondition,
 }: TransitionRowProps) {
+  const { t } = useAppTranslation()
+
   return (
     <div className="rounded border border-surface-200 dark:border-surface-700 p-2 space-y-1.5 bg-surface-50/50 dark:bg-surface-800/30">
       {/* 目标状态 */}
@@ -679,6 +686,7 @@ function TransitionRow({
           type="button"
           onClick={onDelete}
           className="ml-auto text-surface-400 hover:text-red-500"
+          aria-label={t('chat.deleteWorkflowTransition')}
         >
           <Trash2 className="w-3 h-3" />
         </button>
@@ -706,7 +714,7 @@ function TransitionRow({
           className="inline-flex items-center gap-0.5 text-[11px] text-surface-400 hover:text-primary-600"
         >
           <Plus className="w-3 h-3" />
-          或条件
+          {t('chat.addWorkflowCondition')}
         </button>
       </div>
     </div>
@@ -723,6 +731,7 @@ interface ConditionRowProps {
 }
 
 function ConditionRow({ condition, availableTools, onUpdate, onDelete }: ConditionRowProps) {
+  const { t } = useAppTranslation()
   const condMeta = CONDITION_TYPES.find((c) => c.value === condition.type)
   return (
     <div className="flex items-center gap-1 flex-wrap">
@@ -740,10 +749,10 @@ function ConditionRow({ condition, availableTools, onUpdate, onDelete }: Conditi
           })
         }}
         className="text-[11px] rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-1.5 py-0.5"
-        title={condMeta?.hint}
+        title={condMeta ? t(condMeta.hintKey) : undefined}
       >
         {CONDITION_TYPES.map((c) => (
-          <option key={c.value} value={c.value}>{c.label}</option>
+          <option key={c.value} value={c.value}>{t(c.labelKey)}</option>
         ))}
       </select>
 
@@ -755,7 +764,7 @@ function ConditionRow({ condition, availableTools, onUpdate, onDelete }: Conditi
             onChange={(e) => onUpdate((c) => { c.toolName = e.target.value || undefined })}
             className="text-[11px] rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-1.5 py-0.5"
           >
-            <option value="">工具名…</option>
+            <option value="">{t('chat.workflowToolNamePlaceholder')}</option>
             {availableTools.map((t) => (
               <option key={t.id} value={t.name}>{t.name}</option>
             ))}
@@ -770,9 +779,9 @@ function ConditionRow({ condition, availableTools, onUpdate, onDelete }: Conditi
               }
               className="text-[11px] rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-1.5 py-0.5"
             >
-              <option value="">任意结果</option>
-              <option value="true">成功</option>
-              <option value="false">失败</option>
+              <option value="">{t('chat.workflowAnyResult')}</option>
+              <option value="true">{t('chat.workflowSuccess')}</option>
+              <option value="false">{t('chat.workflowFailure')}</option>
             </select>
           )}
         </>
@@ -784,7 +793,7 @@ function ConditionRow({ condition, availableTools, onUpdate, onDelete }: Conditi
           onChange={(e) => onUpdate((c) => { c.planStatus = e.target.value || undefined })}
           className="text-[11px] rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-1.5 py-0.5"
         >
-          <option value="">状态…</option>
+          <option value="">{t('chat.workflowStatusPlaceholder')}</option>
           {PLAN_STATUSES.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
@@ -796,19 +805,20 @@ function ConditionRow({ condition, availableTools, onUpdate, onDelete }: Conditi
           type="text"
           value={condition.keyword ?? ''}
           onChange={(e) => onUpdate((c) => { c.keyword = e.target.value || undefined })}
-          placeholder="关键词"
+          placeholder={t('chat.workflowKeywordPlaceholder')}
           className="text-[11px] rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-1.5 py-0.5 w-24"
         />
       )}
 
       {condition.type === 'always' && (
-        <span className="text-[11px] text-surface-400 italic">无条件</span>
+        <span className="text-[11px] text-surface-400 italic">{t('chat.workflowUnconditional')}</span>
       )}
 
       <button
         type="button"
         onClick={onDelete}
         className="text-surface-400 hover:text-red-500 ml-auto"
+        aria-label={t('chat.deleteWorkflowCondition')}
       >
         <Trash2 className="w-3 h-3" />
       </button>

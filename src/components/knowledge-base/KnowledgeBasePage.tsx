@@ -8,6 +8,7 @@ import { FileList } from './FileList'
 import { FileViewer } from './FileViewer'
 import { SearchResults } from './SearchResults'
 import { QuerySimulator } from './QuerySimulator'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface KnowledgeBasePageProps {
   onBack: () => void
@@ -15,6 +16,7 @@ interface KnowledgeBasePageProps {
 }
 
 export function KnowledgeBasePage({ onBack, onOpenSettings }: KnowledgeBasePageProps) {
+  const { t } = useAppTranslation()
   const {
     loadFiles,
     pageViewMode,
@@ -61,7 +63,7 @@ export function KnowledgeBasePage({ onBack, onOpenSettings }: KnowledgeBasePageP
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-surface-500 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/20 transition-all"
             >
               <Settings size={14} />
-              <span>知识库设置</span>
+              <span>{t('knowledgeBase.knowledgeBaseSettings')}</span>
             </button>
           </div>
         </div>

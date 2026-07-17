@@ -9,15 +9,17 @@ import {
   Percent
 } from 'lucide-react'
 import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
+import { useAppTranslation } from '@/i18n/hooks'
 
 export function SearchResults() {
+  const { t } = useAppTranslation()
   const { searchResults, isSearching, searchQuery, searchMode } = useKnowledgeBaseStore()
 
   if (isSearching) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 size={20} className="animate-spin text-muted" />
-        <span className="ml-2 text-sm text-muted">搜索中...</span>
+        <span className="ml-2 text-sm text-muted">{t('knowledgeBase.searching')}</span>
       </div>
     )
   }
@@ -27,12 +29,12 @@ export function SearchResults() {
       <div className="flex flex-col items-center justify-center h-full text-muted">
         <Search size={48} className="mb-4 opacity-20" />
         <p className="text-sm font-medium mb-1">
-          {searchQuery ? '未找到匹配结果' : '输入关键字开始搜索'}
+          {searchQuery ? t('knowledgeBase.noMatchingResults') : t('knowledgeBase.enterSearchQuery')}
         </p>
         <p className="text-xs">
           {searchQuery
-            ? '尝试使用不同的关键字或切换搜索模式'
-            : '支持关键字搜索和向量语义搜索'}
+            ? t('knowledgeBase.tryDifferentSearch')
+            : t('knowledgeBase.supportedSearchModes')}
         </p>
       </div>
     )
@@ -42,10 +44,10 @@ export function SearchResults() {
     <div className="px-5 py-4">
       <div className="flex items-center justify-between mb-4">
         <span className="text-sm font-medium text-surface-700 dark:text-surface-300">
-          搜索结果
+          {t('knowledgeBase.searchResults')}
         </span>
         <span className="text-xs text-surface-400 dark:text-surface-500">
-          {searchMode === 'keyword' ? '关键字匹配' : '向量搜索'} · {searchResults.length} 条结果
+          {searchMode === 'keyword' ? t('knowledgeBase.keywordMatch') : t('knowledgeBase.vectorSearch')} · {t('knowledgeBase.resultsCount', { count: searchResults.length })}
         </span>
       </div>
       <div className="space-y-2">
@@ -71,6 +73,7 @@ function SearchResultCard({
   index: number
   isVector: boolean
 }) {
+  const { t } = useAppTranslation()
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -120,7 +123,7 @@ function SearchResultCard({
             <div className="mt-2 pt-2 border-t border-surface-100 dark:border-surface-700/40">
               {/* 相似度进度条 */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-surface-400">相似度</span>
+                <span className="text-[10px] text-surface-400">{t('knowledgeBase.similarity')}</span>
                 <div className="flex-1 h-1.5 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-violet-500 rounded-full transition-all"

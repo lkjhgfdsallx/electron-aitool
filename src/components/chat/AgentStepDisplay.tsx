@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { AgentStep } from '../../types'
 import type { AgentPlan } from '../../types/agent-plan'
+import { useAppTranslation } from '@/i18n/hooks'
 import { AgentTodoPanel } from './AgentTodoPanel'
 
 /** 用户选择超时时间（毫秒） */
@@ -43,53 +44,54 @@ const stepTypeConfig = {
     color: 'text-accent-500',
     bgColor: 'bg-accent-50 dark:bg-accent-950/30',
     borderColor: 'border-accent-200 dark:border-accent-800',
-    label: '思考'
+    labelKey: 'chat.agentStepThinking'
   },
   action: {
     icon: Zap,
     color: 'text-amber-500',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
-    label: '行动'
+    labelKey: 'chat.agentStepAction'
   },
   observation: {
     icon: Eye,
     color: 'text-emerald-500',
     bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderColor: 'border-emerald-200 dark:border-emerald-800',
-    label: '观察'
+    labelKey: 'chat.agentStepObservation'
   },
   final_answer: {
     icon: CheckCircle2,
     color: 'text-green-500',
     bgColor: 'bg-green-50 dark:bg-green-950/30',
     borderColor: 'border-green-200 dark:border-green-800',
-    label: '最终回答'
+    labelKey: 'chat.agentStepFinalAnswer'
   },
   error: {
     icon: AlertCircle,
     color: 'text-danger-500',
     bgColor: 'bg-danger-50 dark:bg-danger-950/30',
     borderColor: 'border-danger-200 dark:border-danger-800',
-    label: '错误'
+    labelKey: 'chat.agentStepError'
   },
   human_input: {
     icon: User,
     color: 'text-blue-500',
     bgColor: 'bg-blue-50 dark:bg-blue-950/30',
     borderColor: 'border-blue-200 dark:border-blue-800',
-    label: '用户选择'
+    labelKey: 'chat.agentStepHumanInput'
   },
   subtask_result: {
     icon: Users,
     color: 'text-teal-500',
     bgColor: 'bg-teal-50 dark:bg-teal-950/30',
     borderColor: 'border-teal-200 dark:border-teal-800',
-    label: '子任务成果'
+    labelKey: 'chat.agentStepSubtaskResult'
   }
 }
 
 export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan, onApprovePlan, onRejectPlan }: AgentStepDisplayProps) {
+  const { t } = useAppTranslation()
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const [isAllExpanded, setIsAllExpanded] = useState(false)
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -278,14 +280,20 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
             </div>
           )}
           <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-            Agent 执行过程（{processSteps.length} 步{subAgentIds.size > 0 ? `，含 ${subAgentIds.size} 个子 Agent` : ''}）
+            {t('chat.agentExecutionProcess', {
+              steps: processSteps.length,
+              subAgents: subAgentIds.size > 0
+                ? t('chat.agentSubAgentCount', { count: subAgentIds.size })
+                : '',
+            })}
           </span>
         </div>
         <button
           onClick={toggleAll}
           className="text-xs text-accent-500 hover:text-accent-600 transition-colors"
+          aria-label={isAllExpanded ? t('chat.collapseAllSteps') : t('chat.expandAllSteps')}
         >
-          {isAllExpanded ? '全部折叠' : '全部展开'}
+          {isAllExpanded ? t('chat.collapseAllSteps') : t('chat.expandAllSteps')}
         </button>
       </div>
 
@@ -326,16 +334,18 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                     })
                   }}
                   className="flex items-center gap-2 w-full px-3 py-1.5 mx-2 mt-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40 cursor-pointer hover:bg-indigo-100/80 dark:hover:bg-indigo-950/50 transition-colors"
+                  aria-label={step.sourceAgentName || t('chat.childAgent')}
+                  aria-expanded={!agentGroupCollapsed}
                 >
                   <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0 text-xs">
                     {step.sourceAgentAvatar || '🤖'}
                   </div>
                   <Users size={12} className="text-indigo-500" />
                   <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                    {step.sourceAgentName || '子 Agent'}
+                    {step.sourceAgentName || t('chat.childAgent')}
                   </span>
                   <span className="text-xs text-indigo-400 dark:text-indigo-500">
-                    正在执行任务...
+                    {t('chat.childAgentExecutingTask')}
                   </span>
                   <div className="ml-auto flex-shrink-0">
                     {agentGroupCollapsed ? (
@@ -359,12 +369,14 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                     <button
                       onClick={() => toggleStep(step.id)}
                       className="flex items-center gap-3 w-full px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
+                      aria-expanded={isExpanded}
+                      aria-label={t(config.labelKey)}
                     >
                       <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${isSubAgent ? 'bg-indigo-100 dark:bg-indigo-900/40' : config.bgColor}`}>
                         <StepIcon size={12} className={isSubAgent ? 'text-indigo-500' : config.color} />
                       </div>
                       <span className={`text-xs font-medium ${isSubAgent ? 'text-indigo-600 dark:text-indigo-400' : config.color}`}>
-                        {config.label}
+                        {t(config.labelKey)}
                       </span>
                       <span className="text-xs text-muted truncate flex-1 text-left">
                         {truncateContent(step.content, 80)}
@@ -394,7 +406,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                         {step.type === 'action' && step.toolCall && (
                           <div className="mt-2 space-y-1">
                             <div className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                              工具：{step.toolCall.name}
+                              {t('chat.toolName', { name: step.toolCall.name })}
                             </div>
                             <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto">
                               {JSON.stringify(step.toolCall.arguments, null, 2)}
@@ -406,7 +418,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                         {step.type === 'observation' && step.toolResult && (
                           <div className="mt-2 space-y-1">
                             <div className={`text-xs font-medium ${step.toolResult.success ? 'text-emerald-600 dark:text-emerald-400' : 'text-danger-600 dark:text-danger-400'}`}>
-                              {step.toolResult.success ? '✓ 执行成功' : '✗ 执行失败'}
+                              {step.toolResult.success ? t('chat.executionSucceeded') : t('chat.executionFailed')}
                             </div>
                             <pre className="text-xs bg-surface-100 dark:bg-surface-800 rounded-lg p-2.5 font-mono overflow-x-auto max-h-40 overflow-y-auto">
                               {step.toolResult.success ? step.toolResult.data : step.toolResult.error}
@@ -443,7 +455,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                           <div className="mt-2 space-y-2">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                                任务:
+                                {t('chat.subtaskLabel')}
                               </span>
                               <span className="text-xs text-gray-700 dark:text-gray-300 flex-1 truncate">
                                 {step.subtaskResult.task}
@@ -458,17 +470,17 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                                 }`}
                               >
                                 {step.subtaskResult.status === 'success'
-                                  ? '成功'
+                                  ? t('chat.subtaskSuccess')
                                   : step.subtaskResult.status === 'error'
-                                  ? '失败'
-                                  : '部分完成'}
+                                  ? t('chat.subtaskFailed')
+                                  : t('chat.subtaskPartial')}
                               </span>
                             </div>
                             <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                              执行 {step.subtaskResult.stepCount} 步
+                              {t('chat.subtaskStepCount', { count: step.subtaskResult.stepCount })}
                               {step.subtaskResult.artifacts && step.subtaskResult.artifacts.length > 0 && (
                                 <span className="ml-2">
-                                  · 产物: {step.subtaskResult.artifacts.slice(0, 3).join(', ')}
+                                  {t('chat.subtaskArtifacts', { artifacts: step.subtaskResult.artifacts.slice(0, 3).join(', ') })}
                                   {step.subtaskResult.artifacts.length > 3 && '...'}
                                 </span>
                               )}
@@ -482,7 +494,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                             )}
                             {step.subtaskResult.error && (
                               <div className="text-xs text-danger-600 dark:text-danger-400">
-                                错误: {step.subtaskResult.error}
+                                {t('chat.errorLabel', { error: step.subtaskResult.error })}
                               </div>
                             )}
                           </div>
@@ -497,14 +509,14 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
               {isSubAgent && isAgentGroupEnd(step, index) && !agentGroupCollapsed && (index < processSteps.length - 1 || !isRunning) && (
                 <div className="flex items-center gap-2 px-3 py-1 mx-6 text-xs text-indigo-400 dark:text-indigo-500">
                   <CheckCircle2 size={10} />
-                  <span>{step.sourceAgentName || '子 Agent'} 任务完成</span>
+                  <span>{t('chat.childAgentTaskCompleted', { name: step.sourceAgentName || t('chat.childAgent') })}</span>
                 </div>
               )}
               {/* 仅当该子 Agent 是最后一个组且整体仍在运行时显示加载状态 */}
               {isSubAgent && isAgentGroupEnd(step, index) && !agentGroupCollapsed && index === processSteps.length - 1 && isRunning && (
                 <div className="flex items-center gap-2 px-3 py-1 mx-6 text-xs text-amber-500 dark:text-amber-400">
                   <Loader2 size={10} className="animate-spin" />
-                  <span>{step.sourceAgentName || '子 Agent'} 执行中...</span>
+                  <span>{t('chat.childAgentExecuting', { name: step.sourceAgentName || t('chat.childAgent') })}</span>
                 </div>
               )}
             </div>
@@ -549,6 +561,7 @@ function HumanChoicePanel({
   customExpandedMap,
   setCustomExpandedMap
 }: HumanChoicePanelProps) {
+  const { t } = useAppTranslation()
   const customInputRef = useRef<HTMLTextAreaElement>(null)
   const choice = step.humanChoice!
   const isMultiple = choice.allowMultiple ?? false
@@ -676,12 +689,12 @@ function HumanChoicePanel({
     if (!hasResponded) return ''
     if (isMultiple && Array.isArray(step.humanResponse)) {
       const labels = step.humanResponse.map(v => {
-        if (v === NONE_OF_ABOVE_VALUE) return '自定义输入'
+        if (v === NONE_OF_ABOVE_VALUE) return t('chat.customInput')
         return choice.options.find(o => o.value === v)?.label ?? v
       })
-      return labels.join('、')
+      return labels.join(', ')
     }
-    if (step.humanResponse === NONE_OF_ABOVE_VALUE) return '自定义输入'
+    if (step.humanResponse === NONE_OF_ABOVE_VALUE) return t('chat.customInput')
     return choice.options.find(o => o.value === step.humanResponse)?.label ?? String(step.humanResponse)
   }
 
@@ -692,7 +705,7 @@ function HumanChoicePanel({
         {choice.question}
         {isMultiple && (
           <span className="ml-2 text-xs font-normal text-blue-500 dark:text-blue-400">
-            （可多选）
+            {t('chat.multipleChoice')}
           </span>
         )}
       </div>
@@ -704,8 +717,10 @@ function HumanChoicePanel({
           return (
             <button
               key={idx}
+              type="button"
               disabled={!canClick}
               onClick={() => isMultiple ? handleMultiToggle(opt.value) : handleSingleSelect(opt.value)}
+              aria-pressed={selected}
               className={`flex items-start gap-2 w-full px-3 py-2 rounded-md border text-sm text-left transition-colors ${
                 selected
                   ? 'border-blue-400 bg-blue-100 dark:bg-blue-900/40 dark:border-blue-600'
@@ -742,6 +757,7 @@ function HumanChoicePanel({
 
         {/* "以上都不是"选项 */}
         <button
+          type="button"
           disabled={!canClick}
           onClick={() => isMultiple ? handleMultiToggle(NONE_OF_ABOVE_VALUE) : (
             setCustomExpandedMap(prev => {
@@ -757,6 +773,8 @@ function HumanChoicePanel({
                 ? 'border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-blue-300 hover:bg-blue-50 dark:hover:border-blue-700 dark:hover:bg-blue-950/20 cursor-pointer'
                 : 'border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800'
           }`}
+          aria-pressed={isNoneSelected()}
+          aria-expanded={!isMultiple ? isCustomExpanded : undefined}
         >
           <span className={`flex-shrink-0 w-5 h-5 ${
             isMultiple
@@ -771,10 +789,10 @@ function HumanChoicePanel({
           </span>
           <div className="flex-1 min-w-0">
             <div className={`font-medium ${isNoneSelected() ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
-              以上都不是，我自己输入
+              {t('chat.noneOfTheAbove')}
             </div>
             <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-              选择此项可自行输入你的答案
+              {t('chat.noneOfTheAboveDescription')}
             </div>
           </div>
         </button>
@@ -791,7 +809,8 @@ function HumanChoicePanel({
               next.set(step.id, e.target.value)
               return next
             })}
-            placeholder="请输入你的答案..."
+            placeholder={t('chat.customAnswerPlaceholder')}
+            aria-label={t('chat.customAnswerPlaceholder')}
             rows={2}
             className="w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 border-blue-300 dark:border-blue-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
             onKeyDown={(e) => {
@@ -807,11 +826,12 @@ function HumanChoicePanel({
           />
           {!isMultiple && (
             <button
+              type="button"
               onClick={handleCustomConfirm}
               disabled={!customInput.trim()}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              确认提交
+              {t('chat.submitAnswer')}
             </button>
           )}
         </div>
@@ -820,10 +840,11 @@ function HumanChoicePanel({
       {/* 多选确认按钮 */}
       {isMultiple && !hasResponded && currentMultiSel.size > 0 && (
         <button
+          type="button"
           onClick={handleMultiConfirm}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-md shadow-sm transition-all duration-200 hover:shadow-md active:scale-95"
         >
-          确认选择（已选 {currentMultiSel.size} 项）
+          {t('chat.confirmChoices', { count: currentMultiSel.size })}
         </button>
       )}
 
@@ -831,14 +852,14 @@ function HumanChoicePanel({
       {!hasResponded && countdown !== null && (
         <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
           <Timer size={12} />
-          <span>{countdown}秒后自动选择第一个选项</span>
+          <span>{t('chat.autoSelectFirstOption', { count: countdown })}</span>
         </div>
       )}
 
       {/* 已选择结果展示 */}
       {hasResponded && (
         <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-          {'\u2705'} 用户已选择: {formatSelectedLabel()}
+          {t('chat.userSelected', { selection: formatSelectedLabel() })}
         </div>
       )}
     </div>

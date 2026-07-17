@@ -14,6 +14,7 @@ import { useChat, hasUsableAIProvider, MISSING_AI_PROVIDER_MESSAGE } from '../..
 import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
 import type { Message, MessageAttachment, PromptRuntimeContext } from '../../types'
 import type { SettingsSection } from '../settings/SettingsNavRail'
+import { useAppTranslation } from '@/i18n/hooks'
 
 /** ⚡ 稳定的空数组引用，避免每次渲染创建新的 [] 导致 useMemo 失效 */
 const EMPTY_MESSAGES: Message[] = []
@@ -27,6 +28,7 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSettings }: ChatWindowProps) {
+  const { t } = useAppTranslation()
   const {
     currentConversationId,
     getVisibleMessages,
@@ -125,47 +127,52 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       // 无 AI 源时不发起分析，直接引导配置
       if (!ensureProviderOrOpenSettings()) return
 
+      const loginMethodKey = {
+        manual: 'special.loginManual',
+        password: 'special.loginPassword',
+        cookie: 'special.loginCookie',
+      }[formData.loginType]
       const lines: string[] = [
-        `请分析以下网站：`,
-        ``,
-        `**目标网址**：${formData.targetUrl}`,
-        `**登录方式**：${formData.loginType}`
+        t('chat.analyzerPromptTitle'),
+        '',
+        t('chat.analyzerPromptTargetUrl', { url: formData.targetUrl }),
+        t('chat.analyzerPromptLoginMethod', { method: t(loginMethodKey) })
       ]
 
       // 登录凭证
       if (formData.loginType === 'password') {
-        lines.push(`**用户名**：${formData.username}`)
-        lines.push(`**密码**：${formData.password}`)
+        lines.push(t('chat.analyzerPromptUsername', { username: formData.username }))
+        lines.push(t('chat.analyzerPromptPassword', { password: formData.password }))
       } else if (formData.loginType === 'cookie') {
-        if (formData.cookie) lines.push(`**Cookie**：${formData.cookie}`)
-        if (formData.token) lines.push(`**Token**：${formData.token}`)
+        if (formData.cookie) lines.push(t('chat.analyzerPromptCookie', { cookie: formData.cookie }))
+        if (formData.token) lines.push(t('chat.analyzerPromptToken', { token: formData.token }))
       }
 
       // 分析范围
-      lines.push(``, `**分析范围**：`)
-      lines.push(`- 爬取深度：${formData.maxDepth}`)
-      lines.push(`- 最大页面数：${formData.maxPages}`)
-      lines.push(`- 爬取间隔：${formData.crawlDelay}ms`)
+      lines.push('', t('chat.analyzerPromptScope'))
+      lines.push(t('chat.analyzerPromptCrawlDepth', { depth: formData.maxDepth }))
+      lines.push(t('chat.analyzerPromptMaxPages', { count: formData.maxPages }))
+      lines.push(t('chat.analyzerPromptCrawlDelay', { delay: formData.crawlDelay }))
 
       // 高级配置（仅在非默认值时显示）
       const advancedParts: string[] = []
-      if (formData.urlIncludePatterns) advancedParts.push(`- URL包含规则：\`${formData.urlIncludePatterns}\``)
-      if (formData.urlExcludePatterns) advancedParts.push(`- URL排除规则：\`${formData.urlExcludePatterns}\``)
-      if (formData.proxyServer) advancedParts.push(`- 代理服务器：${formData.proxyServer}`)
-      if (formData.userAgent) advancedParts.push(`- 自定义UA：${formData.userAgent}`)
-      if (formData.simulateHuman) advancedParts.push(`- 模拟人类行为：是`)
+      if (formData.urlIncludePatterns) advancedParts.push(t('chat.analyzerPromptUrlInclude', { patterns: formData.urlIncludePatterns }))
+      if (formData.urlExcludePatterns) advancedParts.push(t('chat.analyzerPromptUrlExclude', { patterns: formData.urlExcludePatterns }))
+      if (formData.proxyServer) advancedParts.push(t('chat.analyzerPromptProxy', { server: formData.proxyServer }))
+      if (formData.userAgent) advancedParts.push(t('chat.analyzerPromptUserAgent', { userAgent: formData.userAgent }))
+      if (formData.simulateHuman) advancedParts.push(t('chat.analyzerPromptSimulateHuman'))
 
       if (advancedParts.length > 0) {
-        lines.push(``, `**高级配置**：`)
+        lines.push('', t('chat.analyzerPromptAdvanced'))
         lines.push(...advancedParts)
       }
 
-      lines.push(``, `请使用这些配置启动网站分析。如果AI配置未提供，请使用当前对话的AI配置。`)
+      lines.push('', t('chat.analyzerPromptInstruction'))
 
       const content = lines.join('\n')
       sendMessage(content)
     },
-    [sendMessage, ensureProviderOrOpenSettings]
+    [sendMessage, ensureProviderOrOpenSettings, t]
   )
 
   const handleSend = useCallback(
@@ -194,19 +201,19 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
 
   // 快捷提示词
   const quickPrompts = [
-    { icon: '💡', text: '帮我写一篇关于 AI 发展趋势的文章', category: '写作' },
-    { icon: '🔍', text: '解释一下量子计算的基本原理', category: '学习' },
-    { icon: '💻', text: '用 Python 实现一个快速排序算法', category: '编程' },
-    { icon: '📊', text: '分析这份销售数据并给出建议', category: '分析' },
-    { icon: '🎨', text: '为我的产品起一个有创意的名字', category: '创意' },
-    { icon: '📝', text: '帮我优化这段代码的性能', category: '编程' },
+    { icon: '💡', text: t('chat.quickPromptAiTrends'), category: t('chat.categoryWriting') },
+    { icon: '🔍', text: t('chat.quickPromptQuantumComputing'), category: t('chat.categoryLearning') },
+    { icon: '💻', text: t('chat.quickPromptQuickSort'), category: t('chat.categoryProgramming') },
+    { icon: '📊', text: t('chat.quickPromptSalesAnalysis'), category: t('chat.categoryAnalysis') },
+    { icon: '🎨', text: t('chat.quickPromptProductName'), category: t('chat.categoryCreative') },
+    { icon: '📝', text: t('chat.quickPromptCodePerformance'), category: t('chat.categoryProgramming') },
   ]
 
   const featureCards = [
-    { icon: Bot, title: 'Agent 模式', desc: '自主规划、执行多步任务', color: 'from-accent-500 to-purple-600' },
-    { icon: Plug, title: 'MCP 工具', desc: '连接外部服务和数据源', color: 'from-emerald-500 to-teal-600' },
-    { icon: Globe, title: '网站分析', desc: '自动爬取分析网站功能', color: 'from-blue-500 to-indigo-600' },
-    { icon: FileText, title: '知识库', desc: '基于文档的精准问答', color: 'from-amber-500 to-orange-600' },
+    { icon: Bot, title: t('chat.featureAgentMode'), desc: t('chat.featureAgentModeDescription'), color: 'from-accent-500 to-purple-600' },
+    { icon: Plug, title: t('chat.featureMcpTools'), desc: t('chat.featureMcpToolsDescription'), color: 'from-emerald-500 to-teal-600' },
+    { icon: Globe, title: t('chat.featureWebsiteAnalysis'), desc: t('chat.featureWebsiteAnalysisDescription'), color: 'from-blue-500 to-indigo-600' },
+    { icon: FileText, title: t('chat.featureKnowledgeBase'), desc: t('chat.featureKnowledgeBaseDescription'), color: 'from-amber-500 to-orange-600' },
   ]
 
   // 空状态 - 无对话选中：全屏欢迎页
@@ -221,7 +228,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2 tracking-tight">
-            欢迎使用 <span className="text-gradient-warm">{BRAND.name}</span>
+            {t('chat.welcomeToApp')} <span className="text-gradient-warm">{BRAND.name}</span>
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
             {BRAND.tagline}
@@ -251,7 +258,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
           {/* 快捷提示词 */}
           <div className="max-w-lg mx-auto">
             <p className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-3 uppercase tracking-wider">
-              试试这些问题
+              {t('chat.tryTheseQuestions')}
             </p>
             <div className="grid grid-cols-2 gap-2">
               {quickPrompts.map((prompt, i) => (
@@ -296,7 +303,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       {currentAgent && (
         <div className="flex items-center gap-2 text-xs">
           <span className="px-2.5 py-0.5 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full font-medium">
-            Agent 模式
+            {t('chat.featureAgentMode')}
           </span>
           <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
         </div>
@@ -319,20 +326,24 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
           }`}
           title={
             currentConversation?.memoryInjectionPaused
-              ? '本对话已暂停将长期记忆注入上下文（记忆仍保留，可点击恢复）'
-              : '长期记忆将注入本对话上下文；点击可暂停注入，避免旧记忆污染'
+              ? t('chat.memoryPausedTitle')
+              : t('chat.memoryActiveTitle')
           }
         >
           {currentConversation?.memoryInjectionPaused ? (
             <>
               <Brain size={13} />
-              <span className="hidden sm:inline">记忆 · 已暂停</span>
+              <span className="hidden sm:inline">{t('chat.memoryPaused')}</span>
             </>
           ) : (
             <>
               <BrainCircuit size={13} />
               <span className="hidden sm:inline">
-                记忆 · {currentAgent.memoryConfig.crossSession ? '跨会话' : '本会话'}
+                {t('chat.memoryScope', {
+                  scope: currentAgent.memoryConfig.crossSession
+                    ? t('chat.memoryCrossSession')
+                    : t('chat.memoryCurrentSession')
+                })}
               </span>
             </>
           )}
@@ -358,15 +369,15 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
                   ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40'
                   : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
               }`}
-              title="选择知识库集合"
+              title={t('chat.selectKnowledgeBases')}
             >
               <BookOpen size={14} />
               <span className="hidden sm:inline max-w-[120px] truncate">
                 {selectedIds.length > 0
                   ? selectedNames.length > 1
-                    ? `${selectedNames[0]} 等${selectedNames.length}个`
+                    ? t('chat.selectedKnowledgeBases', { name: selectedNames[0], count: selectedNames.length - 1 })
                     : selectedNames[0]
-                  : '知识库'}
+                  : t('chat.knowledgeBase')}
               </span>
               <ChevronDown size={12} className={`transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -374,8 +385,8 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
             {kbDropdownOpen && (
               <div className="dropdown-panel absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
                 <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
-                  <p className="text-xs font-medium text-surface-600 dark:text-surface-400">选择对话使用的知识库</p>
-                  <p className="text-[10px] text-muted mt-0.5">不选择则搜索全部知识库</p>
+                  <p className="text-xs font-medium text-surface-600 dark:text-surface-400">{t('chat.knowledgeBasePickerTitle')}</p>
+                  <p className="text-[10px] text-muted mt-0.5">{t('chat.knowledgeBasePickerHint')}</p>
                 </div>
                 <div className="max-h-48 overflow-y-auto py-1">
                   {collections.map((col) => {
@@ -436,11 +447,14 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
               {currentAgent.name}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-xs mx-auto leading-relaxed">
-              {currentAgent.description || '发送消息开始与 Agent 对话，它会自主规划并执行多步任务'}
+              {currentAgent.description || t('chat.agentWelcomeFallback')}
             </p>
             {/* Agent 能力标签 */}
             <div className="flex flex-wrap justify-center gap-2 mb-6">
-              {(currentAgent.enabledToolIds && currentAgent.enabledToolIds.length > 0 ? currentAgent.enabledToolIds.slice(0, 4) : ['自主规划', '多步执行', '工具调用']).map((tag: string, i: number) => (
+              {(currentAgent.enabledToolIds && currentAgent.enabledToolIds.length > 0
+                ? currentAgent.enabledToolIds.slice(0, 4)
+                : [t('chat.agentCapabilityPlanning'), t('chat.agentCapabilityExecution'), t('chat.agentCapabilityToolUse')]
+              ).map((tag: string, i: number) => (
                 <span key={i} className="px-2.5 py-1 text-xs rounded-full bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40">
                   {tag}
                 </span>
@@ -456,10 +470,10 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
               </div>
             </div>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-1.5">
-              开始新的对话
+              {t('chat.startNewConversation')}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              发送消息或选择下方快捷提示开始
+              {t('chat.startConversationHint')}
             </p>
           </>
         )}

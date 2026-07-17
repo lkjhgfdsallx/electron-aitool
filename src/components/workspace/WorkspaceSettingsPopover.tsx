@@ -10,7 +10,7 @@
  * - 跳转完整设置页面
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Settings, ExternalLink, ToggleLeft, ToggleRight,
@@ -27,6 +27,7 @@ import { SettingFieldRenderer } from '../settings/SettingFieldRenderer'
 import { LeaderPromptEditorModal } from './LeaderPromptEditorModal'
 import type { Workspace, AutoApprovalConfig } from '../../types'
 import type { SettingItemMeta } from '../../types/settings-meta'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- Props ----
 
@@ -70,6 +71,7 @@ function buildWorkspaceSettingPatch(item: SettingItemMeta, value: unknown, works
 // ---- 组件 ----
 
 export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSettings, anchorRef }: WorkspaceSettingsPopoverProps) {
+  const { t } = useAppTranslation()
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const updateAutoApproval = useWorkspaceStore((s) => s.updateAutoApproval)
   const ref = useRef<HTMLDivElement>(null)
@@ -118,7 +120,94 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [onClose, anchorRef])
 
-  const quickSettingItems = getQuickAccessSettings('workspace')
+  const quickSettingItems = useMemo(() => {
+    const workspaceSettingText: Record<string, { label: string; description: string; unit?: string }> = {
+      'workspace.checkpointPolicy': {
+        label: t('workspace.quickCheckpointPolicy'),
+        description: t('workspace.quickCheckpointPolicyDescription'),
+      },
+      'workspace.commandPolicy': {
+        label: t('workspace.quickCommandPolicy'),
+        description: t('workspace.quickCommandPolicyDescription'),
+      },
+      'workspace.commandExecutionEnabled': {
+        label: t('workspace.quickCommandExecutionEnabled'),
+        description: t('workspace.quickCommandExecutionEnabledDescription'),
+      },
+      'workspace.contextConfig.compressionEnabled': {
+        label: t('workspace.quickContextCompression'),
+        description: t('workspace.quickContextCompressionDescription'),
+      },
+      'workspace.contextConfig.maxTokens': {
+        label: t('workspace.quickMaxContextTokens'),
+        description: t('workspace.quickMaxContextTokensDescription'),
+      },
+      'workspace.contextConfig.compressionThreshold': {
+        label: t('workspace.quickCompressionThreshold'),
+        description: t('workspace.quickCompressionThresholdDescription'),
+      },
+      'workspace.contextConfig.keepCheckpointBeforeCompression': {
+        label: t('workspace.quickCheckpointBeforeCompression'),
+        description: t('workspace.quickCheckpointBeforeCompressionDescription'),
+      },
+      'workspace.timedIntervalMinutes': {
+        label: t('workspace.quickTimedInterval'),
+        description: t('workspace.quickTimedIntervalDescription'),
+        unit: t('workspace.minutesUnit'),
+      },
+      'workspace.maxCheckpoints': {
+        label: t('workspace.quickMaxCheckpoints'),
+        description: t('workspace.quickMaxCheckpointsDescription'),
+        unit: t('workspace.countUnit'),
+      },
+    }
+
+    const optionText: Record<string, Record<string, { label: string; desc?: string }>> = {
+      'workspace.checkpointPolicy': {
+        'auto-before-modify': {
+          label: t('workspace.quickCheckpointAutoBeforeModify'),
+          desc: t('workspace.quickCheckpointAutoBeforeModifyDescription'),
+        },
+        timed: {
+          label: t('workspace.quickCheckpointTimed'),
+          desc: t('workspace.quickCheckpointTimedDescription'),
+        },
+        manual: {
+          label: t('workspace.quickCheckpointManual'),
+          desc: t('workspace.quickCheckpointManualDescription'),
+        },
+      },
+      'workspace.commandPolicy': {
+        'auto-approve-safe': {
+          label: t('workspace.quickCommandAutoApproveSafe'),
+          desc: t('workspace.quickCommandAutoApproveSafeDescription'),
+        },
+        'all-need-approval': {
+          label: t('workspace.quickCommandAllNeedApproval'),
+          desc: t('workspace.quickCommandAllNeedApprovalDescription'),
+        },
+        'auto-approve-all': {
+          label: t('workspace.quickCommandAutoApproveAll'),
+          desc: t('workspace.quickCommandAutoApproveAllDescription'),
+        },
+      },
+    }
+
+    return getQuickAccessSettings('workspace').map((item) => {
+      const text = workspaceSettingText[item.id]
+      return {
+        ...item,
+        label: text?.label ?? item.label,
+        description: text?.description ?? item.description,
+        unit: text?.unit ?? item.unit,
+        options: item.options?.map((option) => ({
+          ...option,
+          label: optionText[item.id]?.[option.value]?.label ?? option.label,
+          desc: optionText[item.id]?.[option.value]?.desc ?? option.desc,
+        })),
+      }
+    })
+  }, [t])
 
   const updateQuickSetting = useCallback((item: SettingItemMeta, value: unknown) => {
     updateWorkspace({
@@ -141,12 +230,12 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     label: string
     desc: string
   }> = [
-    { field: 'readFiles', label: '读取文件', desc: 'read_file' },
-    { field: 'listFiles', label: '列举目录', desc: 'list_files' },
-    { field: 'writeFiles', label: '写入文件', desc: 'write_file' },
-    { field: 'executeSafeCommands', label: '安全命令', desc: '只读 shell' },
-    { field: 'browser', label: '浏览器操作', desc: 'site_analyzer' },
-    { field: 'mcpTools', label: 'MCP 工具', desc: '已关联服务器' },
+    { field: 'readFiles', label: t('workspace.autoApprovalReadFiles'), desc: 'read_file' },
+    { field: 'listFiles', label: t('workspace.autoApprovalListFiles'), desc: 'list_files' },
+    { field: 'writeFiles', label: t('workspace.autoApprovalWriteFiles'), desc: 'write_file' },
+    { field: 'executeSafeCommands', label: t('workspace.autoApprovalSafeCommands'), desc: t('workspace.readOnlyShell') },
+    { field: 'browser', label: t('workspace.autoApprovalBrowser'), desc: 'site_analyzer' },
+    { field: 'mcpTools', label: t('workspace.autoApprovalMcpTools'), desc: t('workspace.linkedServers') },
   ]
 
   // C3: 切换知识库关联
@@ -180,7 +269,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
       <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-700 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Settings size={14} className="text-teal-500" />
-          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">工作区设置</span>
+          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{t('workspace.workspaceSettings')}</span>
         </div>
         <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
           {workspace.name}
@@ -207,9 +296,9 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
             <div className="flex items-center gap-2.5">
               <FileEdit size={14} className="text-gray-400" />
               <div>
-                <p className="text-xs text-gray-700 dark:text-gray-300">自动审批矩阵</p>
+                <p className="text-xs text-gray-700 dark:text-gray-300">{t('workspace.autoApprovalMatrix')}</p>
                 <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {workspace.autoApproval?.enabled ? '已启用精细控制' : '未启用，全部弹窗确认'}
+                  {workspace.autoApproval?.enabled ? t('workspace.autoApprovalEnabled') : t('workspace.autoApprovalDisabled')}
                 </p>
               </div>
             </div>
@@ -263,9 +352,9 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
           >
             <Database size={14} className="text-gray-400" />
             <div className="flex-1 text-left">
-              <p className="text-xs text-gray-700 dark:text-gray-300">知识库关联</p>
+              <p className="text-xs text-gray-700 dark:text-gray-300">{t('workspace.knowledgeBaseLink')}</p>
               <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                {enabledKBCount > 0 ? `已关联 ${enabledKBCount} 个集合` : '未关联知识库'}
+                {enabledKBCount > 0 ? t('workspace.linkedCollectionsCount', { count: enabledKBCount }) : t('workspace.noKnowledgeBaseLinked')}
               </p>
             </div>
             {showKBSection ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
@@ -273,7 +362,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
           {showKBSection && (
             <div className="px-3 pb-2 ml-6 space-y-1">
               {collections.length === 0 ? (
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 py-1">暂无知识库集合</p>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 py-1">{t('workspace.noKnowledgeBaseCollections')}</p>
               ) : (
                 collections.map((col) => {
                   const isSelected = (workspace.knowledgeBaseIds ?? []).includes(col.id)
@@ -295,7 +384,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
                 })
               )}
               <p className="text-[9px] text-gray-400 dark:text-gray-500 pt-1">
-                关联后 AI 领导自动获得 RAG 检索能力
+                {t('workspace.knowledgeBaseLinkHint')}
               </p>
             </div>
           )}
@@ -309,9 +398,9 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
           >
             <Plug size={14} className="text-gray-400" />
             <div className="flex-1 text-left">
-              <p className="text-xs text-gray-700 dark:text-gray-300">MCP 服务器</p>
+              <p className="text-xs text-gray-700 dark:text-gray-300">{t('workspace.mcpServers')}</p>
               <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                {enabledMCPCount > 0 ? `已启用 ${enabledMCPCount} 个服务器` : '未启用 MCP 服务器'}
+                {enabledMCPCount > 0 ? t('workspace.enabledServersCount', { count: enabledMCPCount }) : t('workspace.noMcpServersEnabled')}
               </p>
             </div>
             {showMCPSection ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
@@ -319,7 +408,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
           {showMCPSection && (
             <div className="px-3 pb-2 ml-6 space-y-1">
               {mcpServers.length === 0 ? (
-                <p className="text-[10px] text-gray-400 dark:text-gray-500 py-1">暂无 MCP 服务器配置</p>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 py-1">{t('workspace.noMcpServersConfigured')}</p>
               ) : (
                 mcpServers.map((server) => {
                   const isSelected = (workspace.mcpServerIds ?? []).includes(server.id)
@@ -343,7 +432,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
                 })
               )}
               <p className="text-[9px] text-gray-400 dark:text-gray-500 pt-1">
-                工作区启用的 MCP 工具直接对 AI 领导可见
+                {t('workspace.mcpServersHint')}
               </p>
             </div>
           )}
@@ -355,9 +444,9 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
             <div className="flex items-center gap-2.5 mb-2">
               <Crown size={14} className="text-amber-500" />
               <div className="flex-1">
-                <p className="text-xs text-gray-700 dark:text-gray-300">AI 领导提示词</p>
+                <p className="text-xs text-gray-700 dark:text-gray-300">{t('workspace.aiLeaderPrompt')}</p>
                 <p className="text-[10px] text-gray-400 dark:text-gray-500">
-                  {isCustomPrompt ? '已自定义' : '使用默认提示词'}
+                  {isCustomPrompt ? t('workspace.customized') : t('workspace.useDefaultPrompt')}
                 </p>
               </div>
             </div>
@@ -371,7 +460,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
                   className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors"
                 >
                   <FileEdit size={11} />
-                  <span>编辑提示词</span>
+                  <span>{t('workspace.editPrompt')}</span>
                 </button>
               </div>
             </div>
@@ -393,7 +482,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors"
         >
           <ExternalLink size={13} />
-          <span>打开完整工作区设置</span>
+          <span>{t('workspace.openFullWorkspaceSettings')}</span>
         </button>
       </div>
     </div>,

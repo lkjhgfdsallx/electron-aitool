@@ -12,6 +12,7 @@ import { WORKSPACE_TEMPLATES } from '../../constants/workspace-templates'
 import type { WorkspaceCreateInput, Workspace } from '../../types'
 import { DEFAULT_WORKSPACE_INPUT } from '../../types/workspace'
 import type { WorkspaceTemplate } from '../../constants/workspace-templates'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- 组件 ----
 
@@ -22,6 +23,7 @@ interface WorkspaceCreateDialogProps {
 }
 
 export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCreateDialogProps) {
+  const { t } = useAppTranslation()
   const createWorkspace = useWorkspaceStore((s) => s.createWorkspace)
   const activateWorkspace = useWorkspaceStore((s) => s.activateWorkspace)
 
@@ -78,11 +80,11 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
   // 创建工作区
   const handleCreate = useCallback(async () => {
     if (!name.trim()) {
-      setError('请输入工作区名称')
+      setError(t('workspace.workspaceNameRequired'))
       return
     }
     if (!folderPath) {
-      setError('请选择工作区文件夹')
+      setError(t('workspace.workspaceFolderRequired'))
       return
     }
 
@@ -93,7 +95,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
       // 先初始化 VCS 目录
       const initResult = await workspaceVCSService.initWorkspace(folderPath)
       if (!initResult.success) {
-        setError(`初始化工作区目录失败: ${initResult.error}`)
+        setError(`${t('workspace.initWorkspaceFolderFailed')}: ${initResult.error}`)
         setIsCreating(false)
         return
       }
@@ -125,11 +127,11 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
       onCreated?.(workspace.id)
       onClose()
     } catch (err) {
-      setError(`创建工作区失败: ${err instanceof Error ? err.message : String(err)}`)
+      setError(`${t('workspace.createWorkspaceFailed')}: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsCreating(false)
     }
-  }, [name, description, folderPath, activateAfterCreate, selectedTemplate, createWorkspace, activateWorkspace, onCreated, onClose])
+  }, [name, description, folderPath, activateAfterCreate, selectedTemplate, createWorkspace, activateWorkspace, onCreated, onClose, t])
 
   if (!open) return null
 
@@ -149,7 +151,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                 <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
               </svg>
             </div>
-            <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">创建工作区</h3>
+            <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">{t('workspace.createWorkspace')}</h3>
           </div>
           <button
             onClick={onClose}
@@ -166,7 +168,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
         {showTemplateStep ? (
           <div className="px-5 py-4">
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              选择项目模板，预设对应的命令白名单和上下文配置：
+              {t('workspace.selectProjectTemplateHint')}
             </p>
             <div className="grid grid-cols-2 gap-2">
               {WORKSPACE_TEMPLATES.map((template) => (
@@ -202,20 +204,20 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                 onClick={() => setShowTemplateStep(true)}
                 className="ml-auto text-[10px] text-teal-500 hover:text-teal-600 dark:hover:text-teal-400"
               >
-                更换
+                {t('workspace.changeTemplate')}
               </button>
             </div>
 
             {/* 工作区名称 */}
             <div>
               <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1.5 block">
-                工作区名称 <span className="text-red-500">*</span>
+                {t('workspace.workspaceName')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="例如：我的前端项目"
+                placeholder={t('workspace.workspaceNamePlaceholder')}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 placeholder-surface-400 dark:placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500"
                 autoFocus
               />
@@ -224,12 +226,12 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
             {/* 描述 */}
             <div>
               <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1.5 block">
-                描述
+                {t('workspace.description')}
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="简要描述工作区用途..."
+                placeholder={t('workspace.workspaceDescriptionPlaceholder')}
                 rows={2}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-200 placeholder-surface-400 dark:placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-teal-500/50 focus:border-teal-500 resize-none"
               />
@@ -238,7 +240,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
             {/* 文件夹选择 */}
             <div>
               <label className="text-xs font-medium text-surface-600 dark:text-surface-400 mb-1.5 block">
-                工作区文件夹 <span className="text-red-500">*</span>
+                {t('workspace.workspaceFolder')} <span className="text-red-500">*</span>
               </label>
               <div className="flex gap-2">
                 <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-surface-50 dark:bg-surface-800/80 min-w-0">
@@ -246,14 +248,14 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                   </svg>
                   <span className="text-xs text-surface-500 dark:text-surface-400 truncate">
-                    {folderPath || '未选择'}
+                    {folderPath || t('workspace.notSelected')}
                   </span>
                 </div>
                 <button
                   onClick={handleSelectFolder}
                   className="px-3 py-2 text-xs font-medium rounded-lg border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors shrink-0"
                 >
-                  浏览...
+                  {t('workspace.browse')}
                 </button>
               </div>
             </div>
@@ -267,14 +269,14 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                 className="w-4 h-4 rounded border-surface-300 dark:border-surface-600 text-teal-500 focus:ring-teal-500/50"
               />
               <span className="text-xs text-surface-600 dark:text-surface-400">
-                创建后立即进入工作区模式
+                {t('workspace.activateWorkspaceAfterCreate')}
               </span>
             </label>
 
             {/* 模板提示 */}
             {selectedTemplate && selectedTemplate.tips.length > 0 && (
               <div className="px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 mb-1">💡 模板提示</p>
+                <p className="text-[10px] font-medium text-blue-600 dark:text-blue-400 mb-1">{t('workspace.templateTips')}</p>
                 {selectedTemplate.tips.map((tip, i) => (
                   <p key={i} className="text-[10px] text-blue-500 dark:text-blue-400/80 leading-relaxed">
                     • {tip}
@@ -299,7 +301,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium rounded-lg border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
             >
-              取消
+              {t('common.cancel')}
             </button>
           ) : (
             <>
@@ -307,13 +309,13 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                 onClick={() => setShowTemplateStep(true)}
                 className="px-4 py-2 text-xs font-medium rounded-lg border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
               >
-                上一步
+                {t('common.previous')}
               </button>
               <button
                 onClick={onClose}
                 className="px-4 py-2 text-xs font-medium rounded-lg border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
               >
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleCreate}
@@ -323,7 +325,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                 {isCreating ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    创建中...
+                    {t('workspace.creatingWorkspace')}
                   </>
                 ) : (
                   <>
@@ -331,7 +333,7 @@ export function WorkspaceCreateDialog({ open, onClose, onCreated }: WorkspaceCre
                       <line x1="12" y1="5" x2="12" y2="19" />
                       <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
-                    创建工作区
+                    {t('workspace.createWorkspace')}
                   </>
                 )}
               </button>

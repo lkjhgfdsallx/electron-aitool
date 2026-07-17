@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
+import { useAppTranslation } from '@/i18n/hooks'
 import {
   ArrowLeft,
   GitBranch,
@@ -19,6 +20,7 @@ interface VersionHistoryProps {
 }
 
 export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
+  const { t } = useAppTranslation()
   const { savePromptVersion, rollbackPromptVersion } = useAgentStore()
   const { confirm, Dialog } = useConfirmDialog()
 
@@ -50,9 +52,9 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
   const handleRollback = useCallback(
     async (versionId: string) => {
       const ok = await confirm({
-        title: '回滚版本',
-        message: '确定回滚到此版本？当前内容将被覆盖。',
-        confirmLabel: '回滚',
+        title: t('prompt.rollbackTitle'),
+        message: t('prompt.rollbackConfirm'),
+        confirmLabel: t('prompt.rollback'),
         variant: 'warning',
       })
       if (ok) {
@@ -85,15 +87,15 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
             <GitBranch size={16} className="text-purple-500" />
-            版本历史
+            {t('prompt.versionHistory')}
           </h3>
-          <p className="text-xs text-muted">{prompt.name} · 当前 v{prompt.currentVersion}</p>
+          <p className="text-xs text-muted">{prompt.name} · {t('prompt.currentVersion', { version: prompt.currentVersion })}</p>
         </div>
         <button
           onClick={() => setShowSaveForm(!showSaveForm)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
         >
-          <Plus size={13} /> 保存版本
+          <Plus size={13} /> {t('prompt.saveVersion')}
         </button>
       </div>
 
@@ -105,20 +107,20 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
               type="text"
               value={versionLabel}
               onChange={(e) => setVersionLabel(e.target.value)}
-              placeholder={`v${prompt.currentVersion + 1}（可自定义标签）`}
+              placeholder={t('prompt.saveVersionPlaceholder', { version: prompt.currentVersion + 1 })}
               className="flex-1 px-3 py-1.5 text-xs border rounded-lg bg-white dark:bg-surface-800 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
             />
             <button
               onClick={handleSaveVersion}
               className="px-3 py-1.5 text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
             >
-              保存
+              {t('common.save')}
             </button>
             <button
               onClick={() => setShowSaveForm(false)}
               className="px-3 py-1.5 text-xs text-muted border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
             >
-              取消
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -132,8 +134,8 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
             <div className="px-4 py-8">
               <SettingsEmptyState
                 icon={GitBranch}
-                title="暂无版本记录"
-                description={'点击"保存版本"创建快照'}
+                title={t('prompt.noVersionHistory')}
+                description={t('prompt.createVersionHint')}
                 iconSize={32}
               />
             </div>
@@ -149,6 +151,7 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
                   onSelectV2={() => setSelectedV2(v.id)}
                   onRollback={() => handleRollback(v.id)}
                   formatTime={formatTime}
+                  t={t}
                 />
               ))}
             </div>
@@ -161,8 +164,8 @@ export function VersionHistory({ prompt, onBack }: VersionHistoryProps) {
             <div className="flex items-center justify-center h-full text-muted">
               <div className="text-center">
                 <GitBranch size={36} className="mx-auto mb-2 opacity-20" />
-                <p className="text-sm">选择两个版本进行对比</p>
-                <p className="text-xs mt-1">点击版本左侧的 V1/V2 按钮</p>
+                <p className="text-sm">{t('prompt.selectVersionsToCompare')}</p>
+                <p className="text-xs mt-1">{t('prompt.selectVersionsHint')}</p>
               </div>
             </div>
           ) : diff ? (
@@ -185,6 +188,7 @@ function VersionItem({
   onSelectV2,
   onRollback,
   formatTime,
+  t,
 }: {
   version: PromptVersion
   isSelectedV1: boolean
@@ -193,6 +197,7 @@ function VersionItem({
   onSelectV2: () => void
   onRollback: () => void
   formatTime: (ts: number) => string
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -227,7 +232,7 @@ function VersionItem({
                 ? 'bg-blue-500 text-white'
                 : 'bg-surface-100 dark:bg-surface-800 text-muted hover:text-blue-500'
             }`}
-            title="作为对比基准"
+            title={t('prompt.compareBaseline')}
           >
             V1
           </button>
@@ -238,14 +243,14 @@ function VersionItem({
                 ? 'bg-green-500 text-white'
                 : 'bg-surface-100 dark:bg-surface-800 text-muted hover:text-green-500'
             }`}
-            title="作为对比目标"
+            title={t('prompt.compareTarget')}
           >
             V2
           </button>
           <button
             onClick={onRollback}
             className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-muted hover:text-accent-500"
-            title="回滚到此版本"
+            title={t('prompt.rollbackToVersion')}
           >
             <RotateCcw size={12} />
           </button>

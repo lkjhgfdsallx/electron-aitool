@@ -11,6 +11,7 @@ import { SelectionBoundary } from '../ui/SelectionBoundary'
 import { ThinkingSection } from './ThinkingSection'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import type { Message, ToolCall } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface AssistantGroupBubbleProps {
   /** 该组包含的所有消息（assistant + tool，按时间顺序） */
@@ -37,6 +38,7 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
   onRegenerate,
   onContinueGeneration
 }: AssistantGroupBubbleProps) {
+  const { t, i18n } = useAppTranslation()
   const [copied, setCopied] = useState(false)
 
   // 分离 assistant 和 tool 消息
@@ -157,16 +159,16 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
           </span>
           {showTimestamp && (
             <span className="text-xs text-muted">
-              {formatTime(timestamp)}
+              {formatTime(timestamp, i18n.resolvedLanguage ?? i18n.language)}
             </span>
           )}
           {showTokenUsage && totalTokens > 0 && (
             <span className="text-xs text-muted">
-              {totalTokens} tokens
+              {totalTokens} {t('chat.tokens')}
             </span>
           )}
           {isStreaming && (
-            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
+            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />{t('chat.thinking')}</span>
           )}
         </div>
 
@@ -197,29 +199,32 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
             <button
               onClick={handleCopy}
               className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-              title="复制"
+              title={t('chat.copyMessage')}
+              aria-label={t('chat.copyMessage')}
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? '已复制' : '复制'}
+              {copied ? t('chat.copied') : t('chat.copyMessage')}
             </button>
             {onRegenerate && regenerateTargetId && (
               <button
                 onClick={() => onRegenerate(regenerateTargetId)}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                title="重新生成"
+                title={t('chat.regenerateMessage')}
+                aria-label={t('chat.regenerateMessage')}
               >
                 <RotateCcw size={12} />
-                重新生成
+                {t('chat.regenerateMessage')}
               </button>
             )}
             {onContinueGeneration && continuableTarget && (
               <button
                 onClick={() => onContinueGeneration(continuableTarget.id)}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300 rounded-md hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-all"
-                title={continuableTarget.continuable === 'agent' ? '继续执行' : '继续生成'}
+                title={continuableTarget.continuable === 'agent' ? t('chat.continueExecuting') : t('chat.continueGenerating')}
+                aria-label={continuableTarget.continuable === 'agent' ? t('chat.continueExecuting') : t('chat.continueGenerating')}
               >
                 <Forward size={12} />
-                {continuableTarget.continuable === 'agent' ? '继续执行' : '继续生成'}
+                {continuableTarget.continuable === 'agent' ? t('chat.continueExecuting') : t('chat.continueGenerating')}
               </button>
             )}
           </div>
@@ -257,15 +262,15 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
   )
 })
 
-function formatTime(timestamp: number): string {
+function formatTime(timestamp: number, locale: string): string {
   const date = new Date(timestamp)
   const now = new Date()
   const isToday = date.toDateString() === now.toDateString()
 
   if (isToday) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
   }
-  return date.toLocaleString('zh-CN', {
+  return date.toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',

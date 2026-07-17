@@ -8,7 +8,16 @@
  */
 
 import { ipcMain } from 'electron'
-import { createClient, type WebDAVClient, type FileStat } from 'webdav'
+import type { WebDAVClient, FileStat } from 'webdav'
+
+// 动态导入 webdav（ESM 兼容）
+let webdavModule: typeof import('webdav') | null = null
+async function getWebdav(): Promise<typeof import('webdav')> {
+  if (!webdavModule) {
+    webdavModule = await import('webdav')
+  }
+  return webdavModule
+}
 
 // ==================== 类型 ====================
 
@@ -36,7 +45,8 @@ interface IPCResult<T = unknown> {
 // ==================== 辅助函数 ====================
 
 /** 创建 WebDAV 客户端 */
-function createClientInstance(config: WebDAVConnectionConfig): WebDAVClient {
+async function createClientInstance(config: WebDAVConnectionConfig): Promise<WebDAVClient> {
+  const { createClient } = await getWebdav()
   return createClient(config.url, {
     username: config.username,
     password: config.password
@@ -85,7 +95,7 @@ export function setupWebDAVHandlers(): void {
   // 测试连接
   ipcMain.handle('webdav:test', async (_event, config: WebDAVConnectionConfig): Promise<IPCResult> => {
     try {
-      const client = createClientInstance(config)
+      const client = await createClientInstance(config)
       // 尝试获取目录内容以验证连接
       const remoteDir = config.remoteDir || '/'
       await client.getDirectoryContents(remoteDir, { deep: false })
@@ -98,7 +108,7 @@ export function setupWebDAVHandlers(): void {
   // 确保远程目录存在
   ipcMain.handle('webdav:ensureDir', async (_event, config: WebDAVConnectionConfig): Promise<IPCResult> => {
     try {
-      const client = createClientInstance(config)
+      const client = await createClientInstance(config)
       const remoteDir = joinPath(config.remoteDir || '', 'backups')
       await client.createDirectory(remoteDir, { recursive: true })
       return { success: true }
@@ -110,7 +120,7 @@ export function setupWebDAVHandlers(): void {
   // 上传备份文件
   ipcMain.handle('webdav:upload', async (_event, config: WebDAVConnectionConfig, fileName: string, data: number[]): Promise<IPCResult> => {
     try {
-      const client = createClientInstance(config)
+      const client = await createClientInstance(config)
       const remoteDir = joinPath(config.remoteDir || '', 'backups')
       const remotePath = `/${joinPath(remoteDir, fileName)}`
       const buffer = Buffer.from(Uint8Array.from(data))
@@ -129,7 +139,7 @@ export function setupWebDAVHandlers(): void {
   // 列出远程备份文件
   ipcMain.handle('webdav:list', async (_event, config: WebDAVConnectionConfig): Promise<IPCResult<WebDAVFileInfo[]>> => {
     try {
-      const client = createClientInstance(config)
+      const client = await createClientInstance(config)
       const remoteDir = joinPath(config.remoteDir || '', 'backups')
       const items = await client.getDirectoryContents(remoteDir, { deep: false })
       const fileStats = Array.isArray(items) ? items : []
@@ -137,7 +147,7 @@ export function setupWebDAVHandlers(): void {
         .filter((stat: FileStat) => stat.type === 'file' && stat.basename.endsWith('.zip'))
         .map(toFileInfo)
         // 按修改时间倒序
-        .sort((a: WebDAVFileInfo, b: WebDAVFileInfo) => 
+        .sort((a: WebDAVFileInfo, b: WebDAVFileInfo) =>
           new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
         )
       return { success: true, data: files }
@@ -149,7 +159,7 @@ export function setupWebDAVHandlers(): void {
   // 下载备份文件
   ipcMain.handle('webdav:download', async (_event, config: WebDAVConnectionConfig, fileName: string): Promise<IPCResult<number[]>> => {
     try {
-      const client = createClientInstance(config)
+      const client = await createClientInstance(config)
       const remoteDir = joinPath(config.remoteDir || '', 'backups')
       const remotePath = `/${joinPath(remoteDir, fileName)}`
       const buffer = await client.getFileContents(remotePath, { format: 'binary' }) as Buffer
@@ -162,7 +172,7 @@ export function setupWebDAVHandlers(): void {
   // 删除远程备份文件
   ipcMain.handle('webdav:delete', async (_event, config: WebDAVConnectionConfig, fileName: string): Promise<IPCResult> => {
     try {
-      const client = createClientInstance(config)
+      const client = await createClientInstance(config)
       const remoteDir = joinPath(config.remoteDir || '', 'backups')
       const remotePath = `/${joinPath(remoteDir, fileName)}`
       await client.deleteFile(remotePath)

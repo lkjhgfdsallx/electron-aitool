@@ -7,6 +7,7 @@
 
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
+import { useAppTranslation } from '../../i18n/hooks'
 
 interface WorkspaceIndicatorBarProps {
   onOpenCheckpointHistory?: () => void
@@ -19,6 +20,7 @@ export function WorkspaceIndicatorBar({
   onOpenSettings,
   onExitWorkspace,
 }: WorkspaceIndicatorBarProps) {
+  const { t } = useAppTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
   const checkpointIndex = useWorkspaceStore((s) => s.checkpointIndex)
@@ -61,7 +63,7 @@ export function WorkspaceIndicatorBar({
           </svg>
           <span className="truncate max-w-[100px]">{leaderAgent.name}</span>
           {teamCount > 0 && (
-            <span className="text-surface-400 dark:text-surface-500">+{teamCount} 团队</span>
+            <span className="text-surface-400 dark:text-surface-500">+{teamCount} {t('workspace.team')}</span>
           )}
         </div>
       )}
@@ -78,14 +80,14 @@ export function WorkspaceIndicatorBar({
           <circle cx="12" cy="12" r="10" />
           <polyline points="12 6 12 12 16 14" />
         </svg>
-        <span>{checkpointIndex.length} 存档</span>
+        <span>{t('workspace.checkpointsCount', { count: checkpointIndex.length })}</span>
       </button>
 
       {/* 监控状态 */}
       {watcherActive && (
         <div className="flex items-center gap-1 text-xs text-emerald-500 dark:text-emerald-400">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span>监控中</span>
+          <span>{t('workspace.monitoring')}</span>
         </div>
       )}
 
@@ -98,7 +100,7 @@ export function WorkspaceIndicatorBar({
         <button
           onClick={() => onOpenSettings?.('workspace')}
           className="p-1.5 rounded-md hover:bg-teal-100 dark:hover:bg-teal-900/30 text-surface-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-          title="工作区设置"
+          title={t('workspace.workspaceSettings')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="3" />
@@ -110,7 +112,7 @@ export function WorkspaceIndicatorBar({
         <button
           onClick={onExitWorkspace}
           className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 text-surface-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-          title="退出工作区"
+          title={t('workspace.exitWorkspace')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

@@ -1,5 +1,6 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import i18n from '@/i18n/config'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -53,23 +54,23 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </svg>
             </div>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              页面渲染出错
+              {i18n.t('nav.renderError')}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {this.state.error?.message || '发生了未知错误'}
+              {this.state.error?.message || i18n.t('common.unknownError')}
             </p>
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={this.handleReset}
                 className="px-5 py-2.5 rounded-xl bg-gradient-brand text-white text-sm font-medium shadow-sm hover:shadow-md transition-all hover:brightness-110 active:scale-[0.98]"
               >
-                重试
+                {i18n.t('common.retry')}
               </button>
               <button
                 onClick={() => window.location.reload()}
                 className="px-5 py-2.5 rounded-xl border border-surface-300 dark:border-surface-600 text-gray-600 dark:text-gray-300 text-sm font-medium hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
               >
-                重新加载应用
+                {i18n.t('common.reloadApp')}
               </button>
             </div>
           </div>

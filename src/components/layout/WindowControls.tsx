@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Minus, Square, X, Copy } from 'lucide-react'
+import { useAppTranslation } from '@/i18n/hooks'
 
 export function WindowControls() {
+  const { t } = useAppTranslation()
   const [isMaximized, setIsMaximized] = useState(false)
 
   const checkMaximized = useCallback(async () => {
@@ -46,20 +48,20 @@ export function WindowControls() {
       className="flex items-center h-full"
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
-      {/* 最小化 */}
       <button
         onClick={handleMinimize}
         className="group flex items-center justify-center w-[46px] h-full text-gray-500 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-        title="最小化"
+        title={t('common.minimize')}
+        aria-label={t('common.minimize')}
       >
         <Minus size={16} className="opacity-70 group-hover:opacity-100 transition-opacity" />
       </button>
 
-      {/* 最大化 / 还原 */}
       <button
         onClick={handleMaximize}
         className="group flex items-center justify-center w-[46px] h-full text-gray-500 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-        title={isMaximized ? '还原' : '最大化'}
+        title={isMaximized ? t('common.restore') : t('common.maximize')}
+        aria-label={isMaximized ? t('common.restore') : t('common.maximize')}
       >
         {isMaximized ? (
           <Copy size={14} className="opacity-70 group-hover:opacity-100 transition-opacity -rotate-90" />
@@ -68,11 +70,11 @@ export function WindowControls() {
         )}
       </button>
 
-      {/* 关闭 */}
       <button
         onClick={handleClose}
         className="group flex items-center justify-center w-[46px] h-full text-gray-500 dark:text-gray-400 hover:bg-red-500 hover:text-white transition-colors"
-        title="关闭"
+        title={t('common.close')}
+        aria-label={t('common.close')}
       >
         <X size={16} className="opacity-70 group-hover:opacity-100 transition-opacity" />
       </button>

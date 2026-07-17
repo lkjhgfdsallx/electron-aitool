@@ -7,16 +7,12 @@ import { searchSettings, getSettingMeta } from '../../constants/settings-registr
 import type { SettingItemMeta } from '../../types/settings-meta'
 import type { SettingsSection } from './SettingsNavRail'
 import { SETTINGS_SECTIONS } from './SettingsNavRail'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface SettingsSearchBarProps {
   /** 当搜索结果被点击时的回调：切换到对应 section */
   onNavigate: (section: SettingsSection, settingId: string) => void
 }
-
-// section key → 中文 label 映射
-const SECTION_LABEL_MAP: Record<string, string> = Object.fromEntries(
-  SETTINGS_SECTIONS.map((s) => [s.key, s.label])
-)
 
 // section key → 颜色映射
 const SECTION_COLOR_MAP: Record<string, string> = Object.fromEntries(
@@ -24,6 +20,7 @@ const SECTION_COLOR_MAP: Record<string, string> = Object.fromEntries(
 )
 
 export function SettingsSearchBar({ onNavigate }: SettingsSearchBarProps) {
+  const { t } = useAppTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SettingItemMeta[]>([])
   const [isOpen, setIsOpen] = useState(false)
@@ -153,12 +150,15 @@ export function SettingsSearchBar({ onNavigate }: SettingsSearchBarProps) {
           onFocus={() => {
             if (results.length > 0) setIsOpen(true)
           }}
-          placeholder="搜索设置项... (Ctrl+F)"
+          placeholder={t('settings.searchSettings')}
+          aria-label={t('settings.searchSettings')}
           className="w-full pl-9 pr-8 py-2.5 text-sm bg-surface-100 dark:bg-surface-800/60 border border-surface-200 dark:border-surface-700/60 rounded-xl text-surface-700 dark:text-surface-300 placeholder-surface-400 dark:placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all"
         />
         {query && (
           <button
             onClick={handleClear}
+            aria-label={t('common.clear')}
+            title={t('common.clear')}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
           >
             <X size={14} />
@@ -174,12 +174,13 @@ export function SettingsSearchBar({ onNavigate }: SettingsSearchBarProps) {
         >
           {/* 结果计数 */}
           <div className="px-3 py-2 text-xs text-muted border-b border-surface-100 dark:border-surface-700/40 bg-surface-50 dark:bg-surface-800/80">
-            找到 {results.length} 个匹配项
+            {t('settings.searchResultCount', { count: results.length })}
           </div>
 
           {/* 结果列表 */}
           {results.map((item, index) => {
-            const sectionLabel = SECTION_LABEL_MAP[item.section] || item.section
+            const section = SETTINGS_SECTIONS.find((candidate) => candidate.key === item.section)
+            const sectionLabel = section ? t(section.labelKey) : item.section
             const sectionColor = SECTION_COLOR_MAP[item.section] || 'text-surface-500'
             const isActive = index === activeIndex
 
@@ -206,7 +207,7 @@ export function SettingsSearchBar({ onNavigate }: SettingsSearchBarProps) {
                     </span>
                     {item.requiresRestart && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 flex items-center gap-0.5 flex-shrink-0">
-                        <RotateCcw size={9} /> 需重启
+                        <RotateCcw size={9} /> {t('settings.restartRequired')}
                       </span>
                     )}
                   </div>
@@ -226,9 +227,9 @@ export function SettingsSearchBar({ onNavigate }: SettingsSearchBarProps) {
 
           {/* 快捷键提示 */}
           <div className="px-3 py-2 text-[10px] text-muted border-t border-surface-100 dark:border-surface-700/40 bg-surface-50 dark:bg-surface-800/80 flex items-center gap-3">
-            <span><kbd className="px-1 py-0.5 bg-surface-200 dark:bg-surface-700 rounded text-[10px]">↑↓</kbd> 导航</span>
-            <span><kbd className="px-1 py-0.5 bg-surface-200 dark:bg-surface-700 rounded text-[10px]">Enter</kbd> 选择</span>
-            <span><kbd className="px-1 py-0.5 bg-surface-200 dark:bg-surface-700 rounded text-[10px]">Esc</kbd> 关闭</span>
+            <span><kbd className="px-1 py-0.5 bg-surface-200 dark:bg-surface-700 rounded text-[10px]">↑↓</kbd> {t('common.navigate')}</span>
+            <span><kbd className="px-1 py-0.5 bg-surface-200 dark:bg-surface-700 rounded text-[10px]">Enter</kbd> {t('common.select')}</span>
+            <span><kbd className="px-1 py-0.5 bg-surface-200 dark:bg-surface-700 rounded text-[10px]">Esc</kbd> {t('common.close')}</span>
           </div>
         </div>
       )}
@@ -237,8 +238,8 @@ export function SettingsSearchBar({ onNavigate }: SettingsSearchBarProps) {
       {isOpen && query.trim().length > 0 && results.length === 0 && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700/60 rounded-xl shadow-lg p-4 text-center">
           <AlertCircle size={20} className="mx-auto text-surface-400 mb-2" />
-          <p className="text-sm text-muted">未找到匹配的设置项</p>
-          <p className="text-xs text-surface-400 mt-1">试试其他关键词</p>
+          <p className="text-sm text-muted">{t('settings.noMatchingSettings')}</p>
+          <p className="text-xs text-surface-400 mt-1">{t('settings.tryOtherKeywords')}</p>
         </div>
       )}
     </div>

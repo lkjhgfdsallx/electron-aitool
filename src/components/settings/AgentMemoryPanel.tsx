@@ -9,6 +9,7 @@ import { Brain, Pencil, Trash2, Search, X, Save, RefreshCw, ExternalLink } from 
 import { memoryService, type MemoryListItem } from '../../services/memory-service'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useConfirmDialog } from './ui'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface AgentMemoryPanelProps {
   agentId: string
@@ -17,20 +18,13 @@ interface AgentMemoryPanelProps {
   onOpenConversation?: (conversationId: string) => void
 }
 
-function formatTime(ts: number): string {
-  try {
-    return new Date(ts).toLocaleString()
-  } catch {
-    return String(ts)
-  }
-}
-
 function shortId(id: string): string {
   if (id.length <= 10) return id
   return `${id.slice(0, 6)}…${id.slice(-4)}`
 }
 
 export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: AgentMemoryPanelProps) {
+  const { t, i18n } = useAppTranslation()
   const [items, setItems] = useState<MemoryListItem[]>([])
   const [query, setQuery] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -42,10 +36,10 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
   const titleById = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of conversations) {
-      map.set(c.id, c.title || '未命名对话')
+      map.set(c.id, c.title || t('agent.unnamedConversation'))
     }
     return map
-  }, [conversations])
+  }, [conversations, t])
 
   const reload = useCallback(() => {
     setItems(memoryService.getAllMemories(agentId))
@@ -83,9 +77,9 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
 
   const handleDelete = async (item: MemoryListItem) => {
     const ok = await confirm({
-      title: '删除记忆',
-      message: `确定删除记忆「${item.key}」吗？此操作不可恢复。`,
-      confirmLabel: '删除',
+      title: t('agent.deleteMemoryTitle'),
+      message: t('agent.deleteMemoryMessage', { key: item.key }),
+      confirmLabel: t('common.delete'),
       variant: 'danger',
     })
     if (!ok) return
@@ -97,9 +91,9 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
   const handleClearAll = async () => {
     if (items.length === 0) return
     const ok = await confirm({
-      title: '清空全部记忆',
-      message: `确定清空 ${agentName || '该 Agent'} 的全部 ${items.length} 条记忆吗？此操作不可恢复。`,
-      confirmLabel: '清空',
+      title: t('agent.clearAllMemoriesTitle'),
+      message: t('agent.clearAllMemoriesMessage', { agentName: agentName || t('agent.currentAgent'), count: items.length }),
+      confirmLabel: t('agent.clearMemories'),
       variant: 'danger',
     })
     if (!ok) return
@@ -117,7 +111,7 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
     <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-          <Brain size={14} /> 已存记忆
+          <Brain size={14} /> {t('agent.savedMemories')}
           <span className="text-xs font-normal text-muted">({items.length})</span>
         </h3>
         <div className="flex items-center gap-1.5">
@@ -125,7 +119,7 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
             type="button"
             onClick={reload}
             className="p-1.5 rounded-lg text-muted hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors"
-            title="刷新"
+            title={t('agent.refreshMemories')}
           >
             <RefreshCw size={14} />
           </button>
@@ -135,13 +129,13 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
             disabled={items.length === 0}
             className="flex items-center gap-1 px-2 py-1 text-xs text-danger-500 border border-danger-200/80 dark:border-danger-800/50 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 disabled:opacity-40 transition-colors"
           >
-            <Trash2 size={12} /> 清空
+            <Trash2 size={12} /> {t('agent.clearMemories')}
           </button>
         </div>
       </div>
 
       <p className="text-[11px] text-muted">
-        跨会话记忆会在本 Agent 的其他对话中自动注入；可在对话顶栏暂停注入。会话级记忆仅当前对话可见。点击「来源对话」可跳转查看。
+        {t('agent.memoryPanelHint')}
       </p>
 
       <div className="relative">
@@ -150,14 +144,14 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="搜索 key 或内容…"
+          placeholder={t('agent.searchMemoriesPlaceholder')}
           className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900"
         />
       </div>
 
       {filtered.length === 0 ? (
         <div className="text-xs text-muted py-6 text-center border border-dashed border-surface-200 dark:border-surface-700 rounded-lg">
-          {items.length === 0 ? '暂无记忆。Agent 调用 remember 后会显示在这里。' : '无匹配结果'}
+          {items.length === 0 ? t('agent.noMemories') : t('agent.noMatchingMemories')}
         </div>
       ) : (
         <ul className="max-h-64 overflow-y-auto space-y-2">
@@ -185,28 +179,28 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
                             : 'bg-surface-100 dark:bg-surface-800 text-muted'
                         }`}
                       >
-                        {item.scope === 'agent' ? '跨会话' : '本会话'}
+                        {item.scope === 'agent' ? t('agent.memoryCrossSession') : t('agent.memoryThisSession')}
                       </span>
                       {item.userEdited && (
-                        <span className="text-[10px] text-muted">已编辑</span>
+                        <span className="text-[10px] text-muted">{t('agent.memoryEdited')}</span>
                       )}
                     </div>
                     <div className="text-[10px] text-muted mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <span>{formatTime(item.updatedAt)}</span>
+                      <span>{new Date(item.updatedAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)}</span>
                       {item.conversationId && (
                         convExists ? (
                           <button
                             type="button"
                             onClick={() => handleOpenConversation(item.conversationId!)}
                             className="inline-flex items-center gap-0.5 text-accent-600 dark:text-accent-400 hover:underline"
-                            title={`打开对话 ${item.conversationId}`}
+                            title={t('agent.openConversation', { id: item.conversationId })}
                           >
                             <ExternalLink size={10} />
                             {convTitle || shortId(item.conversationId)}
                           </button>
                         ) : (
                           <span className="text-muted" title={item.conversationId}>
-                            来源已删除 ({shortId(item.conversationId)})
+                            {t('agent.sourceConversationDeleted', { id: shortId(item.conversationId) })}
                           </span>
                         )
                       )}
@@ -219,7 +213,7 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
                           type="button"
                           onClick={saveEdit}
                           className="p-1.5 rounded-lg text-accent-500 hover:bg-accent-50 dark:hover:bg-accent-950/30"
-                          title="保存"
+                          title={t('common.save')}
                         >
                           <Save size={14} />
                         </button>
@@ -227,7 +221,7 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
                           type="button"
                           onClick={cancelEdit}
                           className="p-1.5 rounded-lg text-muted hover:bg-surface-100 dark:hover:bg-surface-700"
-                          title="取消"
+                          title={t('common.cancel')}
                         >
                           <X size={14} />
                         </button>
@@ -238,7 +232,7 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
                           type="button"
                           onClick={() => startEdit(item)}
                           className="p-1.5 rounded-lg text-muted hover:bg-surface-100 dark:hover:bg-surface-700"
-                          title="编辑"
+                          title={t('common.edit')}
                         >
                           <Pencil size={14} />
                         </button>
@@ -246,7 +240,7 @@ export function AgentMemoryPanel({ agentId, agentName, onOpenConversation }: Age
                           type="button"
                           onClick={() => handleDelete(item)}
                           className="p-1.5 rounded-lg text-danger-500 hover:bg-danger-50 dark:hover:bg-danger-950/30"
-                          title="删除"
+                          title={t('common.delete')}
                         >
                           <Trash2 size={14} />
                         </button>

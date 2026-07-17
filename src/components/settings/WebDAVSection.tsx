@@ -19,6 +19,7 @@ import {
   deleteRemoteBackup
 } from '../../services/webdav-sync-service'
 import { StatusFeedback, SettingsToggle } from './ui'
+import { useAppTranslation } from '@/i18n/hooks'
 import {
   Cloud,
   CloudOff,
@@ -34,16 +35,6 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react'
-
-// ==================== 常量 ====================
-
-const MODULE_LABELS: Record<BackupDataModule, string> = {
-  localStorage: '设置与配置',
-  conversations: '对话消息',
-  knowledgeBase: '知识库',
-  reports: '分析报告',
-  skills: 'Skills'
-}
 
 // ==================== 子组件 ====================
 
@@ -64,6 +55,7 @@ function ConfigField({
   password?: boolean
   disabled?: boolean
 }) {
+  const { t } = useAppTranslation()
   const [showPassword, setShowPassword] = useState(false)
 
   return (
@@ -87,8 +79,8 @@ function ConfigField({
             onClick={() => setShowPassword(!showPassword)}
             disabled={disabled}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-muted hover:text-surface-700 dark:hover:text-surface-300 disabled:opacity-50 rounded-md"
-            title={showPassword ? '隐藏密码' : '显示密码'}
-            aria-label={showPassword ? '隐藏密码' : '显示密码'}
+            title={showPassword ? t('settings.data.webdavHidePassword') : t('settings.data.webdavShowPassword')}
+            aria-label={showPassword ? t('settings.data.webdavHidePassword') : t('settings.data.webdavShowPassword')}
           >
             {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
@@ -101,6 +93,7 @@ function ConfigField({
 // ==================== 主组件 ====================
 
 export function WebDAVSection() {
+  const { t } = useAppTranslation()
   const config = useWebDAVConfigStore()
   const [testing, setTesting] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -115,6 +108,15 @@ export function WebDAVSection() {
   const [sensitive, setSensitive] = useState<SensitiveStripOptions>({})
   const [showAdvanced, setShowAdvanced] = useState(false)
   const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Module labels using translation
+  const moduleLabels: Record<BackupDataModule, string> = {
+    localStorage: t('settings.data.webdavSettingsAndConfig'),
+    conversations: t('settings.data.webdavConversationMessages'),
+    knowledgeBase: t('settings.data.webdavKnowledgeBase'),
+    reports: t('settings.data.webdavAnalysisReports'),
+    skills: t('settings.data.webdavSkills')
+  }
 
   const clearStatus = useCallback(() => {
     if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current)
@@ -140,10 +142,10 @@ export function WebDAVSection() {
     if (result.success) {
       setFiles(result.files ?? [])
     } else {
-      showStatus(result.error ?? '获取文件列表失败', 'error')
+      showStatus(result.error ?? t('settings.data.webdavGetFileListFailed'), 'error')
     }
     setRefreshing(false)
-  }, [config.enabled, config.url, config.username, config.password, showStatus])
+  }, [config.enabled, config.url, config.username, config.password, showStatus, t])
 
   useEffect(() => {
     if (config.enabled) {
@@ -165,16 +167,16 @@ export function WebDAVSection() {
       })
       if (result.success) {
         config.setConnectionStatus('connected')
-        showStatus('连接测试成功', 'success')
+        showStatus(t('settings.data.webdavConnectionTestSuccess'), 'success')
         await refreshFiles()
       } else {
         config.setConnectionStatus('error', result.error)
-        showStatus(`连接测试失败: ${result.error}`, 'error')
+        showStatus(t('settings.data.webdavConnectionTestFailed', { error: result.error }), 'error')
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误'
+      const message = error instanceof Error ? error.message : t('settings.data.webdavUnknownError')
       config.setConnectionStatus('error', message)
-      showStatus(`连接测试失败: ${message}`, 'error')
+      showStatus(t('settings.data.webdavConnectionTestFailed', { error: message }), 'error')
     } finally {
       setTesting(false)
     }
@@ -182,21 +184,21 @@ export function WebDAVSection() {
 
   const handleUpload = async () => {
     if (!config.enabled) {
-      showStatus('请先启用 WebDAV', 'error')
+      showStatus(t('settings.data.webdavEnableFirst'), 'error')
       return
     }
     if (!config.url || !config.username || !config.password) {
-      showStatus('WebDAV 配置不完整', 'error')
+      showStatus(t('settings.data.webdavConfigIncomplete'), 'error')
       return
     }
     setUploading(true)
     clearStatus()
     const result = await uploadToWebDAV({ modules, sensitive })
     if (result.success) {
-      showStatus(`上传成功: ${result.filename}`, 'success')
+      showStatus(t('settings.data.webdavUploadSuccess', { filename: result.filename }), 'success')
       await refreshFiles()
     } else {
-      showStatus(`上传失败: ${result.error}`, 'error')
+      showStatus(t('settings.data.webdavUploadFailed', { error: result.error }), 'error')
     }
     setUploading(false)
   }
@@ -206,22 +208,22 @@ export function WebDAVSection() {
     clearStatus()
     const result = await downloadFromWebDAV(filename)
     if (result.success) {
-      showStatus(`恢复成功: ${filename}，建议重启应用`, 'success')
+      showStatus(t('settings.data.webdavRestoreSuccess', { filename }), 'success')
     } else {
-      showStatus(`恢复失败: ${result.error}`, 'error')
+      showStatus(t('settings.data.webdavRestoreFailed', { error: result.error }), 'error')
     }
     setDownloading(null)
   }
 
   const handleDelete = async (filename: string) => {
-    if (!confirm(`确定要删除远程备份「${filename}」吗？此操作不可撤销。`)) return
+    if (!confirm(t('settings.data.webdavDeleteConfirm', { filename }))) return
     setDeleting(filename)
     const result = await deleteRemoteBackup(filename)
     if (result.success) {
-      showStatus(`已删除: ${filename}`, 'success')
+      showStatus(t('settings.data.webdavDeleted', { filename }), 'success')
       await refreshFiles()
     } else {
-      showStatus(`删除失败: ${result.error}`, 'error')
+      showStatus(t('settings.data.webdavDeleteFailed', { error: result.error }), 'error')
     }
     setDeleting(null)
   }
@@ -237,7 +239,7 @@ export function WebDAVSection() {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-muted border border-surface-200 dark:border-surface-700">
           <CloudOff size={11} />
-          未启用
+          {t('settings.data.webdavNotEnabled')}
         </span>
       )
     }
@@ -245,7 +247,7 @@ export function WebDAVSection() {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/50">
           <CheckCircle2 size={11} />
-          已连接
+          {t('settings.data.webdavConnected')}
         </span>
       )
     }
@@ -253,7 +255,7 @@ export function WebDAVSection() {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/50">
           <Loader2 size={11} className="animate-spin" />
-          测试中
+          {t('settings.data.webdavTesting')}
         </span>
       )
     }
@@ -261,14 +263,14 @@ export function WebDAVSection() {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200/80 dark:border-red-800/50">
           <CloudOff size={11} />
-          连接失败
+          {t('settings.data.webdavConnectionFailed')}
         </span>
       )
     }
     return (
       <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-800 text-muted border border-surface-200 dark:border-surface-700">
         <Cloud size={11} />
-        未测试
+        {t('settings.data.webdavNotTested')}
       </span>
     )
   })()
@@ -283,18 +285,18 @@ export function WebDAVSection() {
         <div className="min-w-0">
           <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
             <Cloud size={16} className="text-sky-500 shrink-0" />
-            WebDAV 备份同步
+            {t('settings.data.webdavBackupSync')}
             <span className="ml-0.5">{connectionBadge}</span>
           </h3>
           <p className="text-xs text-muted mt-0.5">
-            将完整备份上传到 WebDAV，支持远程恢复与定时自动备份
+            {t('settings.data.webdavBackupSyncDescription')}
           </p>
         </div>
         <SettingsToggle
           size="sm"
           checked={config.enabled}
           onChange={(checked) => config.updateConfig({ enabled: checked })}
-          label="启用"
+          label={t('settings.data.webdavEnable')}
           className="shrink-0 !gap-2"
         />
       </div>
@@ -308,7 +310,7 @@ export function WebDAVSection() {
       {/* 未启用：只展示轻量提示，避免整页表单压迫感 */}
       {!config.enabled ? (
         <p className="mt-4 text-xs text-muted leading-relaxed">
-          开启后可配置服务器地址，并在本地备份之上增加云端同步。
+          {t('settings.data.webdavHint')}
         </p>
       ) : (
         <>
@@ -317,7 +319,7 @@ export function WebDAVSection() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <ConfigField
-                  label="WebDAV 地址"
+                  label={t('settings.data.webdavAddress')}
                   type="url"
                   value={config.url}
                   onChange={(val) => config.updateConfig({ url: val })}
@@ -325,21 +327,21 @@ export function WebDAVSection() {
                 />
               </div>
               <ConfigField
-                label="用户名"
+                label={t('settings.data.webdavUsername')}
                 value={config.username}
                 onChange={(val) => config.updateConfig({ username: val })}
-                placeholder="用户名"
+                placeholder={t('settings.data.webdavUsername')}
               />
               <ConfigField
-                label="密码"
+                label={t('settings.data.webdavPassword')}
                 value={config.password}
                 onChange={(val) => config.updateConfig({ password: val })}
-                placeholder="密码或应用专用密码"
+                placeholder={t('settings.data.webdavPasswordOrAppPassword')}
                 password
               />
               <div className="sm:col-span-2">
                 <ConfigField
-                  label="远程目录"
+                  label={t('settings.data.webdavRemoteDir')}
                   value={config.remoteDir}
                   onChange={(val) => config.updateConfig({ remoteDir: val })}
                   placeholder="LocalForge/backups"
@@ -367,7 +369,7 @@ export function WebDAVSection() {
                 ) : (
                   <RefreshCw size={14} />
                 )}
-                测试连接
+                {t('settings.data.webdavTestConnection')}
               </button>
               <button
                 type="button"
@@ -376,7 +378,7 @@ export function WebDAVSection() {
                 className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-accent-200 dark:border-accent-800/60 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                立即上传备份
+                {t('settings.data.webdavUploadBackup')}
               </button>
             </div>
           </div>
@@ -389,15 +391,14 @@ export function WebDAVSection() {
               className="flex items-center gap-1 text-xs text-muted hover:text-surface-700 dark:hover:text-surface-300 transition-colors"
             >
               {showAdvanced ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              高级选项
-              <span className="text-[10px] opacity-70 ml-1">模块 · 敏感数据 · 定时</span>
+              {t('settings.data.webdavAdvancedOptions')}
             </button>
 
             {showAdvanced && (
               <div className="mt-2 space-y-4 p-3 border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-900/50">
                 <div>
                   <div className="text-xs font-medium text-surface-700 dark:text-surface-300 mb-2">
-                    备份模块
+                    {t('settings.data.webdavBackupModules')}
                   </div>
                   <div className="grid grid-cols-2 gap-1">
                     {DEFAULT_BACKUP_MODULES.map((moduleId) => (
@@ -411,7 +412,7 @@ export function WebDAVSection() {
                           onChange={() => toggleModule(moduleId)}
                           className="rounded"
                         />
-                        <span>{MODULE_LABELS[moduleId]}</span>
+                        <span>{moduleLabels[moduleId]}</span>
                       </label>
                     ))}
                   </div>
@@ -419,7 +420,7 @@ export function WebDAVSection() {
 
                 <div>
                   <div className="text-xs font-medium text-surface-700 dark:text-surface-300 mb-2">
-                    敏感数据剥离
+                    {t('settings.data.webdavSensitiveDataStrip')}
                   </div>
                   <div className="space-y-0.5">
                     <label className="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg hover:bg-white dark:hover:bg-surface-800/60 cursor-pointer">
@@ -431,7 +432,7 @@ export function WebDAVSection() {
                         }
                         className="rounded"
                       />
-                      <span>移除 API Key（global-config / AI Provider）</span>
+                      <span>{t('settings.data.webdavRemoveApiKeys')}</span>
                     </label>
                     <label className="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg hover:bg-white dark:hover:bg-surface-800/60 cursor-pointer">
                       <input
@@ -445,7 +446,7 @@ export function WebDAVSection() {
                         }
                         className="rounded"
                       />
-                      <span>移除 MCP 服务器凭据</span>
+                      <span>{t('settings.data.webdavRemoveMcpCredentials')}</span>
                     </label>
                   </div>
                 </div>
@@ -455,13 +456,13 @@ export function WebDAVSection() {
                     size="sm"
                     checked={config.autoBackupEnabled}
                     onChange={(checked) => config.updateConfig({ autoBackupEnabled: checked })}
-                    label="定时自动备份"
-                    description="按间隔将备份上传到 WebDAV"
+                    label={t('settings.data.webdavAutoBackup')}
+                    description={t('settings.data.webdavAutoBackupDescription')}
                     className="mb-2"
                   />
                   {config.autoBackupEnabled && (
                     <div className="flex items-center gap-2 pl-0.5">
-                      <span className="text-xs text-muted">每隔</span>
+                      <span className="text-xs text-muted">{t('settings.data.webdavEvery')}</span>
                       <input
                         type="number"
                         min={1}
@@ -477,7 +478,7 @@ export function WebDAVSection() {
                         }
                         className="w-16 px-2 py-1.5 text-xs bg-white dark:bg-surface-900/50 border border-surface-200 dark:border-surface-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500/40"
                       />
-                      <span className="text-xs text-muted">小时备份一次</span>
+                      <span className="text-xs text-muted">{t('settings.data.webdavHours')}</span>
                     </div>
                   )}
                 </div>
@@ -490,7 +491,7 @@ export function WebDAVSection() {
             <div className="border border-surface-200 dark:border-surface-700 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 bg-surface-50 dark:bg-surface-900/50 border-b border-surface-200 dark:border-surface-700">
                 <span className="text-xs text-muted">
-                  远程备份文件
+                  {t('settings.data.webdavRemoteBackupFiles')}
                   {files.length > 0 ? ` (${files.length})` : ''}
                 </span>
                 <button
@@ -500,17 +501,17 @@ export function WebDAVSection() {
                   className="flex items-center gap-1 text-[11px] text-muted hover:text-surface-700 dark:hover:text-surface-300 disabled:opacity-50 transition-colors"
                 >
                   <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
-                  刷新
+                  {t('settings.data.webdavRefresh')}
                 </button>
               </div>
               <div className="max-h-48 overflow-y-auto">
                 {!canConnect ? (
                   <div className="text-center text-xs text-muted py-6">
-                    请先填写完整连接信息
+                    {t('settings.data.webdavFillConnectionInfo')}
                   </div>
                 ) : files.length === 0 ? (
                   <div className="text-center text-xs text-muted py-6">
-                    {refreshing ? '加载中…' : '暂无远程备份文件'}
+                    {refreshing ? t('settings.data.webdavLoading') : t('settings.data.webdavNoRemoteFiles')}
                   </div>
                 ) : (
                   files.map((file) => (
@@ -539,8 +540,8 @@ export function WebDAVSection() {
                           onClick={() => void handleDownload(file.filename)}
                           disabled={downloading === file.filename}
                           className="p-1.5 rounded-md text-muted hover:text-accent-600 dark:hover:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/30 disabled:opacity-50 transition-colors"
-                          title="下载并恢复"
-                          aria-label={`下载并恢复 ${file.filename}`}
+                          title={t('settings.data.webdavDownloadAndRestore')}
+                          aria-label={`${t('settings.data.webdavDownloadAndRestore')} ${file.filename}`}
                         >
                           {downloading === file.filename ? (
                             <Loader2 size={13} className="animate-spin" />
@@ -553,8 +554,8 @@ export function WebDAVSection() {
                           onClick={() => void handleDelete(file.filename)}
                           disabled={deleting === file.filename}
                           className="p-1.5 rounded-md text-muted hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition-colors"
-                          title="删除"
-                          aria-label={`删除 ${file.filename}`}
+                          title={t('settings.data.webdavDelete')}
+                          aria-label={`${t('settings.data.webdavDelete')} ${file.filename}`}
                         >
                           {deleting === file.filename ? (
                             <Loader2 size={13} className="animate-spin" />
@@ -573,7 +574,7 @@ export function WebDAVSection() {
           {/* 最近上传状态 */}
           {config.lastBackupStatus && config.lastBackupStatus !== 'idle' && (
             <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted">
-              <span className="shrink-0">最近上传</span>
+              <span className="shrink-0">{t('settings.data.webdavLastUpload')}</span>
               <span
                 className={`truncate text-right ${
                   config.lastBackupStatus === 'success'
@@ -582,12 +583,12 @@ export function WebDAVSection() {
                 }`}
               >
                 {config.lastBackupStatus === 'success'
-                  ? `${config.lastRemoteFile ?? '成功'}${
+                  ? `${config.lastRemoteFile ?? t('settings.data.webdavSuccess')}${
                       config.lastBackupAt
                         ? ` · ${new Date(config.lastBackupAt).toLocaleString()}`
                         : ''
                     }`
-                  : config.lastBackupError ?? '失败'}
+                  : config.lastBackupError ?? t('settings.data.webdavFailed')}
               </span>
             </div>
           )}

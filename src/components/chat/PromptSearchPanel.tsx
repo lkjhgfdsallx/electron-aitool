@@ -10,6 +10,7 @@ import {
   Plus,
 } from 'lucide-react'
 import type { Prompt } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface PromptSearchPanelProps {
   prompts: Prompt[]
@@ -19,6 +20,7 @@ interface PromptSearchPanelProps {
 }
 
 export function PromptSearchPanel({ prompts, onSelect, onClose, onOpenPromptManager }: PromptSearchPanelProps) {
+  const { t } = useAppTranslation()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -116,11 +118,14 @@ export function PromptSearchPanel({ prompts, onSelect, onClose, onOpenPromptMana
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="搜索提示词..."
+            placeholder={t('chat.promptSearchPlaceholder')}
+            aria-label={t('chat.promptSearchPlaceholder')}
             className="w-full pl-8 pr-8 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
           />
           <button
             onClick={onClose}
+            aria-label={t('common.close')}
+            title={t('common.close')}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-surface-700 dark:hover:text-surface-300"
           >
             <X size={14} />
@@ -134,20 +139,20 @@ export function PromptSearchPanel({ prompts, onSelect, onClose, onOpenPromptMana
           /* 完全没有提示词时的空状态 */
           <div className="px-4 py-6 text-center">
             <FileText size={28} className="mx-auto mb-2 text-surface-300 dark:text-surface-600" />
-            <p className="text-xs text-muted mb-3">暂无提示词，创建一个吧</p>
+            <p className="text-xs text-muted mb-3">{t('chat.noPrompts')}</p>
             <button
               onClick={handleGoToManager}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-600 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/30 hover:bg-accent-100 dark:hover:bg-accent-950/50 rounded-lg transition-colors"
             >
               <Plus size={13} />
-              去创建提示词
+              {t('chat.createPrompt')}
             </button>
           </div>
         ) : isSearchEmpty ? (
           /* 搜索无结果 */
           <div className="px-4 py-6 text-center text-muted">
             <FileText size={24} className="mx-auto mb-1.5 opacity-30" />
-            <p className="text-xs">没有匹配的提示词</p>
+            <p className="text-xs">{t('chat.noMatchingPrompts')}</p>
           </div>
         ) : (
           filtered.map((prompt, idx) => (
@@ -203,16 +208,17 @@ export function PromptSearchPanel({ prompts, onSelect, onClose, onOpenPromptMana
 
       {/* 底部提示 */}
       <div className="px-3 py-1.5 border-t border-surface-200/60 dark:border-surface-700/40 text-[10px] text-muted flex items-center justify-between">
-        <span>↑↓ 导航 · Enter 选择 · Esc 关闭</span>
+        <span>{t('chat.keyboardNavigateSelectClose')}</span>
         <div className="flex items-center gap-2">
-          {!isEmpty && <span>{filtered.length} 个提示词</span>}
+          {!isEmpty && <span>{t('chat.promptCount', { count: filtered.length })}</span>}
           <button
             onClick={handleGoToManager}
             className="flex items-center gap-0.5 text-accent-500 hover:text-accent-600 dark:text-accent-400 dark:hover:text-accent-300 transition-colors"
-            title="管理提示词"
+            title={t('chat.managePrompts')}
+            aria-label={t('chat.managePrompts')}
           >
             <Settings size={11} />
-            管理
+            {t('chat.managePrompts')}
           </button>
         </div>
       </div>

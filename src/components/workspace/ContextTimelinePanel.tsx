@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Clock, ChevronDown, ChevronRight, X, FileText, Zap, BarChart3, MessageSquare } from 'lucide-react'
 import { workspaceVCSService } from '../../services/workspace-vcs-service'
 import type { Workspace, CheckpointIndex } from '../../types'
+import { useAppTranslation } from '../../i18n/hooks'
 
 interface ContextTimelinePanelProps {
   workspace: Workspace
@@ -21,6 +22,7 @@ interface ContextTimelinePanelProps {
 }
 
 export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: ContextTimelinePanelProps) {
+  const { t } = useAppTranslation()
   const [checkpoints, setCheckpoints] = useState<CheckpointIndex[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -84,7 +86,7 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
             const msg = msgs[i]
             summary.push(`[${msg.role}] ${msg.content.slice(0, 100)}${msg.content.length > 100 ? '...' : ''}`)
           }
-          summary.push(`\n... 省略 ${msgs.length - maxShow - tailShow} 条消息 ...\n`)
+          summary.push(`\n... ${t('workspace.omittedMessages', { count: msgs.length - maxShow - tailShow })} ...\n`)
           for (let i = msgs.length - tailShow; i < msgs.length; i++) {
             const msg = msgs[i]
             summary.push(`[${msg.role}] ${msg.content.slice(0, 100)}${msg.content.length > 100 ? '...' : ''}`)
@@ -93,14 +95,14 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
 
         setDetailMessages(summary.join('\n'))
       } else {
-        setDetailMessages('（无法加载压缩前消息）')
+        setDetailMessages(t('workspace.cannotLoadPreCompressionMessages'))
       }
     } catch {
-      setDetailMessages('（加载失败）')
+      setDetailMessages(t('workspace.loadFailed'))
     } finally {
       setDetailLoading(false)
     }
-  }, [expandedId, workspace.folderPath])
+  }, [expandedId, workspace.folderPath, t])
 
   return (
     <div className="fixed inset-x-0 top-[43px] bottom-0 z-[80] bg-white/95 dark:bg-surface-900/95 backdrop-blur-sm flex flex-col overflow-hidden"
@@ -110,9 +112,9 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
         style={{ webkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-purple-500" />
-          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">上下文时间线</span>
+          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">{t('workspace.contextTimeline')}</span>
           <span className="text-[10px] text-gray-400 dark:text-gray-500">
-            {checkpoints.length} 次压缩
+            {t('workspace.contextCompressionCount', { count: checkpoints.length })}
           </span>
         </div>
         <button
@@ -136,9 +138,9 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
         ) : checkpoints.length === 0 ? (
           <div className="text-center py-12">
             <Clock size={32} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-            <p className="text-sm text-gray-500 dark:text-gray-400">尚无上下文压缩记录</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{t('workspace.noContextCompressionRecords')}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              当对话上下文超过 Token 限制时，系统会自动压缩并保存存档点
+              {t('workspace.contextCompressionEmptyHint')}
             </p>
           </div>
         ) : (
@@ -170,18 +172,18 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                     <div className="flex items-center gap-3 text-[10px] text-gray-400 dark:text-gray-500">
                       <span>{new Date(cp.createdAt).toLocaleString('zh-CN')}</span>
                       {cp.linesAdded > 0 && (
-                        <span className="text-green-500">+{cp.linesAdded} 行</span>
+                        <span className="text-green-500">{t('workspace.linesAdded', { count: cp.linesAdded })}</span>
                       )}
                       {cp.linesRemoved > 0 && (
-                        <span className="text-red-500">-{cp.linesRemoved} 行</span>
+                        <span className="text-red-500">{t('workspace.linesRemoved', { count: cp.linesRemoved })}</span>
                       )}
-                      <span>{cp.filesChanged} 个文件</span>
+                      <span>{t('workspace.filesChangedCount', { count: cp.filesChanged })}</span>
                     </div>
                     {/* 阶段 5.1：关联消息提示 */}
                     {cp.messageId && (
                       <div className="flex items-center gap-1 mt-1 text-[10px] text-teal-500">
                         <MessageSquare size={10} />
-                        <span>关联触发消息</span>
+                        <span>{t('workspace.relatedTriggerMessage')}</span>
                       </div>
                     )}
                   </div>
@@ -194,7 +196,7 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                     {detailLoading ? (
                       <div className="flex items-center gap-2 text-xs text-gray-400">
                         <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                        加载消息概要...
+                        {t('workspace.loadingMessageSummary')}
                       </div>
                     ) : (
                       <>
@@ -203,13 +205,13 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                           <div className="flex items-center gap-1.5 mb-2">
                             <BarChart3 size={12} className="text-purple-400" />
                             <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
-                              Token 消耗
+                              {t('workspace.tokenUsage')}
                             </span>
                           </div>
                           <div className="space-y-1.5">
                             {/* 压缩前 Token */}
                             <div className="flex items-center gap-2">
-                              <span className="text-[9px] text-gray-400 w-12 flex-shrink-0">压缩前</span>
+                              <span className="text-[9px] text-gray-400 w-12 flex-shrink-0">{t('workspace.beforeCompression')}</span>
                               <div className="flex-1 h-3 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-gradient-to-r from-orange-400 to-red-400 rounded-full transition-all"
@@ -222,7 +224,7 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                             </div>
                             {/* 压缩后 Token（估算） */}
                             <div className="flex items-center gap-2">
-                              <span className="text-[9px] text-gray-400 w-12 flex-shrink-0">压缩后</span>
+                              <span className="text-[9px] text-gray-400 w-12 flex-shrink-0">{t('workspace.afterCompression')}</span>
                               <div className="flex-1 h-3 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-gradient-to-r from-green-400 to-emerald-400 rounded-full transition-all"
@@ -235,7 +237,7 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                             </div>
                             {/* 节省比例 */}
                             <div className="text-[9px] text-gray-400 dark:text-gray-500 pt-0.5">
-                              节省约 <span className="text-emerald-500 font-medium">~70%</span> 上下文空间
+                              {t('workspace.savedContextSpace', { percent: '~70%' })}
                             </div>
                           </div>
                         </div>
@@ -243,11 +245,11 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                         <div className="flex items-center gap-1.5">
                           <FileText size={12} className="text-gray-400" />
                           <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
-                            压缩前消息概要
+                            {t('workspace.preCompressionSummary')}
                           </span>
                         </div>
                         <pre className="text-[11px] text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono leading-relaxed max-h-48 overflow-y-auto bg-white dark:bg-surface-900 rounded p-2 border border-surface-200 dark:border-surface-700">
-                          {detailMessages || '（无内容）'}
+                          {detailMessages || t('workspace.noContent')}
                         </pre>
 
                         {/* 阶段 5.2：关联消息跳转按钮 */}
@@ -260,7 +262,7 @@ export function ContextTimelinePanel({ workspace, onClose, onNavigateMessage }: 
                             className="flex items-center gap-1.5 text-[10px] text-teal-500 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
                           >
                             <MessageSquare size={11} />
-                            <span>跳转到触发消息</span>
+                            <span>{t('workspace.jumpToTriggerMessage')}</span>
                             <ChevronRight size={10} />
                           </button>
                         )}

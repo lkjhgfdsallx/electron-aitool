@@ -10,46 +10,48 @@
 import { useState, useEffect } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { FileActionApprovalResult } from '../../services/agent-engine'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- 操作类型样式映射 ----
 
 const ACTION_CONFIG: Record<string, {
-  label: string
+  labelKey: string
   color: string
   bgColor: string
   borderColor: string
   icon: string
-  description: string
+  descriptionKey: string
 }> = {
   'write-file': {
-    label: '写入文件',
+    labelKey: 'workspace.actionWriteFile',
     color: 'text-amber-600 dark:text-amber-400',
     bgColor: 'bg-amber-50 dark:bg-amber-950/30',
     borderColor: 'border-amber-200 dark:border-amber-800',
     icon: '✏️',
-    description: '将创建或修改文件内容',
+    descriptionKey: 'workspace.actionWriteFileDescription',
   },
   'read-file': {
-    label: '读取文件',
+    labelKey: 'workspace.actionReadFile',
     color: 'text-blue-600 dark:text-blue-400',
     bgColor: 'bg-blue-50 dark:bg-blue-950/30',
     borderColor: 'border-blue-200 dark:border-blue-800',
     icon: '📖',
-    description: '读取文件内容（只读操作）',
+    descriptionKey: 'workspace.actionReadFileDescription',
   },
   'list-files': {
-    label: '列目录',
+    labelKey: 'workspace.actionListFiles',
     color: 'text-emerald-600 dark:text-emerald-400',
     bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
     borderColor: 'border-emerald-200 dark:border-emerald-800',
     icon: '📁',
-    description: '列出目录内容（只读操作）',
+    descriptionKey: 'workspace.actionListFilesDescription',
   },
 }
 
 // ---- 组件 ----
 
 export function FileActionApprovalDialog() {
+  const { t } = useAppTranslation()
   const pendingApproval = useWorkspaceStore((s) => s.pendingFileActionApproval)
   const resolveApproval = useWorkspaceStore((s) => s.resolveFileActionApproval)
 
@@ -87,10 +89,10 @@ export function FileActionApprovalDialog() {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">
-              文件操作审批
+              {t('workspace.fileActionApprovalTitle')}
             </h3>
             <p className={`text-xs mt-0.5 ${config.color}`}>
-              {config.label} — {config.description}
+              {t(config.labelKey)} — {t(config.descriptionKey)}
             </p>
           </div>
           <button
@@ -113,14 +115,14 @@ export function FileActionApprovalDialog() {
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
-              <span>由 <strong className="text-surface-700 dark:text-surface-300">{pendingApproval.agentName}</strong> 请求执行</span>
+              <span>{t('workspace.fileActionRequestedBy', { name: pendingApproval.agentName })}</span>
             </div>
           )}
 
           {/* 工具名称 */}
           <div>
             <label className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 block">
-              工具
+              {t('workspace.tool')}
             </label>
             <div className="px-3 py-2 rounded-lg bg-surface-50 dark:bg-surface-800/80 border border-surface-200 dark:border-surface-700">
               <span className="text-xs font-mono text-surface-600 dark:text-surface-300">
@@ -132,7 +134,7 @@ export function FileActionApprovalDialog() {
           {/* 文件路径 */}
           <div>
             <label className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 block">
-              目标文件
+              {t('workspace.targetFile')}
             </label>
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-50 dark:bg-surface-800/80 border border-surface-200 dark:border-surface-700">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-surface-400 shrink-0">
@@ -149,7 +151,7 @@ export function FileActionApprovalDialog() {
           {pendingApproval.contentPreview && (
             <div>
               <label className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 block">
-                写入内容预览（前 500 字符）
+                {t('workspace.contentPreview')}
               </label>
               <div className="rounded-lg bg-surface-50 dark:bg-surface-800/80 border border-surface-200 dark:border-surface-700 overflow-hidden max-h-40">
                 <pre className="px-4 py-3 text-xs font-mono text-surface-700 dark:text-surface-300 whitespace-pre-wrap break-all leading-relaxed overflow-y-auto">
@@ -162,7 +164,7 @@ export function FileActionApprovalDialog() {
           {/* 风险等级 */}
           <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${config.bgColor} border ${config.borderColor}`}>
             <span className={`text-xs font-medium ${config.color}`}>
-              ⚠️ 风险等级：{pendingApproval.riskLevel === 'high' ? '高' : pendingApproval.riskLevel === 'medium' ? '中' : '低'}
+              ⚠️ {t('workspace.riskLevel')}：{pendingApproval.riskLevel}
             </span>
           </div>
         </div>
@@ -173,19 +175,19 @@ export function FileActionApprovalDialog() {
             onClick={() => resolveApproval('denied')}
             className="px-4 py-2 text-xs font-medium text-surface-600 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
           >
-            拒绝 (Esc)
+            {t('workspace.denyEsc')}
           </button>
           <button
             onClick={() => resolveApproval('approved-once')}
             className="px-4 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
           >
-            仅此一次批准
+            {t('workspace.approveOnceAction')}
           </button>
           <button
             onClick={() => resolveApproval('approved-always')}
             className="px-4 py-2 text-xs font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
           >
-            永远允许此类操作
+            {t('workspace.allowAlwaysAction')}
           </button>
         </div>
       </div>

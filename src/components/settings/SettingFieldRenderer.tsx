@@ -1,5 +1,6 @@
 import { ChevronDown, ToggleLeft, ToggleRight } from 'lucide-react'
 import type { SettingItemMeta } from '../../types/settings-meta'
+import { useAppTranslation } from '../../i18n/hooks'
 
 export interface SettingFieldRendererProps<T = unknown> {
   item: SettingItemMeta
@@ -23,6 +24,7 @@ export function SettingFieldRenderer<T = unknown>({
   compact = false,
   className = '',
 }: SettingFieldRendererProps<T>) {
+  const { t } = useAppTranslation()
   const labelClass = compact
     ? 'text-xs text-gray-700 dark:text-gray-300'
     : 'text-sm font-medium text-surface-700 dark:text-surface-300'
@@ -42,7 +44,7 @@ export function SettingFieldRenderer<T = unknown>({
             className={`transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
               checked ? 'text-accent-500' : 'text-gray-300 dark:text-gray-600'
             }`}
-            aria-label={`${checked ? '关闭' : '开启'}${item.label}`}
+            aria-label={`${checked ? t('common.close') : t('common.open')}${item.label}`}
           >
             {checked ? <ToggleRight size={compact ? 22 : 24} /> : <ToggleLeft size={compact ? 22 : 24} />}
           </button>

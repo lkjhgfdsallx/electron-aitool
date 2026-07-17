@@ -10,6 +10,7 @@ import {
   getAgentCategoryMeta,
   type AgentCategory,
 } from '../../utils/agent-utils'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface AgentSelectorProps {
   selectedAgentId?: string
@@ -18,6 +19,7 @@ interface AgentSelectorProps {
 }
 
 export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }: AgentSelectorProps) {
+  const { t } = useAppTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -146,7 +148,9 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
     return (
       <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
         <Icon size={11} className="text-gray-400 dark:text-gray-500" />
-        <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{meta.label}</span>
+        <span className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+          {t(meta.labelKey)}
+        </span>
       </div>
     )
   }
@@ -156,6 +160,9 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
       {/* 触发按钮 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-label={t('agent.selectAgent')}
         className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-xl border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/60 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all shadow-sm"
       >
         {selectedAgent ? (
@@ -169,7 +176,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
         ) : (
           <>
             <Zap size={14} className="text-gray-400" />
-            <span className="text-gray-500">选择 Agent</span>
+            <span className="text-gray-500">{t('agent.selectAgent')}</span>
           </>
         )}
         <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -187,7 +194,8 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="搜索 Agent..."
+                placeholder={t('chat.searchAgents')}
+                aria-label={t('chat.searchAgents')}
                 className="w-full pl-8 pr-3 py-1.5 bg-surface-50 dark:bg-surface-900 border-none rounded-lg text-sm text-gray-700 dark:text-gray-300 placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-accent-300 dark:focus:ring-accent-600"
               />
             </div>
@@ -213,9 +221,9 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
               </div>
               <div className="flex-1 min-w-0">
                 <div className={`text-sm font-medium ${!selectedAgentId ? 'text-accent-700 dark:text-accent-300' : 'text-gray-700 dark:text-gray-300'}`}>
-                  普通对话
+                  {t('chat.normalChat')}
                 </div>
-                <div className="text-xs text-muted truncate">不使用 Agent 的自由对话</div>
+                <div className="text-xs text-muted truncate">{t('chat.normalChatDescription')}</div>
               </div>
               {!selectedAgentId && (
                 <Check size={14} className="text-accent-500 flex-shrink-0" />
@@ -241,7 +249,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
             {/* 无结果 */}
             {!hasResults && (
               <div className="px-3 py-4 text-center text-xs text-muted">
-                {searchTerm ? '未找到匹配的 Agent' : '暂无可用 Agent'}
+                {searchTerm ? t('chat.noMatchingAgents') : t('chat.noAgentsAvailable')}
               </div>
             )}
           </div>
@@ -258,7 +266,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
                 className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-accent-600 dark:text-accent-400 bg-accent-50/80 dark:bg-accent-950/20 hover:bg-accent-100 dark:hover:bg-accent-950/40 rounded-lg transition-all"
               >
                 <Settings2 size={12} />
-                Agent 管理
+                {t('agent.agentManagement')}
               </button>
             </div>
           )}

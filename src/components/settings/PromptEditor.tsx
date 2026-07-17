@@ -34,6 +34,7 @@ import type {
 } from '../../types'
 import { SECTION_TYPE_META } from '../../types'
 import { SettingsTabs, SettingsEmptyState } from './ui'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface PromptEditorProps {
   prompt: Prompt | null
@@ -64,6 +65,8 @@ export function PromptEditor({
   onTogglePinned,
   onConvertToAgent,
 }: PromptEditorProps) {
+  const { t } = useAppTranslation()
+
   // ==================== 表单状态 ====================
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -310,7 +313,7 @@ export function PromptEditor({
       <div className="flex items-center justify-between px-6 py-3 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-200">
-            {isCreating ? '新建提示词' : '编辑提示词'}
+            {isCreating ? t('prompt.newPrompt') : t('prompt.editPrompt')}
           </h3>
           {prompt && !isCreating && (
             <span className="text-xs text-muted">v{prompt.currentVersion}</span>
@@ -322,7 +325,7 @@ export function PromptEditor({
               <button
                 onClick={() => onToggleFavorite(prompt.id)}
                 className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                title={prompt.favorite ? '取消收藏' : '收藏'}
+                title={prompt.favorite ? t('prompt.removeFavorite') : t('prompt.addFavorite')}
               >
                 <Star
                   size={14}
@@ -334,35 +337,35 @@ export function PromptEditor({
                 className={`p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors ${
                   prompt.pinned ? 'text-accent-500' : 'text-muted'
                 }`}
-                title={prompt.pinned ? '取消置顶' : '置顶'}
+                title={prompt.pinned ? t('prompt.unpin') : t('prompt.pin')}
               >
                 <Pin size={14} />
               </button>
               <button
                 onClick={onOpenPlayground}
                 className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                title="Playground 测试"
+                title={t('prompt.playgroundTest')}
               >
                 <FlaskConical size={14} />
               </button>
               <button
                 onClick={onOpenVersions}
                 className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                title="版本历史"
+                title={t('prompt.versionHistory')}
               >
                 <GitBranch size={14} />
               </button>
               <button
                 onClick={() => onDuplicate(prompt)}
                 className="p-1.5 rounded-lg text-muted hover:text-surface-700 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-                title="复制"
+                title={t('prompt.duplicate')}
               >
                 <Copy size={14} />
               </button>
               <button
                 onClick={() => onDelete(prompt.id)}
                 className="p-1.5 rounded-lg text-red-500 hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
-                title="删除"
+                title={t('common.delete')}
               >
                 <Trash2 size={14} />
               </button>
@@ -382,22 +385,22 @@ export function PromptEditor({
         {/* 基本信息 */}
         <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-4 space-y-3">
           <div>
-            <label className="block text-xs text-muted mb-1">名称 *</label>
+            <label className="block text-xs text-muted mb-1">{t('prompt.nameRequired')}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="我的提示词"
+              placeholder={t('prompt.namePlaceholder')}
               className="w-full px-3 py-1.5 text-sm border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
             />
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1">描述</label>
+            <label className="block text-xs text-muted mb-1">{t('common.description')}</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="简短描述这个提示词的用途"
+              placeholder={t('prompt.descriptionPlaceholder')}
               className="w-full px-3 py-1.5 text-sm border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
             />
           </div>
@@ -406,7 +409,7 @@ export function PromptEditor({
           <div>
             <label className="block text-xs text-muted mb-1">
               <Tag size={12} className="inline mr-1" />
-              标签
+              {t('prompt.tags')}
             </label>
             <div className="flex flex-wrap gap-1.5 mb-1.5">
               {tags.map((tag) => (
@@ -435,7 +438,7 @@ export function PromptEditor({
                     handleAddTag()
                   }
                 }}
-                placeholder="输入标签后回车"
+                placeholder={t('prompt.tagInputPlaceholder')}
                 className="flex-1 px-3 py-1 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400"
               />
               <button
@@ -443,7 +446,7 @@ export function PromptEditor({
                 disabled={!tagInput.trim()}
                 className="px-2 py-1 text-xs bg-surface-100 dark:bg-surface-800 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
               >
-                添加
+                {t('common.add')}
               </button>
             </div>
           </div>
@@ -455,8 +458,8 @@ export function PromptEditor({
             activeTab={activeTab}
             onTabChange={(key) => setActiveTab(key as EditorTab)}
             tabs={[
-              { key: 'content', label: '内容编辑', icon: FileText },
-              { key: 'variables', label: '变量管理', icon: Variable, badge: syncedVariables.length > 0 ? syncedVariables.length : undefined },
+              { key: 'content', label: t('prompt.contentEditor'), icon: FileText },
+              { key: 'variables', label: t('prompt.variableManagement'), icon: Variable, badge: syncedVariables.length > 0 ? syncedVariables.length : undefined },
             ]}
           />
           <div className="flex-1" />
@@ -467,7 +470,7 @@ export function PromptEditor({
               onChange={(e) => setUseStructured(e.target.checked)}
               className="rounded border-surface-300 dark:border-surface-600"
             />
-            结构化编辑
+            {t('prompt.structuredEditing')}
           </label>
         </div>
 
@@ -506,7 +509,7 @@ export function PromptEditor({
                   ref={textareaRef}
                   value={content}
                   onChange={(e) => handleContentChange(e.target.value)}
-                  placeholder="输入提示词内容...使用 {{variable_name}} 定义变量"
+                  placeholder={t('prompt.contentPlaceholder')}
                   rows={14}
                   className="w-full px-4 py-3 text-sm border rounded-xl bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 resize-y font-mono leading-relaxed"
                 />
@@ -528,7 +531,7 @@ export function PromptEditor({
                         <span className="text-muted truncate">{item.label}</span>
                         {item.isBuiltin && (
                           <span className="px-1 py-0 text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded ml-auto flex-shrink-0">
-                            内置
+                            {t('prompt.builtIn')}
                           </span>
                         )}
                       </button>
@@ -546,7 +549,7 @@ export function PromptEditor({
             {/* 内置变量说明 */}
             <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/30 rounded-xl p-3">
               <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1.5">
-                内置上下文变量（自动注入，无需定义）
+                {t('prompt.builtInVariablesDescription')}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {['current_date', 'current_time', 'current_datetime', 'active_agent_name', 'default_model'].map(
@@ -566,8 +569,8 @@ export function PromptEditor({
             {syncedVariables.length === 0 ? (
               <SettingsEmptyState
                 icon={Variable}
-                title="暂无自定义变量"
-                description={'在内容中输入 {{variable_name}} 或手动添加'}
+                title={t('prompt.noCustomVariables')}
+                description={t('prompt.noCustomVariablesHint')}
                 iconSize={32}
               />
             ) : (
@@ -590,7 +593,7 @@ export function PromptEditor({
               onClick={handleAddVariable}
               className="flex items-center gap-1.5 px-3 py-2 text-xs border border-dashed border-surface-300 dark:border-surface-600 rounded-lg text-muted hover:text-accent-500 hover:border-accent-300 transition-colors w-full justify-center"
             >
-              <Plus size={13} /> 添加变量
+              <Plus size={13} /> {t('prompt.addVariable')}
             </button>
 
             {/* 变量编辑表单 */}
@@ -616,16 +619,16 @@ export function PromptEditor({
           disabled={!name.trim()}
           className="flex items-center gap-1.5 px-4 py-1.5 bg-accent-500 text-white rounded-xl hover:bg-accent-600 disabled:opacity-50 transition-colors text-sm"
         >
-          <Save size={14} /> 保存
+          <Save size={14} /> {t('common.save')}
         </button>
         <button
           onClick={onClose}
           className="px-4 py-1.5 text-sm text-muted border border-surface-300 dark:border-surface-600 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
         >
-          取消
+          {t('common.cancel')}
         </button>
         <div className="flex-1" />
-        <span className="text-xs text-muted">Ctrl+S 保存</span>
+        <span className="text-xs text-muted">{t('prompt.saveShortcut')}</span>
       </div>
     </div>
   )
@@ -645,6 +648,7 @@ function StructuredSection({
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const meta = SECTION_TYPE_META[section.type]
+  const { t } = useAppTranslation()
 
   return (
     <div
@@ -668,7 +672,7 @@ function StructuredSection({
         <button
           onClick={() => onUpdate({ enabled: !section.enabled })}
           className={`p-1 rounded ${section.enabled ? 'text-accent-500' : 'text-muted'}`}
-          title={section.enabled ? '禁用段落' : '启用段落'}
+          title={section.enabled ? t('prompt.disableSection') : t('prompt.enableSection')}
         >
           <ToggleLeft size={14} />
         </button>
@@ -709,6 +713,7 @@ function VariableItem({
     textarea: AlignLeft,
   }
   const Icon = typeIcons[variable.type] || Type
+  const { t } = useAppTranslation()
 
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-surface-800/60 border border-surface-200/80 dark:border-surface-700/60 rounded-xl">
@@ -723,7 +728,7 @@ function VariableItem({
           </span>
           {variable.required && (
             <span className="text-[10px] px-1.5 py-0 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded">
-              必填
+              {t('prompt.required')}
             </span>
           )}
         </div>
@@ -755,6 +760,7 @@ function VariableEditForm({
   onSave: (v: PromptVariable) => void
   onCancel: () => void
 }) {
+  const { t } = useAppTranslation()
   const [form, setForm] = useState<PromptVariable>({ ...variable })
   const [optionsText, setOptionsText] = useState(
     variable.options?.map((o) => `${o.label}=${o.value}`).join('\n') ?? '',
@@ -782,12 +788,12 @@ function VariableEditForm({
   return (
     <div className="bg-white dark:bg-surface-800/60 border border-accent-200 dark:border-accent-800/40 rounded-xl p-4 space-y-3">
       <h4 className="text-xs font-medium text-surface-800 dark:text-surface-200">
-        {variable.name ? '编辑变量' : '新建变量'}
+        {variable.name ? t('prompt.editVariable') : t('prompt.newVariable')}
       </h4>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[10px] text-muted mb-1">变量名 *</label>
+          <label className="block text-[10px] text-muted mb-1">{t('prompt.variableNameRequired')}</label>
           <input
             type="text"
             value={form.name}
@@ -797,12 +803,12 @@ function VariableEditForm({
           />
         </div>
         <div>
-          <label className="block text-[10px] text-muted mb-1">显示标签</label>
+          <label className="block text-[10px] text-muted mb-1">{t('prompt.displayLabel')}</label>
           <input
             type="text"
             value={form.label}
             onChange={(e) => setForm({ ...form, label: e.target.value })}
-            placeholder="变量的中文名称"
+            placeholder={t('prompt.variableLabelPlaceholder')}
             className="w-full px-2.5 py-1 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
           />
         </div>
@@ -810,60 +816,60 @@ function VariableEditForm({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[10px] text-muted mb-1">类型</label>
+          <label className="block text-[10px] text-muted mb-1">{t('prompt.variableType')}</label>
           <select
             value={form.type}
             onChange={(e) => setForm({ ...form, type: e.target.value as PromptVariableType })}
             className="w-full px-2.5 py-1 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600"
           >
-            <option value="string">文本</option>
-            <option value="number">数字</option>
-            <option value="boolean">布尔</option>
-            <option value="select">下拉选择</option>
-            <option value="textarea">多行文本</option>
+            <option value="string">{t('prompt.variableTypeString')}</option>
+            <option value="number">{t('prompt.variableTypeNumber')}</option>
+            <option value="boolean">{t('prompt.variableTypeBoolean')}</option>
+            <option value="select">{t('prompt.variableTypeSelect')}</option>
+            <option value="textarea">{t('prompt.variableTypeTextarea')}</option>
           </select>
         </div>
         <div>
-          <label className="block text-[10px] text-muted mb-1">默认值</label>
+          <label className="block text-[10px] text-muted mb-1">{t('prompt.defaultValues')}</label>
           <input
             type="text"
             value={String(form.defaultValue ?? '')}
             onChange={(e) => setForm({ ...form, defaultValue: e.target.value })}
-            placeholder="可选"
+            placeholder={t('prompt.optional')}
             className="w-full px-2.5 py-1 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
           />
         </div>
       </div>
 
       <div>
-        <label className="block text-[10px] text-muted mb-1">占位提示</label>
+        <label className="block text-[10px] text-muted mb-1">{t('prompt.placeholder')}</label>
         <input
           type="text"
           value={form.placeholder ?? ''}
           onChange={(e) => setForm({ ...form, placeholder: e.target.value })}
-          placeholder="输入框中的占位文字"
+          placeholder={t('prompt.placeholderDescription')}
           className="w-full px-2.5 py-1 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
         />
       </div>
 
       <div>
-        <label className="block text-[10px] text-muted mb-1">描述</label>
+        <label className="block text-[10px] text-muted mb-1">{t('common.description')}</label>
         <input
           type="text"
           value={form.description ?? ''}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
-          placeholder="变量的说明文字"
+          placeholder={t('prompt.variableDescriptionPlaceholder')}
           className="w-full px-2.5 py-1 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30"
         />
       </div>
 
       {form.type === 'select' && (
         <div>
-          <label className="block text-[10px] text-muted mb-1">选项（每行一个：标签=值）</label>
+          <label className="block text-[10px] text-muted mb-1">{t('prompt.variableOptions')}</label>
           <textarea
             value={optionsText}
             onChange={(e) => setOptionsText(e.target.value)}
-            placeholder={'选项A=value_a\n选项B=value_b'}
+            placeholder={t('prompt.variableOptionsPlaceholder')}
             rows={3}
             className="w-full px-2.5 py-1 text-xs font-mono border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 resize-y"
           />
@@ -877,7 +883,7 @@ function VariableEditForm({
           onChange={(e) => setForm({ ...form, required: e.target.checked })}
           className="rounded border-surface-300 dark:border-surface-600"
         />
-        必填变量
+        {t('prompt.requiredVariable')}
       </label>
 
       <div className="flex gap-2 pt-1">
@@ -886,13 +892,13 @@ function VariableEditForm({
           disabled={!isValid}
           className="px-3 py-1.5 text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 disabled:opacity-50 transition-colors"
         >
-          保存变量
+          {t('prompt.saveVariable')}
         </button>
         <button
           onClick={onCancel}
           className="px-3 py-1.5 text-xs text-muted border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
         >
-          取消
+          {t('common.cancel')}
         </button>
       </div>
     </div>

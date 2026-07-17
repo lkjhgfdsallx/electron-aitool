@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import type { KnowledgeBaseFile, KnowledgeBaseChunk } from '../../types'
 import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
+import { useAppTranslation } from '@/i18n/hooks'
 
 const CHUNKS_PER_PAGE = 50
 
@@ -21,20 +22,17 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('zh-CN')
-}
-
-const statusLabel: Record<KnowledgeBaseFile['status'], { text: string; color: string; bg: string }> = {
-  uploading: { text: '上传中', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-  processing: { text: '处理中', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-  ready: { text: '就绪', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-  error: { text: '错误', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/30' }
+const statusLabel: Record<KnowledgeBaseFile['status'], { textKey: string; color: string; bg: string }> = {
+  uploading: { textKey: 'knowledgeBase.uploading', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+  processing: { textKey: 'knowledgeBase.processing', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+  ready: { textKey: 'knowledgeBase.ready', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+  error: { textKey: 'common.error', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/30' }
 }
 
 // ==================== 分块卡片（memo 包裹） ====================
 
 const ChunkCard = memo(function ChunkCard({ chunk, index }: { chunk: KnowledgeBaseChunk; index: number }) {
+  const { t } = useAppTranslation()
   const [expanded, setExpanded] = useState(false)
   const preview = chunk.content.slice(0, 150)
   const isLong = chunk.content.length > 150
@@ -62,7 +60,7 @@ const ChunkCard = memo(function ChunkCard({ chunk, index }: { chunk: KnowledgeBa
           {chunk.embeddingV2 && chunk.embeddingV2.length > 0 && (
             <span className="flex items-center gap-1 text-[10px] text-emerald-500">
               <Brain size={10} />
-              语义
+              {t('knowledgeBase.semantic')}
             </span>
           )}
           {expanded ? (
@@ -78,10 +76,10 @@ const ChunkCard = memo(function ChunkCard({ chunk, index }: { chunk: KnowledgeBa
             {chunk.content}
           </pre>
           <div className="flex items-center gap-3 mt-2 pt-2 border-t border-surface-100 dark:border-surface-700/40 text-[10px] text-surface-400">
-            <span>内容长度: {chunk.content.length} 字符</span>
-            <span>向量维度: {chunk.embedding.length}D (TF-IDF)</span>
+            <span>{t('knowledgeBase.contentLength', { count: chunk.content.length })}</span>
+            <span>{t('knowledgeBase.vectorDimensionValue', { count: chunk.embedding.length, type: 'TF-IDF' })}</span>
             {chunk.embeddingV2 && (
-              <span className="text-emerald-500">语义向量: {chunk.embeddingV2.length}D</span>
+              <span className="text-emerald-500">{t('knowledgeBase.semanticVectorDimension', { count: chunk.embeddingV2.length })}</span>
             )}
           </div>
         </div>
@@ -156,6 +154,7 @@ function Pagination({
 // ==================== 文件查看器 ====================
 
 export function FileViewer() {
+  const { t, i18n } = useAppTranslation()
   const {
     selectedFileId,
     selectedFileChunks,
@@ -209,7 +208,7 @@ export function FileViewer() {
           <button
             onClick={() => setSelectedFileId(null)}
             className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-all"
-            title="返回文件列表"
+            title={t('knowledgeBase.backToFileList')}
           >
             <ArrowLeft size={16} />
           </button>
@@ -222,16 +221,16 @@ export function FileViewer() {
             </h3>
           </div>
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${status.bg} ${status.color}`}>
-            {status.text}
+            {t(status.textKey)}
           </span>
         </div>
 
         {/* 元数据 */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 ml-12">
-          <MetaItem label="大小" value={formatFileSize(file.size)} />
-          <MetaItem label="分块数" value={`${file.chunkCount}`} />
-          <MetaItem label="类型" value={file.mimeType || '未知'} />
-          <MetaItem label="上传时间" value={formatDate(file.uploadedAt)} />
+          <MetaItem label={t('knowledgeBase.fileSize')} value={formatFileSize(file.size)} />
+          <MetaItem label={t('knowledgeBase.chunkCount')} value={`${file.chunkCount}`} />
+          <MetaItem label={t('knowledgeBase.fileType')} value={file.mimeType || t('chat.unknownFileType')} />
+          <MetaItem label={t('knowledgeBase.uploadTime')} value={new Date(file.uploadedAt).toLocaleString(i18n.resolvedLanguage ?? i18n.language)} />
         </div>
 
         {/* 错误信息 */}
@@ -252,21 +251,21 @@ export function FileViewer() {
         ) : sortedChunks.length === 0 ? (
           <div className="text-center text-muted py-12">
             <FileText size={32} className="mx-auto mb-2 opacity-30" />
-            <p className="text-xs">暂无分块数据</p>
+            <p className="text-xs">{t('knowledgeBase.noChunks')}</p>
           </div>
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-surface-500 dark:text-surface-400">
-                共 {sortedChunks.length} 个分块
+                {t('knowledgeBase.totalChunks', { count: sortedChunks.length })}
                 {totalPages > 1 && (
                   <span className="ml-1 text-surface-400 dark:text-surface-500">
-                    （第 {currentPage + 1}/{totalPages} 页，每页 {CHUNKS_PER_PAGE} 个）
+                    {t('knowledgeBase.chunkPagination', { current: currentPage + 1, total: totalPages, pageSize: CHUNKS_PER_PAGE })}
                   </span>
                 )}
               </span>
               <span className="text-[10px] text-surface-400 dark:text-surface-500">
-                点击展开查看内容
+                {t('knowledgeBase.expandChunkHint')}
               </span>
             </div>
             {pageChunks.map((chunk, i) => (
@@ -291,14 +290,15 @@ export function FileViewer() {
 // ==================== 空状态 ====================
 
 function EmptyState() {
+  const { t } = useAppTranslation()
   const { files } = useKnowledgeBaseStore()
 
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted">
         <FileText size={48} className="mb-4 opacity-20" />
-        <p className="text-sm font-medium mb-1">知识库为空</p>
-        <p className="text-xs">点击顶部的"上传"按钮添加文件</p>
+        <p className="text-sm font-medium mb-1">{t('knowledgeBase.emptyKnowledgeBase')}</p>
+        <p className="text-xs">{t('knowledgeBase.emptyKnowledgeBaseHint')}</p>
       </div>
     )
   }
@@ -306,8 +306,8 @@ function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-muted">
       <FileText size={48} className="mb-4 opacity-20" />
-      <p className="text-sm font-medium mb-1">选择一个文件查看</p>
-      <p className="text-xs">从左侧文件列表中点击文件以查看详情</p>
+      <p className="text-sm font-medium mb-1">{t('knowledgeBase.selectFileToView')}</p>
+      <p className="text-xs">{t('knowledgeBase.selectFileToViewHint')}</p>
     </div>
   )
 }

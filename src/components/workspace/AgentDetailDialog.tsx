@@ -3,6 +3,7 @@ import type { AgentProfile } from '../../types'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { AgentCategoryBadge } from '../shared/AgentCategoryBadge'
 import { isWorkspaceAgent } from '../../utils/agent-utils'
+import { useAppTranslation } from '../../i18n/hooks'
 
 interface AgentDetailDialogProps {
   agent: AgentProfile | null
@@ -11,6 +12,7 @@ interface AgentDetailDialogProps {
 }
 
 export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogProps) {
+  const { t } = useAppTranslation()
   const { promoteToGlobal } = useWorkspaceAgentStore()
 
   if (!open || !agent) return null
@@ -20,7 +22,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
   const handlePromoteToGlobal = () => {
     const promoted = promoteToGlobal(agent.id)
     if (promoted) {
-      alert(`已将 Agent "${promoted.name}" 提升为全局 Agent`)
+      alert(t('workspace.promoteToGlobalSuccess', { name: promoted.name }))
       onClose()
     }
   }
@@ -56,7 +58,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
           {/* 描述 */}
           {agent.description && (
             <div>
-              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">描述</h4>
+              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('workspace.descriptionLabel')}</h4>
               <p className="text-sm text-surface-800 dark:text-surface-200">{agent.description}</p>
             </div>
           )}
@@ -65,11 +67,11 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
           <div>
             <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
               <Brain size={12} />
-              系统提示词
+              {t('workspace.systemPrompt')}
             </h4>
             <div className="bg-surface-50 dark:bg-surface-900 rounded-lg p-3 max-h-36 overflow-y-auto">
               <pre className="text-xs text-surface-700 dark:text-surface-300 whitespace-pre-wrap font-mono">
-                {agent.systemPrompt || '(空)'}
+                {agent.systemPrompt || t('workspace.empty')}
               </pre>
             </div>
           </div>
@@ -78,7 +80,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
           <div>
             <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
               <Wrench size={12} />
-              启用工具（{agent.enabledToolIds.length}）
+              {t('workspace.enabledToolsCount', { count: agent.enabledToolIds.length })}
             </h4>
             <div className="flex flex-wrap gap-1.5">
               {agent.enabledToolIds.length > 0
@@ -91,7 +93,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
                       {toolId.split(':').pop() || toolId}
                     </span>
                   ))
-                : <span className="text-xs text-muted">无</span>}
+                : <span className="text-xs text-muted">{t('workspace.none')}</span>}
             </div>
           </div>
 
@@ -100,31 +102,31 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
             <div>
               <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
                 <Brain size={12} />
-                规划策略
+                {t('workspace.planningStrategy')}
               </h4>
               <span className="text-sm text-surface-800 dark:text-surface-200">{agent.planningStrategy}</span>
             </div>
             <div>
               <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
                 <Database size={12} />
-                记忆
+                {t('workspace.memory')}
               </h4>
               <span className="text-sm text-surface-800 dark:text-surface-200">
-                {agent.memoryConfig.longTermEnabled ? '长期记忆' : '仅对话'}
-                {agent.memoryConfig.crossSession ? ' / 跨会话' : ''}
+                {agent.memoryConfig.longTermEnabled ? t('workspace.longTermMemory') : t('workspace.conversationOnly')}
+                {agent.memoryConfig.crossSession ? ` / ${t('workspace.crossSession')}` : ''}
               </span>
             </div>
             <div>
               <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
                 <Clock size={12} />
-                最大步数
+                {t('workspace.maxSteps')}
               </h4>
               <span className="text-sm text-surface-800 dark:text-surface-200">{agent.termination.maxSteps}</span>
             </div>
             <div>
-              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">超时</h4>
+              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('workspace.timeout')}</h4>
               <span className="text-sm text-surface-800 dark:text-surface-200">
-                {agent.termination.timeoutSeconds > 0 ? `${agent.termination.timeoutSeconds}s` : '不限制'}
+                {agent.termination.timeoutSeconds > 0 ? `${agent.termination.timeoutSeconds}s` : t('workspace.unlimited')}
               </span>
             </div>
           </div>
@@ -132,7 +134,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
           {/* 标签 */}
           {agent.tags && agent.tags.length > 0 && (
             <div>
-              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">标签</h4>
+              <h4 className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('workspace.tags')}</h4>
               <div className="flex flex-wrap gap-1.5">
                 {agent.tags.map((tag) => (
                   <span
@@ -153,7 +155,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
             onClick={onClose}
             className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-surface-300 dark:border-surface-600 text-muted hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
           >
-            关闭
+            {t('common.close')}
           </button>
           {isWorkspaceScoped && (
             <button
@@ -161,7 +163,7 @@ export function AgentDetailDialog({ agent, open, onClose }: AgentDetailDialogPro
               className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-accent-500 text-white hover:bg-accent-600 transition-colors"
             >
               <ArrowUpToLine size={14} />
-              提升为全局 Agent
+              {t('workspace.promoteToGlobalAgent')}
             </button>
           )}
         </div>

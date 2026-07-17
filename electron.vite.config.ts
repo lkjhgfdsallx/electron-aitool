@@ -6,6 +6,11 @@ import autoprefixer from 'autoprefixer'
 
 export default defineConfig({
   main: {
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src')
+      }
+    },
     plugins: [externalizeDepsPlugin({
       // playwright-core 是 playwright 的传递依赖，不在 package.json 直接依赖中，
       // 需要显式外部化以避免 dynamic require 错误
@@ -31,6 +36,11 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src')
+      }
+    },
     build: {
       rollupOptions: {
         input: {

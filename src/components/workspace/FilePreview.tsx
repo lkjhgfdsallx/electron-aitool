@@ -13,6 +13,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { X, FileText, Copy, Check, AlertTriangle } from 'lucide-react'
 import hljs from 'highlight.js'
 import { workspaceFsService } from '../../services/workspace-fs-service'
+import { useAppTranslation } from '../../i18n/hooks'
 
 // ---- Props ----
 
@@ -26,6 +27,7 @@ interface FilePreviewProps {
 // ---- 组件 ----
 
 export function FilePreview({ filePath, onClose }: FilePreviewProps) {
+  const { t } = useAppTranslation()
   const [content, setContent] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +50,7 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
 
     if (!isText) {
       setLoading(false)
-      setError('此文件类型不支持文本预览')
+      setError(t('workspace.unsupportedTextPreview'))
       return
     }
 
@@ -61,7 +63,7 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
           setTruncated(result.truncated || false)
           setTotalSize(result.totalSize || 0)
         } else {
-          setError(result.error || '读取文件失败')
+          setError(result.error || t('workspace.readFileFailed'))
         }
       })
       .catch((err) => {
@@ -74,7 +76,7 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
     return () => {
       cancelled = true
     }
-  }, [filePath, isText])
+  }, [filePath, isText, t])
 
   // 复制内容
   const handleCopy = async () => {
@@ -124,7 +126,7 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
           {truncated && (
             <span className="flex items-center gap-0.5 text-[10px] text-amber-500 flex-shrink-0">
               <AlertTriangle size={10} />
-              已截断
+              {t('workspace.truncated')}
             </span>
           )}
         </div>
@@ -132,14 +134,14 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
           <button
             onClick={handleCopy}
             className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            title="复制内容"
+            title={t('workspace.copyContent')}
           >
             {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
           </button>
           <button
             onClick={onClose}
             className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            title="关闭预览"
+            title={t('workspace.closePreview')}
           >
             <X size={13} />
           </button>
@@ -157,7 +159,7 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
           <div className="flex items-center justify-center h-full">
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <div className="w-4 h-4 border-2 border-teal-400/30 border-t-teal-500 rounded-full animate-spin" />
-              加载中...
+              {t('common.loading')}
             </div>
           </div>
         ) : error ? (

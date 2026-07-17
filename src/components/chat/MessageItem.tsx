@@ -30,6 +30,7 @@ import { AgentStepDisplay } from './AgentStepDisplay'
 import { SiteAnalyzerProgressPanel } from './SiteAnalyzerProgressPanel'
 import { reportStore } from '../../services/report-store'
 import type { Message, AgentPlan } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 /** 格式化文件大小 */
 function formatFileSize(bytes: number): string {
@@ -62,10 +63,10 @@ interface MessageItemProps {
 }
 
 const roleConfig = {
-  user: { icon: User, bgClass: 'bg-gradient-to-br from-accent-500 to-purple-600', label: '用户' },
-  assistant: { icon: Bot, bgClass: 'bg-gradient-to-br from-emerald-500 to-teal-600', label: 'AI' },
-  system: { icon: AlertCircle, bgClass: 'bg-gradient-to-br from-gray-400 to-gray-500', label: '系统' },
-  tool: { icon: Wrench, bgClass: 'bg-gradient-to-br from-amber-500 to-orange-600', label: '工具' }
+  user: { icon: User, bgClass: 'bg-gradient-to-br from-accent-500 to-purple-600', labelKey: 'chat.roleUser' },
+  assistant: { icon: Bot, bgClass: 'bg-gradient-to-br from-emerald-500 to-teal-600', labelKey: 'chat.roleAssistant' },
+  system: { icon: AlertCircle, bgClass: 'bg-gradient-to-br from-gray-400 to-gray-500', labelKey: 'chat.roleSystem' },
+  tool: { icon: Wrench, bgClass: 'bg-gradient-to-br from-amber-500 to-orange-600', labelKey: 'chat.roleTool' }
 }
 
 export const MessageItem = memo(function MessageItem({
@@ -84,6 +85,7 @@ export const MessageItem = memo(function MessageItem({
   activeBranchIndex = 0,
   onSwitchBranch
 }: MessageItemProps) {
+  const { t, i18n } = useAppTranslation()
   const [copied, setCopied] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(message.content)
@@ -126,12 +128,12 @@ export const MessageItem = memo(function MessageItem({
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `网站分析报告-${new Date().toISOString().slice(0, 10)}.html`
+    a.download = `${t('chat.siteAnalysisReport')}-${new Date().toISOString().slice(0, 10)}.html`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-  }, [loadedReportHtml])
+  }, [loadedReportHtml, t])
 
   // 工具消息特殊显示
   if (message.role === 'tool') {
@@ -144,7 +146,7 @@ export const MessageItem = memo(function MessageItem({
         )}
         <div className="flex-1 min-w-0 selection-boundary-parent rounded-xl bg-surface-50 dark:bg-surface-800/40 border border-surface-200/60 dark:border-surface-700/40 p-3">
           <div className="text-xs text-muted mb-1">
-            工具结果: {message.toolName}
+            {t('chat.toolResult', { name: message.toolName })}
           </div>
           <SelectionBoundary>
             <pre className="text-sm bg-surface-100 dark:bg-surface-800 rounded-lg p-2 overflow-x-auto max-h-40 overflow-y-auto">
@@ -208,11 +210,11 @@ export const MessageItem = memo(function MessageItem({
         {reverseLayout && (
           <>
             <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
-              {role.label}
+              {t(role.labelKey)}
             </span>
             {showTimestamp && (
               <span className="text-xs text-muted whitespace-nowrap">
-                {formatTime(message.timestamp)}
+                {formatTime(message.timestamp, i18n.resolvedLanguage ?? i18n.language)}
               </span>
             )}
             {showTokenUsage && message.tokenUsage && (
@@ -231,7 +233,7 @@ export const MessageItem = memo(function MessageItem({
         {!reverseLayout && (
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-            {role.label}
+            {t(role.labelKey)}
           </span>
           {hasAgentSteps && (
             <span className="text-xs bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full px-2 py-0.5">
@@ -240,23 +242,23 @@ export const MessageItem = memo(function MessageItem({
           )}
           {showTimestamp && (
             <span className="text-xs text-muted">
-              {formatTime(message.timestamp)}
+              {formatTime(message.timestamp, i18n.resolvedLanguage ?? i18n.language)}
             </span>
           )}
           {showTokenUsage && message.tokenUsage && (
             <span className="text-xs text-muted">
-              {message.tokenUsage.totalTokens} tokens
+              {message.tokenUsage.totalTokens} {t('chat.tokens')}
             </span>
           )}
           {message.isStreaming && (
-            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
+            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />{t('chat.thinking')}</span>
           )}
         </div>
         )}
         {/* 翻转布局时流式指示器仍显示在内容区 */}
         {reverseLayout && message.isStreaming && (
           <div className="flex items-center gap-1 mb-1">
-            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />思考中...</span>
+            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />{t('chat.thinking')}</span>
           </div>
         )}
 
@@ -310,7 +312,7 @@ export const MessageItem = memo(function MessageItem({
                     onClick={handleEditAndResend}
                     className="px-3 py-1 text-xs bg-accent-500 hover:bg-accent-600 text-white rounded-lg"
                   >
-                    保存并重新发送
+                    {t('chat.saveAndResend')}
                   </button>
                 )}
                 {onEdit && !onEditAndResend && (
@@ -318,14 +320,14 @@ export const MessageItem = memo(function MessageItem({
                     onClick={handleSaveEdit}
                     className="px-3 py-1 text-xs bg-accent-500 hover:bg-accent-600 text-white rounded-lg"
                   >
-                    保存
+                    {t('chat.save')}
                   </button>
                 )}
                 <button
                   onClick={() => setIsEditing(false)}
                   className="px-3 py-1 text-xs bg-surface-200 dark:bg-surface-700 rounded-lg hover:bg-surface-300 dark:hover:bg-surface-600"
                 >
-                  取消
+                  {t('common.cancel')}
                 </button>
               </div>
             </div>
@@ -334,7 +336,7 @@ export const MessageItem = memo(function MessageItem({
               <MarkdownRenderer content={message.content} />
               {/* 已编辑标记 */}
               {message.isEdited && (
-                <span className="text-xs text-gray-400 italic ml-1">(已编辑)</span>
+                <span className="text-xs text-gray-400 italic ml-1">{t('chat.edited')}</span>
               )}
             </>
           )}
@@ -353,7 +355,8 @@ export const MessageItem = memo(function MessageItem({
               onClick={() => onSwitchBranch?.(message.id, Math.max(0, activeBranchIndex - 1))}
               disabled={activeBranchIndex <= 0}
               className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
-              title="上一个分支"
+              title={t('chat.previousBranch')}
+              aria-label={t('chat.previousBranch')}
             >
               <ChevronLeft size={14} />
             </button>
@@ -364,7 +367,8 @@ export const MessageItem = memo(function MessageItem({
               onClick={() => onSwitchBranch?.(message.id, Math.min((message.branchCount ?? 1) - 1, activeBranchIndex + 1))}
               disabled={activeBranchIndex >= (message.branchCount ?? 1) - 1}
               className="p-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 disabled:text-gray-300 disabled:cursor-not-allowed transition-colors"
-              title="下一个分支"
+              title={t('chat.nextBranch')}
+              aria-label={t('chat.nextBranch')}
             >
               <ChevronRight size={14} />
             </button>
@@ -379,7 +383,7 @@ export const MessageItem = memo(function MessageItem({
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-accent-500 to-purple-600 hover:from-accent-600 hover:to-purple-700 rounded-lg shadow-sm transition-all hover:shadow-md"
               >
                 <Eye size={16} />
-                查看交互式分析报告
+                {t('chat.viewInteractiveReport')}
               </button>
             </div>
           )}
@@ -390,10 +394,10 @@ export const MessageItem = memo(function MessageItem({
             <button
               onClick={handleCopy}
               className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-              title="复制"
+              title={t('chat.copyMessage')}
             >
               {copied ? <Check size={12} /> : <Copy size={12} />}
-              {copied ? '已复制' : '复制'}
+              {copied ? t('chat.copied') : t('chat.copyMessage')}
             </button>
             {message.role === 'user' && (onEdit || onEditAndResend) && (
               <button
@@ -402,30 +406,30 @@ export const MessageItem = memo(function MessageItem({
                   setIsEditing(true)
                 }}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                title="编辑"
+                title={t('chat.edit')}
               >
                 <Pencil size={12} />
-                编辑
+                {t('chat.edit')}
               </button>
             )}
             {message.role === 'assistant' && onRegenerate && (
               <button
                 onClick={() => onRegenerate(message.id)}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-muted hover:text-gray-700 dark:hover:text-gray-300 rounded-md hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-                title="重新生成"
+                title={t('chat.regenerateMessage')}
               >
                 <RotateCcw size={12} />
-                重新生成
+                {t('chat.regenerateMessage')}
               </button>
             )}
             {message.role === 'assistant' && message.continuable && onContinueGeneration && (
               <button
                 onClick={() => onContinueGeneration(message.id)}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 hover:text-accent-700 dark:text-accent-400 dark:hover:text-accent-300 rounded-md hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-all"
-                title={message.continuable === 'agent' ? '继续执行' : '继续生成'}
+                title={message.continuable === 'agent' ? t('chat.continueExecuting') : t('chat.continueGenerating')}
               >
                 <Forward size={12} />
-                {message.continuable === 'agent' ? '继续执行' : '继续生成'}
+                {message.continuable === 'agent' ? t('chat.continueExecuting') : t('chat.continueGenerating')}
               </button>
             )}
           </div>
@@ -479,15 +483,15 @@ export const MessageItem = memo(function MessageItem({
   )
 })
 
-function formatTime(timestamp: number): string {
+function formatTime(timestamp: number, locale: string): string {
   const date = new Date(timestamp)
   const now = new Date()
   const isToday = date.toDateString() === now.toDateString()
 
   if (isToday) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    return date.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
   }
-  return date.toLocaleString('zh-CN', {
+  return date.toLocaleString(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -513,6 +517,7 @@ interface ReportModalProps {
 }
 
 function ReportModal({ reportHtml, isFullscreen, onClose, onToggleFullscreen, onDownload }: ReportModalProps) {
+  const { t } = useAppTranslation()
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const blobUrlRef = useRef<string | null>(null)
 
@@ -562,28 +567,30 @@ function ReportModal({ reportHtml, isFullscreen, onClose, onToggleFullscreen, on
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-shrink-0">
           <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
             <FileText size={18} className="text-blue-500" />
-            网站分析交互式报告
+            {t('chat.interactiveSiteReport')}
           </h3>
           <div className="flex items-center gap-2">
             <button
               onClick={onDownload}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors"
-              title="下载HTML报告"
+              title={t('chat.downloadHtmlReport')}
             >
               <Download size={14} />
-              下载报告
+              {t('chat.downloadReport')}
             </button>
             <button
               onClick={onToggleFullscreen}
               className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              title={isFullscreen ? '退出全屏' : '全屏'}
+              title={isFullscreen ? t('chat.exitFullscreen') : t('chat.enterFullscreen')}
+              aria-label={isFullscreen ? t('chat.exitFullscreen') : t('chat.enterFullscreen')}
             >
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
             <button
               onClick={onClose}
               className="p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-              title="关闭"
+              title={t('chat.closeReport')}
+              aria-label={t('chat.closeReport')}
             >
               <X size={16} />
             </button>
@@ -594,7 +601,7 @@ function ReportModal({ reportHtml, isFullscreen, onClose, onToggleFullscreen, on
         <iframe
           ref={iframeRef}
           className="flex-1 w-full border-0 bg-white"
-          title="网站分析报告"
+          title={t('chat.siteAnalysisReport')}
           sandbox="allow-scripts allow-same-origin"
         />
       </div>
@@ -604,6 +611,7 @@ function ReportModal({ reportHtml, isFullscreen, onClose, onToggleFullscreen, on
 
 /** 附件列表组件（懒加载优化） */
 const AttachmentList = memo(function AttachmentList({ attachments }: { attachments: NonNullable<Message['attachments']> }) {
+  const { t } = useAppTranslation()
   // 性能优化：超过 5 个附件时，只渲染前 5 个，后续按需展开
   const [expanded, setExpanded] = useState(false)
   const displayAttachments = useMemo(() => {
@@ -640,7 +648,7 @@ const AttachmentList = memo(function AttachmentList({ attachments }: { attachmen
           onClick={() => setExpanded(true)}
           className="flex items-center gap-1 px-2 py-1 text-xs text-accent-600 dark:text-accent-400 hover:bg-accent-50 dark:hover:bg-accent-950/20 rounded-xl border border-accent-200/60 dark:border-accent-800/40 transition-colors"
         >
-          +{attachments.length - 5} 更多
+          {t('chat.moreAttachments', { count: attachments.length - 5 })}
         </button>
       )}
     </div>

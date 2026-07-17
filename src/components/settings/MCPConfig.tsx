@@ -21,6 +21,7 @@ import {
 import { SettingsHeader, SettingsSaveBar, SettingsTabs, StatusFeedback } from './ui'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { useMCPToolStore } from '../../stores/mcp-tool-store'
+import { useAppTranslation } from '@/i18n/hooks'
 import { mcpService } from '../../services/mcp-service'
 import type { MCPServerConfig } from '../../types'
 import { PRESET_MCP_SERVERS, type PresetMCPServer } from '../../constants/preset-mcp-servers'
@@ -74,6 +75,7 @@ function getCategoryColor(category: string) {
 type TabType = 'presets' | 'custom'
 
 export function MCPConfig() {
+  const { t } = useAppTranslation()
   const { mcpServers, updateConfig } = useGlobalConfigStore()
   const { mcpTools, loading: mcpLoading, errors: mcpErrors, refreshTools } = useMCPToolStore()
 
@@ -126,7 +128,7 @@ export function MCPConfig() {
             ...prev,
             [preset.presetId]: {
               success: false,
-              message: `需要填写 ${preset.apiKeyEnvKey || 'API Key'} 才能启用此服务`
+              message: t('settings.requiresApiKey', { key: preset.apiKeyEnvKey || 'API Key' })
             }
           }))
           return
@@ -202,12 +204,12 @@ export function MCPConfig() {
           ...prev,
           [key]: {
             success: true,
-            message: `连接成功！发现 ${tools.length} 个工具`,
+            message: t('settings.connectionSuccess', { count: tools.length }),
             tools: tools.map((t) => t.name)
           }
         }))
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : '连接失败'
+        const errorMsg = error instanceof Error ? error.message : t('settings.connectionFailed')
         setTestResults((prev) => ({
           ...prev,
           [key]: {
@@ -263,7 +265,7 @@ export function MCPConfig() {
     try {
       parsed = JSON.parse(customJson)
     } catch {
-      setJsonError('JSON 格式错误，请检查语法')
+      setJsonError(t('settings.jsonFormatError'))
       return
     }
 
@@ -271,11 +273,11 @@ export function MCPConfig() {
     for (const [key, value] of Object.entries(parsed)) {
       const cfg = value as Record<string, unknown>
       if (!cfg.command || typeof cfg.command !== 'string') {
-        setJsonError(`"${key}" 缺少有效的 "command" 字段`)
+        setJsonError(t('settings.missingCommand', { name: key }))
         return
       }
       if (!Array.isArray(cfg.args)) {
-        setJsonError(`"${key}" 的 "args" 字段必须是数组`)
+        setJsonError(t('settings.argsMustBeArray', { name: key }))
         return
       }
 
@@ -325,7 +327,7 @@ export function MCPConfig() {
     <div className="flex flex-col h-full">
       {/* 标题 + 描述 */}
       <div className="flex-shrink-0 px-1 pb-4">
-        <SettingsHeader icon={Sparkles} title="MCP 扩展服务" description="MCP 扩展服务让 AI 获得额外能力，如抓取网页、操作 GitHub、查询数据库等。选择下方的推荐服务一键启用，或切换到「自定义配置」手动添加。" />
+        <SettingsHeader icon={Sparkles} title={t('settings.mcpExtendedServices')} description={t('settings.mcpExtendedServicesDescription')} />
       </div>
 
       {/* 可滚动内容区域 */}
@@ -342,8 +344,8 @@ export function MCPConfig() {
             if (key === 'custom') handleInitJsonEditor()
           }}
           tabs={[
-            { key: 'presets', label: '推荐服务', icon: Sparkles },
-            { key: 'custom', label: '自定义配置', icon: Code2 },
+            { key: 'presets', label: t('settings.recommendedServices'), icon: Sparkles },
+            { key: 'custom', label: t('settings.customConfiguration'), icon: Code2 },
           ]}
         />
 
@@ -364,6 +366,7 @@ export function MCPConfig() {
             onRemove={handleRemovePreset}
             onTest={handleTestPreset}
             findPresetInServers={findPresetInServers}
+            t={t}
           />
         ) : (
           <CustomTab
@@ -373,6 +376,7 @@ export function MCPConfig() {
             setJsonError={setJsonError}
             onApply={handleApplyJson}
             onJsonEdit={() => { jsonEditedByUser.current = true }}
+            t={t}
           />
         )}
         </div>
@@ -384,13 +388,13 @@ export function MCPConfig() {
           {mcpLoading && (
             <div className="flex items-center gap-2 text-xs text-blue-500">
               <Loader2 size={12} className="animate-spin" />
-              正在加载 MCP 工具...
+              {t('settings.loadingMcpTools')}
             </div>
           )}
           {mcpTools.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-success-600 dark:text-success-400">
               <CheckCircle size={12} />
-              已加载 {mcpTools.length} 个 MCP 工具：{mcpTools.map((t) => t.name).join('、')}
+              {t('settings.loadedMcpTools', { count: mcpTools.length, names: mcpTools.map((tool) => tool.name).join(', ') })}
             </div>
           )}
           {Object.entries(mcpErrors).map(([serverId, error]) => (
@@ -408,7 +412,7 @@ export function MCPConfig() {
       <SettingsSaveBar
         onSave={handleSave}
         isDirty={true}
-        saveLabel="保存配置"
+        saveLabel={t('settings.saveConfiguration')}
         shortcut="Ctrl+S"
       />
     </div>
@@ -431,6 +435,7 @@ interface PresetTabProps {
   onRemove: (preset: PresetMCPServer) => void
   onTest: (preset: PresetMCPServer) => void
   findPresetInServers: (preset: PresetMCPServer) => MCPServerConfig | undefined
+  t: (key: string, options?: Record<string, unknown>) => string
 }
 
 function PresetTab({
@@ -446,7 +451,8 @@ function PresetTab({
   onToggle,
   onRemove,
   onTest,
-  findPresetInServers
+  findPresetInServers,
+  t
 }: PresetTabProps) {
   return (
     <div className="space-y-3">
@@ -493,12 +499,12 @@ function PresetTab({
                     </span>
                     {isInstalled && isEnabled && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border border-green-200 dark:border-green-800">
-                        已启用
+                        {t('settings.enabled')}
                       </span>
                     )}
                     {isInstalled && !isEnabled && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-surface-100 text-muted dark:bg-surface-800 dark:text-muted border border-surface-200/80 dark:border-surface-700/60">
-                        已禁用
+                        {t('settings.disabled')}
                       </span>
                     )}
                   </div>
@@ -519,7 +525,7 @@ function PresetTab({
                               [preset.presetId]: e.target.value
                             }))
                           }
-                          placeholder={preset.apiKeyHint || '请输入 API Key'}
+                          placeholder={preset.apiKeyHint || t('settings.enterApiKey')}
                           className="flex-1 px-2.5 py-1.5 text-xs border rounded-lg bg-surface-50 dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 font-mono"
                           onClick={(e) => e.stopPropagation()}
                         />
@@ -561,7 +567,7 @@ function PresetTab({
                     }}
                     disabled={isTestingThis || (!isInstalled && preset.requiresApiKey && !(apiKeyInputs[preset.presetId] || '').trim())}
                     className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted disabled:opacity-40"
-                    title="测试连接"
+                    title={t('settings.testConnection')}
                   >
                     <RefreshCw
                       size={14}
@@ -596,7 +602,7 @@ function PresetTab({
                         onRemove(preset)
                       }}
                       className="p-1.5 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 text-red-400 hover:text-red-500"
-                      title="移除此服务"
+                      title={t('settings.removeService')}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -621,12 +627,12 @@ function PresetTab({
                       <p>{testResult.message}</p>
                       {testResult.tools && testResult.tools.length > 0 && (
                         <p className="text-[10px] text-muted mt-0.5">
-                          可用工具：{testResult.tools.join('、')}
+                          {t('settings.tools')}: {testResult.tools.join(', ')}
                         </p>
                       )}
                       {!testResult.success && (
                         <p className="text-[10px] text-muted mt-0.5">
-                          常见原因：网络不通、命令未安装（需先安装 Node.js/npm）、API Key 无效
+                          {t('settings.commonReasons')}
                         </p>
                       )}
                     </div>
@@ -645,7 +651,7 @@ function PresetTab({
                 className="mt-2 ml-13 flex items-center gap-1 text-[10px] text-muted hover:text-surface-600 dark:hover:text-surface-300"
               >
                 {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                {isExpanded ? '收起详情' : '查看详情'}
+                {isExpanded ? t('settings.collapseDetails') : t('settings.viewDetails')}
               </button>
 
               {/* 详情展开区 */}
@@ -654,7 +660,7 @@ function PresetTab({
                   {preset.detail}
                   <div className="mt-2 pt-2 border-t border-surface-200/80 dark:border-surface-700/60">
                     <p className="text-[10px] text-muted font-mono">
-                      命令：{preset.defaultConfig.command} {preset.defaultConfig.args.join(' ')}
+                      {t('settings.command')}: {preset.defaultConfig.command} {preset.defaultConfig.args.join(' ')}
                     </p>
                   </div>
                 </div>
@@ -676,31 +682,29 @@ interface CustomTabProps {
   setJsonError: React.Dispatch<React.SetStateAction<string | null>>
   onApply: () => void
   onJsonEdit: () => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }
 
-function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply, onJsonEdit }: CustomTabProps) {
+function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply, onJsonEdit, t }: CustomTabProps) {
   return (
     <div className="space-y-3">
       <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
         <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-          <strong>高级用户</strong>：在此直接编辑 JSON 配置来添加自定义 MCP 服务器。
-          <br />
-          格式参照{' '}
+          <strong>{t('settings.advancedUser')}</strong>：{t('settings.advancedUserDescription', { link: '' }).replace(' {{link}}', '')}{' '}
           <a
             href="https://modelcontextprotocol.io"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
           >
-            MCP 官方文档
+            {t('settings.mcpOfficialDocs')}
           </a>
-          ，每个条目的 key 为服务器名称，value 包含 command、args、env 等字段。
         </p>
       </div>
 
       <div>
         <label className="block text-xs font-medium text-surface-700 dark:text-surface-300 mb-1.5">
-          MCP 服务器配置（JSON）
+          {t('settings.mcpServerConfigJson')}
         </label>
         <textarea
           value={customJson}
@@ -736,7 +740,7 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
           onClick={onApply}
           className="px-3 py-1.5 text-xs bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
         >
-          应用配置
+          {t('settings.applyConfiguration')}
         </button>
         <button
           onClick={() => {
@@ -749,7 +753,7 @@ function CustomTab({ customJson, setCustomJson, jsonError, setJsonError, onApply
           }}
           className="px-3 py-1.5 text-xs border border-surface-300 dark:border-surface-600 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-muted"
         >
-          格式化
+          {t('settings.formatJson')}
         </button>
       </div>
 

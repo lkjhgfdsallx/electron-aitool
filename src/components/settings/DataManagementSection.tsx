@@ -54,6 +54,7 @@ import {
 import { memoryService } from '../../services/memory-service'
 import { SettingsHeader, useConfirmDialog, DangerZone, StatusFeedback } from './ui'
 import { WebDAVSection } from './WebDAVSection'
+import { useAppTranslation } from '@/i18n/hooks'
 
 // ==================== 状态消息类型 ====================
 
@@ -76,6 +77,7 @@ function SectionCard({ children, className = '' }: { children: React.ReactNode; 
 
 function ExportSection() {
   const { conversations } = useConversationStore()
+  const { t } = useAppTranslation()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [format, setFormat] = useState<ExportFormat>('markdown')
   const [status, setStatus] = useState<StatusMessage | null>(null)
@@ -99,7 +101,7 @@ function ExportSection() {
 
   const handleExport = async () => {
     if (selectedIds.size === 0) {
-      setStatus({ type: 'error', text: '请至少选择一个对话' })
+      setStatus({ type: 'error', text: t('settings.data.exportSelectConversation') })
       return
     }
 
@@ -116,23 +118,34 @@ function ExportSection() {
       if (items.length === 1) {
         const result = exportConversation(items[0].conversation, items[0].messages, format)
         await window.electronAPI.file.saveFile(result.fileName, result.content)
-        setStatus({ type: 'success', text: `已导出 1 个对话为 ${format.toUpperCase()} 格式` })
+        setStatus({
+          type: 'success',
+          text: t('settings.data.exportSingleSuccess', { format: format.toUpperCase() })
+        })
       } else {
         const result = batchExportConversations(items, format)
         await window.electronAPI.file.saveFile(result.fileName, result.content)
-        setStatus({ type: 'success', text: `已批量导出 ${items.length} 个对话` })
+        setStatus({
+          type: 'success',
+          text: t('settings.data.exportBatchSuccess', { count: items.length })
+        })
       }
     } catch (e) {
-      setStatus({ type: 'error', text: `导出失败: ${e instanceof Error ? e.message : String(e)}` })
+      setStatus({
+        type: 'error',
+        text: t('settings.data.exportFailed', {
+          error: e instanceof Error ? e.message : String(e)
+        })
+      })
     } finally {
       setExporting(false)
     }
   }
 
-  const formatOptions: { key: ExportFormat; label: string; icon: typeof FileText; desc: string }[] = [
-    { key: 'markdown', label: 'Markdown', icon: FileText, desc: '可读性强，适合归档分享' },
-    { key: 'json', label: 'JSON', icon: FileJson, desc: '结构化数据，兼容性好' },
-    { key: 'html', label: 'HTML', icon: FileCode, desc: '独立页面，适合打印' }
+  const formatOptions: { key: ExportFormat; label: string; icon: typeof FileText; descriptionKey: string }[] = [
+    { key: 'markdown', label: 'Markdown', icon: FileText, descriptionKey: 'settings.data.exportMarkdownDescription' },
+    { key: 'json', label: 'JSON', icon: FileJson, descriptionKey: 'settings.data.exportJsonDescription' },
+    { key: 'html', label: 'HTML', icon: FileCode, descriptionKey: 'settings.data.exportHtmlDescription' }
   ]
 
   return (
@@ -141,10 +154,10 @@ function ExportSection() {
         <div>
           <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
             <Download size={16} className="text-blue-500" />
-            对话导出
+            {t('settings.data.exportConversationsTitle')}
           </h3>
           <p className="text-xs text-muted mt-0.5">
-            导出对话记录为 Markdown / JSON / HTML 格式
+            {t('settings.data.exportConversationsDescription')}
           </p>
         </div>
       </div>
@@ -174,7 +187,7 @@ function ExportSection() {
               <Icon size={14} />
               <div className="text-left">
                 <div className="font-medium">{opt.label}</div>
-                <div className="text-[10px] opacity-70">{opt.desc}</div>
+                <div className="text-[10px] opacity-70">{t(opt.descriptionKey)}</div>
               </div>
             </button>
           )
@@ -191,12 +204,15 @@ function ExportSection() {
               onChange={selectAll}
               className="rounded"
             />
-            全选 ({selectedIds.size}/{conversations.length})
+            {t('settings.data.selectAll', {
+              selected: selectedIds.size,
+              total: conversations.length
+            })}
           </label>
         </div>
         <div className="max-h-48 overflow-y-auto">
           {conversations.length === 0 ? (
-            <div className="text-center text-xs text-muted py-6">暂无对话记录</div>
+            <div className="text-center text-xs text-muted py-6">{t('conversation.noConversations')}</div>
           ) : (
             conversations.map((conv) => (
               <label
@@ -210,7 +226,9 @@ function ExportSection() {
                   className="rounded"
                 />
                 <span className="flex-1 truncate">{conv.title}</span>
-                <span className="text-muted text-[10px]">{conv.messageCount} 条</span>
+                <span className="text-muted text-[10px]">
+                  {t('settings.data.messageCount', { count: conv.messageCount })}
+                </span>
               </label>
             ))
           )}
@@ -223,7 +241,7 @@ function ExportSection() {
         className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-white bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
       >
         {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-        导出选中的对话 ({selectedIds.size})
+        {t('settings.data.exportSelected', { count: selectedIds.size })}
       </button>
     </SectionCard>
   )
@@ -232,17 +250,43 @@ function ExportSection() {
 // ==================== 2. 备份与恢复 ====================
 
 function BackupSection() {
+  const { t } = useAppTranslation()
   const [backing, setBacking] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [progress, setProgress] = useState('')
   const [status, setStatus] = useState<StatusMessage | null>(null)
   const { confirm, Dialog } = useConfirmDialog()
 
+  const localizeProgress = (stage: string) => {
+    const settingPrefix = '备份设置: '
+    if (stage.startsWith(settingPrefix)) {
+      return t('settings.data.backupSettingsProgress', { key: stage.slice(settingPrefix.length) })
+    }
+
+    const progressKeys: Record<string, string> = {
+      '备份知识库数据...': 'settings.data.backingUpKnowledgeBase',
+      '备份分析报告...': 'settings.data.backingUpReports',
+      '备份 Skills 数据...': 'settings.data.backingUpSkills',
+      '备份对话消息...': 'settings.data.backingUpConversations',
+      '生成备份文件...': 'settings.data.generatingBackupFile',
+      '备份完成': 'settings.data.backupComplete',
+      '解析备份文件...': 'settings.data.parsingBackupFile',
+      '恢复设置数据...': 'settings.data.restoringSettings',
+      '恢复知识库数据...': 'settings.data.restoringKnowledgeBase',
+      '恢复分析报告...': 'settings.data.restoringReports',
+      '恢复 Skills 数据...': 'settings.data.restoringSkills',
+      '恢复对话消息...': 'settings.data.restoringConversations',
+      '恢复完成': 'settings.data.restoreComplete'
+    }
+
+    return progressKeys[stage] ? t(progressKeys[stage]) : stage
+  }
+
   const handleBackup = async () => {
     setBacking(true)
-    setProgress('准备备份...')
+    setProgress(t('settings.data.preparingBackup'))
     try {
-      const onProgress: BackupProgressCallback = (stage) => setProgress(stage)
+      const onProgress: BackupProgressCallback = (stage) => setProgress(localizeProgress(stage))
       const blob = await createBackup(onProgress)
       const dateStr = new Date().toISOString().slice(0, 10)
       // 将 blob 转为 number 数组传给 IPC
@@ -250,12 +294,23 @@ function BackupSection() {
       const data = Array.from(new Uint8Array(arrayBuffer))
       const result = await window.electronAPI.file.saveZip(`backup-${dateStr}.zip`, data)
       if (result.success) {
-        setStatus({ type: 'success', text: `备份已保存到: ${result.filePath}` })
+        setStatus({
+          type: 'success',
+          text: t('settings.data.backupSaved', { path: result.filePath ?? '' })
+        })
       } else if (result.error !== '用户取消') {
-        setStatus({ type: 'error', text: `保存失败: ${result.error}` })
+        setStatus({
+          type: 'error',
+          text: t('settings.data.saveFailed', { error: result.error ?? '' })
+        })
       }
     } catch (e) {
-      setStatus({ type: 'error', text: `备份失败: ${e instanceof Error ? e.message : String(e)}` })
+      setStatus({
+        type: 'error',
+        text: t('settings.data.backupFailed', {
+          error: e instanceof Error ? e.message : String(e)
+        })
+      })
     } finally {
       setBacking(false)
       setProgress('')
@@ -264,15 +319,18 @@ function BackupSection() {
 
   const handleRestore = async () => {
     setRestoring(true)
-    setProgress('选择备份文件...')
+    setProgress(t('settings.data.selectBackupFile'))
     try {
       const openResult = await window.electronAPI.file.openFile([
-        { name: 'ZIP 备份文件', extensions: ['zip'] }
+        { name: t('settings.data.zipBackupFile'), extensions: ['zip'] }
       ])
 
       if (!openResult.success || !openResult.data) {
         if (openResult.error !== '用户取消') {
-          setStatus({ type: 'error', text: `打开文件失败: ${openResult.error}` })
+          setStatus({
+            type: 'error',
+            text: t('settings.data.openFileFailed', { error: openResult.error ?? '' })
+          })
         }
         setRestoring(false)
         setProgress('')
@@ -283,21 +341,20 @@ function BackupSection() {
       const buffer = new Uint8Array(openResult.data).buffer
       const summary = await getBackupSummary(buffer)
       if (!summary) {
-        setStatus({ type: 'error', text: '无法识别备份文件格式' })
+        setStatus({ type: 'error', text: t('settings.data.unrecognizedBackupFormat') })
         setRestoring(false)
         setProgress('')
         return
       }
 
       const ok = await confirm({
-        title: '恢复备份',
-        message:
-          `即将从备份恢复数据。\n\n` +
-          `备份时间: ${summary.exportedAt}\n` +
-          `版本: ${summary.version}\n` +
-          `包含数据: ${summary.localStorageKeys.join(', ')}\n\n` +
-          `此操作会覆盖当前数据，确定继续吗？`,
-        confirmLabel: '恢复',
+        title: t('settings.data.restoreBackup'),
+        message: t('settings.data.restoreBackupConfirm', {
+          exportedAt: summary.exportedAt,
+          version: summary.version,
+          data: summary.localStorageKeys.join(', ')
+        }),
+        confirmLabel: t('settings.data.restore'),
         variant: 'warning',
       })
 
@@ -307,17 +364,25 @@ function BackupSection() {
         return
       }
 
-      setProgress('正在恢复...')
-      const onProgress: BackupProgressCallback = (stage) => setProgress(stage)
+      setProgress(t('settings.data.restoringBackup'))
+      const onProgress: BackupProgressCallback = (stage) => setProgress(localizeProgress(stage))
       const result = await restoreFromBackup(buffer, {}, onProgress)
 
       if (result.success) {
-        setStatus({ type: 'success', text: '恢复成功！建议重启应用以加载新数据。' })
+        setStatus({ type: 'success', text: t('settings.data.restoreSuccess') })
       } else {
-        setStatus({ type: 'error', text: `恢复完成但有错误: ${result.errors.join('; ')}` })
+        setStatus({
+          type: 'error',
+          text: t('settings.data.restoreCompletedWithErrors', { errors: result.errors.join('; ') })
+        })
       }
     } catch (e) {
-      setStatus({ type: 'error', text: `恢复失败: ${e instanceof Error ? e.message : String(e)}` })
+      setStatus({
+        type: 'error',
+        text: t('settings.data.restoreFailed', {
+          error: e instanceof Error ? e.message : String(e)
+        })
+      })
     } finally {
       setRestoring(false)
       setProgress('')
@@ -328,10 +393,10 @@ function BackupSection() {
     <SectionCard>
       <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2 mb-1">
         <HardDrive size={16} className="text-accent-500" />
-        完整备份与恢复
+        {t('settings.data.backupRestoreTitle')}
       </h3>
       <p className="text-xs text-muted mb-4">
-        打包所有设置、Agent、提示词、知识库数据为 .zip 文件，支持完整恢复
+        {t('settings.data.backupRestoreDescription')}
       </p>
 
       {status && (
@@ -356,7 +421,7 @@ function BackupSection() {
           className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-accent-200 dark:border-accent-800/60 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 disabled:opacity-50 transition-colors"
         >
           {backing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          创建备份
+          {t('settings.data.createBackup')}
         </button>
         <button
           onClick={handleRestore}
@@ -364,7 +429,7 @@ function BackupSection() {
           className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm border border-accent-200 dark:border-accent-800/60 text-accent-600 dark:text-accent-400 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 disabled:opacity-50 transition-colors"
         >
           {restoring ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          恢复备份
+          {t('settings.data.restoreBackup')}
         </button>
       </div>
       <Dialog />
@@ -375,6 +440,7 @@ function BackupSection() {
 // ==================== 3. 缓存管理 ====================
 
 function CacheSection() {
+  const { t } = useAppTranslation()
   const [regions, setRegions] = useState<CacheRegion[]>([])
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState<string | null>(null)
@@ -406,7 +472,7 @@ function CacheSection() {
       }
     } catch (e) {
       if (!controller.signal.aborted) {
-        console.error('加载缓存统计失败:', e)
+        console.error('Failed to load cache statistics:', e)
       }
     } finally {
       if (!controller.signal.aborted) {
@@ -422,12 +488,13 @@ function CacheSection() {
 
   const handleClear = async (region: CacheRegion) => {
     const ok = await confirm({
-      title: '清除缓存',
-      message:
-        `确定要清除「${region.name}」吗？\n\n` +
-        `当前占用: ${formatBytes(region.sizeBytes)} · ${region.recordCount} 条记录\n` +
-        `此操作不可恢复。`,
-      confirmLabel: '清除',
+      title: t('settings.data.clearCache'),
+      message: t('settings.data.clearCacheConfirm', {
+        name: region.name,
+        size: formatBytes(region.sizeBytes),
+        count: region.recordCount
+      }),
+      confirmLabel: t('common.clear'),
       variant: 'warning',
     })
     if (!ok) return
@@ -435,10 +502,15 @@ function CacheSection() {
     setClearing(region.key)
     try {
       await clearCache(region.key)
-      setStatus({ type: 'success', text: `已清除「${region.name}」` })
+      setStatus({ type: 'success', text: t('settings.data.cacheCleared', { name: region.name }) })
       await loadStats()
     } catch (e) {
-      setStatus({ type: 'error', text: `清除失败: ${e instanceof Error ? e.message : String(e)}` })
+      setStatus({
+        type: 'error',
+        text: t('settings.data.clearFailed', {
+          error: e instanceof Error ? e.message : String(e)
+        })
+      })
     } finally {
       setClearing(null)
     }
@@ -451,7 +523,7 @@ function CacheSection() {
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
           <Database size={16} className="text-accent-500" />
-          缓存管理
+          {t('settings.cacheManagement')}
         </h3>
         <button
           onClick={loadStats}
@@ -459,18 +531,18 @@ function CacheSection() {
           className="text-xs text-muted hover:text-surface-600 dark:hover:text-surface-300 flex items-center gap-1"
         >
           <RotateCcw size={12} className={loading ? 'animate-spin' : ''} />
-          刷新
+          {t('common.refresh')}
         </button>
       </div>
 
       {/* 总体统计 */}
       <div className="flex items-center gap-4 mb-4">
         <p className="text-xs text-muted">
-          缓存总量: <span className="font-medium text-surface-600 dark:text-surface-300">{formatBytes(totalSize)}</span>
+          {t('settings.data.totalCache')}: <span className="font-medium text-surface-600 dark:text-surface-300">{formatBytes(totalSize)}</span>
         </p>
         {storageEstimate && (
           <p className="text-xs text-muted">
-            浏览器用量: <span className="font-medium">{formatBytes(storageEstimate.usage)}</span>
+            {t('settings.data.browserUsage')}: <span className="font-medium">{formatBytes(storageEstimate.usage)}</span>
             {' / '}
             <span>{formatBytes(storageEstimate.quota)}</span>
           </p>
@@ -508,7 +580,7 @@ function CacheSection() {
                 {formatBytes(region.sizeBytes)}
               </div>
               <div className="text-[10px] text-muted">
-                {region.recordCount} 条
+                {t('settings.data.recordCount', { count: region.recordCount })}
               </div>
             </div>
             {region.clearable && (
@@ -516,7 +588,7 @@ function CacheSection() {
                 onClick={() => handleClear(region)}
                 disabled={clearing === region.key || region.sizeBytes === 0}
                 className="flex-shrink-0 p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-30 transition-colors"
-                title={`清除${region.name}`}
+                title={t('settings.data.clearCacheItem', { name: region.name })}
               >
                 {clearing === region.key ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -531,7 +603,7 @@ function CacheSection() {
         {loading && (
           <div className="flex items-center justify-center py-4 text-xs text-muted">
             <Loader2 size={14} className="animate-spin mr-2" />
-            加载中...
+            {t('common.loading')}
           </div>
         )}
       </div>
@@ -543,6 +615,7 @@ function CacheSection() {
 // ==================== 4. 隐私清洗 ====================
 
 function PrivacySection() {
+  const { t, i18n } = useAppTranslation()
   const [summary, setSummary] = useState<SensitiveDataSummary | null>(null)
   const [status, setStatus] = useState<StatusMessage | null>(null)
   const [showTimeRange, setShowTimeRange] = useState(false)
@@ -565,49 +638,50 @@ function PrivacySection() {
   const handleClearApiKeys = async () => {
     const count = (summary?.providersWithKey ?? 0) + (summary?.hasGlobalApiKey ? 1 : 0)
     if (count === 0) {
-      setStatus({ type: 'info', text: '没有发现 API Key' })
+      setStatus({ type: 'info', text: t('settings.data.noApiKeys') })
       return
     }
     const ok = await confirm({
-      title: '清除 API Key',
-      message:
-        `将清除以下位置的 API Key：\n\n` +
-        `- 全局配置${summary?.hasGlobalApiKey ? ' (已设置)' : ''}\n` +
-        `- ${summary?.providersWithKey ?? 0} 个 AI Provider\n\n` +
-        `确定继续吗？`,
-      confirmLabel: '清除',
+      title: t('settings.data.clearApiKeys'),
+      message: t('settings.data.clearApiKeysConfirm', {
+        globalConfigured: summary?.hasGlobalApiKey
+          ? t('settings.data.configured')
+          : '',
+        providerCount: summary?.providersWithKey ?? 0
+      }),
+      confirmLabel: t('common.clear'),
       variant: 'danger',
     })
     if (!ok) return
 
     const cleared = clearAllApiKeys()
-    setStatus({ type: 'success', text: `已清除 ${cleared} 个 API Key` })
+    setStatus({ type: 'success', text: t('settings.data.apiKeysCleared', { count: cleared }) })
     loadSummary()
   }
 
   // 清除 MCP 凭据
   const handleClearMCP = async () => {
     if (!summary?.mcpServerCount) {
-      setStatus({ type: 'info', text: '没有 MCP 服务器配置' })
+      setStatus({ type: 'info', text: t('settings.data.noMcpServers') })
       return
     }
     const ok = await confirm({
-      title: '清除 MCP 凭据',
-      message: `将清除 ${summary.mcpServerCount} 个 MCP 服务器的认证凭据，确定吗？`,
-      confirmLabel: '清除',
+      title: t('settings.data.clearMcpCredentials'),
+      message: t('settings.data.clearMcpCredentialsConfirm', { count: summary.mcpServerCount }),
+      confirmLabel: t('common.clear'),
       variant: 'danger',
     })
     if (!ok) return
 
     const cleared = clearMCPCredentials()
-    setStatus({ type: 'success', text: `已清除 ${cleared} 个 MCP 凭据字段` })
+    setStatus({ type: 'success', text: t('settings.data.mcpCredentialsCleared', { count: cleared }) })
     loadSummary()
   }
 
   // 预览时间范围内的对话
   const handlePreviewRange = () => {
     if (!startDate || !endDate) {
-      setStatus({ type: 'error', text: '请选择开始和结束日期' })
+      setStatus({ type: 'error', text: t('settings.data.selectDateRange') })
       return
     }
     const range: TimeRange = {
@@ -617,7 +691,7 @@ function PrivacySection() {
     const items = getConversationsInTimeRange(range)
     setRangePreview(items)
     if (items.length === 0) {
-      setStatus({ type: 'info', text: '该时间段内没有对话记录' })
+      setStatus({ type: 'info', text: t('settings.data.noConversationsInRange') })
     }
   }
 
@@ -630,9 +704,13 @@ function PrivacySection() {
     }
 
     const ok = await confirm({
-      title: '删除对话',
-      message: `将删除 ${startDate} 至 ${endDate} 期间的 ${rangePreview.length} 个对话，此操作不可恢复，确定吗？`,
-      confirmLabel: '删除',
+      title: t('settings.data.deleteConversations'),
+      message: t('settings.data.deleteConversationsInRangeConfirm', {
+        startDate,
+        endDate,
+        count: rangePreview.length
+      }),
+      confirmLabel: t('common.delete'),
       variant: 'danger',
     })
     if (!ok) return
@@ -642,7 +720,7 @@ function PrivacySection() {
       end: new Date(endDate).getTime() + 24 * 60 * 60 * 1000 - 1
     }
     const deleted = await deleteConversationsByTimeRange(range)
-    setStatus({ type: 'success', text: `已删除 ${deleted} 个对话` })
+    setStatus({ type: 'success', text: t('settings.data.conversationsDeleted', { count: deleted }) })
     setRangePreview([])
     loadSummary()
   }
@@ -650,29 +728,31 @@ function PrivacySection() {
   // 删除所有对话
   const handleDeleteAll = async () => {
     if (!summary?.totalConversations) {
-      setStatus({ type: 'info', text: '没有对话记录' })
+      setStatus({ type: 'info', text: t('conversation.noConversations') })
       return
     }
     const ok = await confirm({
-      title: '删除所有对话',
-      message:
-        `将删除全部 ${summary.totalConversations} 个对话（${summary.totalMessages} 条消息），此操作不可恢复！`,
-      confirmLabel: '继续',
+      title: t('settings.data.deleteAllConversations'),
+      message: t('settings.data.deleteAllConversationsConfirm', {
+        conversationCount: summary.totalConversations,
+        messageCount: summary.totalMessages
+      }),
+      confirmLabel: t('settings.data.continue'),
       variant: 'danger',
     })
     if (!ok) return
 
     // 二次确认
     const ok2 = await confirm({
-      title: '最终确认',
-      message: '真的要删除所有对话吗？此操作无法撤销。',
-      confirmLabel: '确认删除',
+      title: t('settings.data.finalConfirmation'),
+      message: t('settings.data.deleteAllConversationsFinalConfirm'),
+      confirmLabel: t('settings.data.confirmDelete'),
       variant: 'danger',
     })
     if (!ok2) return
 
     const deleted = await deleteAllConversations()
-    setStatus({ type: 'success', text: `已删除 ${deleted} 个对话` })
+    setStatus({ type: 'success', text: t('settings.data.conversationsDeleted', { count: deleted }) })
     setRangePreview([])
     loadSummary()
   }
@@ -686,12 +766,12 @@ function PrivacySection() {
 
   return (
     <DangerZone
-      title="隐私清洗"
-      description="一键清除敏感信息，保护您的隐私安全"
+      title={t('settings.privacyCleanup')}
+      description={t('settings.data.privacyCleanupDescription')}
     >
       <div className="flex items-center gap-2 mb-4">
         <Shield size={16} className="text-danger-500" />
-        <span className="text-xs text-muted">管理敏感数据与对话记录</span>
+        <span className="text-xs text-muted">{t('settings.data.manageSensitiveData')}</span>
       </div>
 
       {status && (
@@ -709,14 +789,19 @@ function PrivacySection() {
             <div className="text-muted">API Key</div>
             <div className="font-medium text-surface-700 dark:text-surface-300">
               {summary.hasGlobalApiKey || summary.providersWithKey > 0
-                ? `${(summary.hasGlobalApiKey ? 1 : 0) + summary.providersWithKey} 个已设置`
-                : '未设置'}
+                ? t('settings.data.configuredCount', {
+                    count: (summary.hasGlobalApiKey ? 1 : 0) + summary.providersWithKey
+                  })
+                : t('settings.data.notConfigured')}
             </div>
           </div>
           <div className="px-3 py-2 rounded-lg bg-surface-50 dark:bg-surface-900/50">
-            <div className="text-muted">对话记录</div>
+            <div className="text-muted">{t('settings.data.conversationRecords')}</div>
             <div className="font-medium text-surface-700 dark:text-surface-300">
-              {summary.totalConversations} 个 · {summary.totalMessages} 条消息
+              {t('settings.data.conversationMessageSummary', {
+                conversationCount: summary.totalConversations,
+                messageCount: summary.totalMessages
+              })}
             </div>
           </div>
         </div>
@@ -725,59 +810,59 @@ function PrivacySection() {
       {/* 清除 API Key */}
       <div className="flex items-center justify-between py-2.5 border-b border-surface-100 dark:border-surface-800">
         <div>
-          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">清除所有 API Key</div>
-          <div className="text-[11px] text-muted">全局配置 + 所有 AI Provider 的密钥</div>
+          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">{t('settings.data.clearAllApiKeys')}</div>
+          <div className="text-[11px] text-muted">{t('settings.data.clearAllApiKeysDescription')}</div>
         </div>
         <button
           onClick={handleClearApiKeys}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
-          <EyeOff size={12} /> 清除
+          <EyeOff size={12} /> {t('common.clear')}
         </button>
       </div>
 
       {/* 清除 MCP 凭据 */}
       <div className="flex items-center justify-between py-2.5 border-b border-surface-100 dark:border-surface-800">
         <div>
-          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">清除 MCP 服务器凭据</div>
-          <div className="text-[11px] text-muted">MCP 服务器环境变量中的 token/key/secret</div>
+          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">{t('settings.data.clearMcpServerCredentials')}</div>
+          <div className="text-[11px] text-muted">{t('settings.data.clearMcpServerCredentialsDescription')}</div>
         </div>
         <button
           onClick={handleClearMCP}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
-          <EyeOff size={12} /> 清除
+          <EyeOff size={12} /> {t('common.clear')}
         </button>
       </div>
 
       {/* 清除全部 Agent 长期记忆 */}
       <div className="flex items-center justify-between py-2.5 border-b border-surface-100 dark:border-surface-800">
         <div>
-          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">清除全部 Agent 长期记忆</div>
+          <div className="text-xs font-medium text-surface-700 dark:text-surface-300">{t('settings.data.clearAllAgentMemories')}</div>
           <div className="text-[11px] text-muted">
-            remember/recall 本地 KV（当前 {memoryCount} 条），不影响对话记录
+            {t('settings.data.clearAllAgentMemoriesDescription', { count: memoryCount })}
           </div>
         </div>
         <button
           onClick={async () => {
             if (memoryCount === 0) {
-              setStatus({ type: 'info', text: '没有长期记忆' })
+              setStatus({ type: 'info', text: t('settings.data.noAgentMemories') })
               return
             }
             const ok = await confirm({
-              title: '清除全部长期记忆',
-              message: `将删除全部 Agent 的 ${memoryCount} 条长期记忆，不可恢复。确定继续吗？`,
-              confirmLabel: '清除',
+              title: t('settings.data.clearAllAgentMemories'),
+              message: t('settings.data.clearAllAgentMemoriesConfirm', { count: memoryCount }),
+              confirmLabel: t('common.clear'),
               variant: 'danger',
             })
             if (!ok) return
             const cleared = memoryService.clearAllMemories()
             setMemoryCount(0)
-            setStatus({ type: 'success', text: `已清除 ${cleared} 条长期记忆` })
+            setStatus({ type: 'success', text: t('settings.data.agentMemoriesCleared', { count: cleared }) })
           }}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
-          <Trash2 size={12} /> 清除
+          <Trash2 size={12} /> {t('common.clear')}
         </button>
       </div>
 
@@ -788,7 +873,7 @@ function PrivacySection() {
           className="flex items-center gap-1 text-xs font-medium text-surface-700 dark:text-surface-300 w-full"
         >
           {showTimeRange ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          按时间段删除对话
+          {t('settings.data.deleteConversationsByDateRange')}
         </button>
 
         {showTimeRange && (
@@ -800,7 +885,7 @@ function PrivacySection() {
                 onChange={(e) => setStartDate(e.target.value)}
                 className="flex-1 px-2 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900"
               />
-              <span className="text-xs text-muted">至</span>
+              <span className="text-xs text-muted">{t('settings.data.to')}</span>
               <input
                 type="date"
                 value={endDate}
@@ -814,14 +899,14 @@ function PrivacySection() {
                 onClick={handlePreviewRange}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-900/50 transition-colors"
               >
-                <Eye size={12} /> 预览
+                <Eye size={12} /> {t('settings.data.preview')}
               </button>
               {rangePreview.length > 0 && (
                 <button
                   onClick={handleDeleteByRange}
                   className="flex items-center gap-1 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
                 >
-                  <Trash2 size={12} /> 删除 {rangePreview.length} 个对话
+                  <Trash2 size={12} /> {t('settings.data.deleteConversationCount', { count: rangePreview.length })}
                 </button>
               )}
             </div>
@@ -831,7 +916,9 @@ function PrivacySection() {
                 {rangePreview.map((item) => (
                   <div key={item.id} className="flex items-center justify-between px-3 py-1.5 text-xs border-b border-surface-100 dark:border-surface-800 last:border-b-0">
                     <span className="truncate flex-1">{item.title}</span>
-                    <span className="text-muted ml-2">{new Date(item.createdAt).toLocaleDateString()}</span>
+                    <span className="text-muted ml-2">
+                      {new Date(item.createdAt).toLocaleDateString(i18n.resolvedLanguage ?? i18n.language)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -843,14 +930,14 @@ function PrivacySection() {
       {/* 清除所有对话 */}
       <div className="flex items-center justify-between py-2.5 mt-1">
         <div>
-          <div className="text-xs font-medium text-danger-600 dark:text-danger-400">清除所有对话</div>
-          <div className="text-[11px] text-muted">删除全部对话记录和消息，不可恢复</div>
+          <div className="text-xs font-medium text-danger-600 dark:text-danger-400">{t('settings.data.clearAllConversations')}</div>
+          <div className="text-[11px] text-muted">{t('settings.data.clearAllConversationsDescription')}</div>
         </div>
         <button
           onClick={handleDeleteAll}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-danger-500 border border-danger-200 dark:border-danger-800/60 rounded-xl hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-colors"
         >
-          <Trash2 size={12} /> 清除全部
+          <Trash2 size={12} /> {t('settings.data.clearAll')}
         </button>
       </div>
       <Dialog />
@@ -865,23 +952,29 @@ interface DataManagementSectionProps {
 }
 
 export function DataManagementSection({ onNavigateToSection }: DataManagementSectionProps) {
+  const { t } = useAppTranslation()
+
   return (
     <div className="space-y-6">
       {/* 标题 */}
-      <SettingsHeader icon={Database} title="数据管理" description="管理应用数据，包括对话导出、备份恢复、缓存清理和隐私保护" />
+      <SettingsHeader
+        icon={Database}
+        title={t('settings.dataManagement')}
+        description={t('settings.data.dataManagementDescription')}
+      />
 
       {/* 知识库快捷入口 */}
       <SectionCard>
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300">知识库管理</h3>
-            <p className="text-xs text-muted mt-0.5">查看和管理已上传的知识库文件</p>
+            <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300">{t('settings.data.knowledgeBaseManagement')}</h3>
+            <p className="text-xs text-muted mt-0.5">{t('settings.data.knowledgeBaseManagementDescription')}</p>
           </div>
           <button
             onClick={() => onNavigateToSection?.('knowledge-base')}
             className="flex items-center gap-2 px-4 py-2 text-sm text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800/60 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
           >
-            <Database size={14} /> 管理知识库
+            <Database size={14} /> {t('settings.data.manageKnowledgeBase')}
           </button>
         </div>
       </SectionCard>
@@ -892,15 +985,15 @@ export function DataManagementSection({ onNavigateToSection }: DataManagementSec
           <div>
             <h3 className="text-sm font-medium text-surface-700 dark:text-surface-300 flex items-center gap-2">
               <Zap size={14} className="text-accent-500" />
-              Skills 技能管理
+              {t('settings.data.skillsManagement')}
             </h3>
-            <p className="text-xs text-muted mt-0.5">管理已导入的 Skills 技能包，数据存储在 IndexedDB 中</p>
+            <p className="text-xs text-muted mt-0.5">{t('settings.data.skillsManagementDescription')}</p>
           </div>
           <button
             onClick={() => onNavigateToSection?.('skills')}
             className="flex items-center gap-2 px-4 py-2 text-sm text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800/60 rounded-xl hover:bg-accent-50 dark:hover:bg-accent-950/30 transition-colors"
           >
-            <Zap size={14} /> 管理 Skills
+            <Zap size={14} /> {t('settings.data.manageSkills')}
           </button>
         </div>
       </SectionCard>

@@ -13,6 +13,7 @@ import { useSettingsStore } from '../../stores/settings-store'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
 import { toolService } from '../../services/tool-service'
 import { isWebTool } from '../../utils/web-tools'
+import { useAppTranslation } from '@/i18n/hooks'
 import type { Tool } from '../../types'
 import { SettingsHeader, SettingsTabs, useConfirmDialog, SettingsEmptyState } from './ui'
 
@@ -57,6 +58,7 @@ function getBuiltinType(tool: Tool): BuiltinType | null {
 
 // ==================== 主组件 ====================
 export function ToolEditor() {
+  const { t } = useAppTranslation()
   const { confirm, Dialog } = useConfirmDialog()
   const { customTools, addTool, updateTool, deleteTool, toggleTool } = useCustomToolStore()
   const mcpTools = useMCPToolStore((s) => s.mcpTools)
@@ -118,9 +120,9 @@ export function ToolEditor() {
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: '删除工具',
-      message: '确定删除此工具？此操作不可撤销。',
-      confirmLabel: '删除',
+      title: t('tool.deleteTool'),
+      message: t('tool.deleteToolConfirm'),
+      confirmLabel: t('tool.delete'),
       variant: 'danger',
     })
     if (ok) {
@@ -144,43 +146,44 @@ export function ToolEditor() {
             setSelectedTool({ ...selectedTool, ...updates })
           }
         }}
+        t={t}
       />
     )
   }
 
   // 区域配置
-  const regionConfig = [
+  const regionConfig = useMemo(() => [
     {
       key: 'general' as const,
-      title: '通用内置工具',
-      description: '搜索引擎、网页抓取、时间查询等基础工具',
+      title: t('tool.generalBuiltIn'),
+      description: t('tool.generalBuiltInDesc'),
       icon: <Wrench size={14} className="text-accent-500" />,
-      badge: '内置',
+      badge: t('tool.builtIn'),
       badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.general,
     },
     {
       key: 'agent' as const,
-      title: 'Agent 协议工具',
-      description: 'Agent 记忆管理、状态协调等协议工具（基础设施）',
+      title: t('tool.agentProtocol'),
+      description: t('tool.agentProtocolDesc'),
       icon: <Cpu size={14} className="text-accent-500" />,
-      badge: '基础设施',
+      badge: t('tool.infrastructure'),
       badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.agent,
     },
     {
       key: 'workspace' as const,
-      title: '工作区工具',
-      description: '文件操作、终端命令、工作区管理等工作区工具（基础设施）',
+      title: t('tool.workspaceTool'),
+      description: t('tool.workspaceToolDesc'),
       icon: <Layers size={14} className="text-accent-500" />,
-      badge: '基础设施',
+      badge: t('tool.infrastructure'),
       badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
       tools: regions.workspace,
     },
     {
       key: 'mcp' as const,
-      title: 'MCP 工具',
-      description: '通过 MCP 服务器注册的工具（只读展示，可测试）',
+      title: t('tool.mcpTools'),
+      description: t('tool.mcpToolDesc'),
       icon: <Server size={14} className="text-accent-500" />,
       badge: 'MCP',
       badgeClass: 'bg-accent-100 dark:bg-accent-900/30 text-accent-600 dark:text-accent-400',
@@ -188,28 +191,28 @@ export function ToolEditor() {
     },
     {
       key: 'custom' as const,
-      title: '自定义工具',
-      description: '用户自定义的 JavaScript 工具',
+      title: t('tool.customTools'),
+      description: t('tool.customToolDesc'),
       icon: <Code2 size={14} className="text-emerald-500" />,
       badge: customTools.length > 0 ? String(customTools.length) : undefined,
       badgeClass: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
       tools: regions.custom,
     },
-  ]
+  ], [t, regions, customTools.length])
 
   return (
     <div className="space-y-6">
       {/* 标题 */}
       <SettingsHeader
         icon={Wrench}
-        title="工具管理"
-        description="管理 AI 可使用的工具，包括内置工具、MCP 工具和自定义工具"
+        title={t('tool.toolManagement')}
+        description={t('tool.toolManagementDescription')}
         actions={
           <button
             onClick={handleCreate}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-accent-500 text-white rounded-lg hover:bg-accent-600 transition-colors"
           >
-            <Plus size={14} /> 新建自定义工具
+            <Plus size={14} /> {t('tool.newCustomTool')}
           </button>
         }
       />
@@ -226,7 +229,7 @@ export function ToolEditor() {
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${region.badgeClass}`}>
               {region.badge}
             </span>
-            {region.badge !== '基础设施' && (
+            {region.badge !== t('tool.infrastructure') && (
               <span className="text-[10px] text-muted">· {region.tools.length}</span>
             )}
           </div>
@@ -249,6 +252,7 @@ export function ToolEditor() {
                     onTest={() => handleSelectTool(tool, 'test')}
                     onToggle={() => toggleTool(tool.id)}
                     onDelete={() => handleDelete(tool.id)}
+                    t={t}
                   />
                 ))}
               </div>
@@ -256,8 +260,8 @@ export function ToolEditor() {
               <div className="py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
                 <SettingsEmptyState
                   icon={Code2}
-                  title="暂无自定义工具"
-                  description={'点击上方"新建自定义工具"开始创建'}
+                  title={t('tool.noCustomTools')}
+                  description={t('tool.noCustomToolsDesc')}
                   iconSize={24}
                 />
               </div>
@@ -286,6 +290,7 @@ export function ToolEditor() {
                         : undefined
                     }
                     onDelete={() => {}}
+                    t={t}
                   />
                 )
               })}
@@ -294,7 +299,7 @@ export function ToolEditor() {
             <div className="py-6 bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 border-dashed">
               <SettingsEmptyState
                 icon={Code2}
-                title="暂无工具"
+                title={t('tool.noTools')}
                 iconSize={24}
               />
             </div>
@@ -317,7 +322,8 @@ function ToolListItem({
   onEdit,
   onTest,
   onToggle,
-  onDelete
+  onDelete,
+  t
 }: {
   tool: Tool
   builtinType: BuiltinType | null
@@ -329,6 +335,7 @@ function ToolListItem({
   onTest: () => void
   onToggle?: () => void
   onDelete: () => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const stats = useToolStatsStore((s) => s.stats[tool.name])
   const hasCode = !!tool.code
@@ -345,11 +352,11 @@ function ToolListItem({
   // 获取内置类型标签
   const builtinLabel = useMemo(() => {
     if (builtinType === 'agent') return 'Agent'
-    if (builtinType === 'workspace') return '工作区'
-    if (builtinType === 'general') return '内置'
+    if (builtinType === 'workspace') return t('tool.workspace')
+    if (builtinType === 'general') return t('tool.builtIn')
     if (isMcp) return 'MCP'
     return null
-  }, [builtinType, isMcp])
+  }, [builtinType, isMcp, t])
 
   // 获取图标样式
   const iconStyle = useMemo(() => {
@@ -398,7 +405,7 @@ function ToolListItem({
           )}
           {isInfrastructure && (
             <span className="text-[10px] px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 text-muted rounded-full font-medium">
-              基础设施
+              {t('tool.infrastructure')}
             </span>
           )}
           {!isInfrastructure && builtinType !== 'general' && hasCode && (
@@ -408,7 +415,7 @@ function ToolListItem({
           )}
           {mcpServerName && (
             <span className="text-[10px] px-1.5 py-0.5 bg-surface-100 dark:bg-surface-800 text-muted rounded-full font-medium"
-              title={`来源: ${mcpServerName}`}>
+              title={t('tool.source', { name: mcpServerName })}>
               {mcpServerName}
             </span>
           )}
@@ -418,7 +425,7 @@ function ToolListItem({
             </span>
           )}
         </div>
-        <p className="text-xs text-muted truncate">{tool.description || '无描述'}</p>
+        <p className="text-xs text-muted truncate">{tool.description || t('tool.noDescription')}</p>
       </div>
       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <button
@@ -428,7 +435,7 @@ function ToolListItem({
               ? 'text-muted/50 cursor-not-allowed'
               : 'text-muted hover:text-accent-500 hover:bg-accent-50 dark:hover:bg-accent-950/30'
           }`}
-          title={isInfrastructure ? '需要工作区上下文才能测试' : '测试'}
+          title={isInfrastructure ? t('tool.needsWorkspaceContext') : t('tool.test')}
           disabled={isInfrastructure}
         >
           <Play size={12} />
@@ -437,7 +444,7 @@ function ToolListItem({
           <button
             onClick={onToggle}
             className="text-muted"
-            title={tool.enabled ? '禁用此工具' : '启用此工具'}
+            title={tool.enabled ? t('tool.disableTool') : t('tool.enableTool')}
           >
             {tool.enabled ? (
               <ToggleRight size={18} className="text-accent-500" />
@@ -480,13 +487,15 @@ function ToolDetailView({
   activeTab,
   onTabChange,
   onBack,
-  onSave
+  onSave,
+  t
 }: {
   tool: Tool
   activeTab: DetailTab
   onTabChange: (tab: DetailTab) => void
   onBack: () => void
   onSave: (updates: Partial<Tool>) => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const isBuiltIn = tool.isBuiltIn
   const builtinType = getBuiltinType(tool)
@@ -506,7 +515,7 @@ function ToolDetailView({
           <div>
             <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-200 flex items-center gap-2">
               <Wrench size={18} className="text-accent-500" />
-              {tool.name || '新工具'}
+              {tool.name || t('tool.newTool')}
             </h2>
             <p className="text-xs text-muted">{tool.description}</p>
           </div>
@@ -518,20 +527,20 @@ function ToolDetailView({
         activeTab={activeTab}
         onTabChange={(key) => onTabChange(key as DetailTab)}
         tabs={[
-          ...(!isBuiltIn ? [{ key: 'edit', label: '编辑', icon: Edit2 }] : []),
-          { key: 'test', label: isInfrastructure ? '测试 (需上下文)' : '测试', icon: Play, disabled: isInfrastructure },
-          { key: 'stats', label: '统计', icon: BarChart3 },
+          ...(!isBuiltIn ? [{ key: 'edit', label: t('tool.edit'), icon: Edit2 }] : []),
+          { key: 'test', label: isInfrastructure ? t('tool.testNeedsContext') : t('tool.test'), icon: Play, disabled: isInfrastructure },
+          { key: 'stats', label: t('tool.stats'), icon: BarChart3 },
         ]}
       />
 
       {/* Tab 内容 */}
       {activeTab === 'edit' && !isBuiltIn && (
-        <ToolEditForm tool={tool} onSave={onSave} />
+        <ToolEditForm tool={tool} onSave={onSave} t={t} />
       )}
       {activeTab === 'test' && (
-        <ToolTestPanel tool={tool} isInfrastructure={isInfrastructure} />
+        <ToolTestPanel tool={tool} isInfrastructure={isInfrastructure} t={t} />
       )}
-      {activeTab === 'stats' && <ToolStatsPanel toolName={tool.name} />}
+      {activeTab === 'stats' && <ToolStatsPanel toolName={tool.name} t={t} />}
     </div>
   )
 }
@@ -539,10 +548,12 @@ function ToolDetailView({
 // ==================== 工具编辑表单 ====================
 function ToolEditForm({
   tool,
-  onSave
+  onSave,
+  t
 }: {
   tool: Tool
   onSave: (updates: Partial<Tool>) => void
+  t: (key: string, options?: Record<string, unknown>) => string
 }) {
   const theme = useSettingsStore((s) => s.theme)
   const [name, setName] = useState(tool.name)
@@ -565,14 +576,14 @@ function ToolEditForm({
       JSON.parse(v)
       setJsonError('')
     } catch {
-      setJsonError('JSON 格式错误')
+      setJsonError(t('tool.jsonFormatError'))
     }
   }
 
   const handleSave = () => {
     // 验证名称不能为空
     if (!name.trim()) {
-      setNameError('工具名称不能为空')
+      setNameError(t('tool.toolNameRequired'))
       return
     }
     setNameError('') // 清除错误
@@ -580,7 +591,7 @@ function ToolEditForm({
     try {
       parsedParams = JSON.parse(parametersJson)
     } catch {
-      setJsonError('JSON 格式错误，请修正后再保存')
+      setJsonError(t('tool.jsonFormatErrorFix'))
       return
     }
 
@@ -601,7 +612,7 @@ function ToolEditForm({
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-muted mb-1.5">工具名称 *</label>
+            <label className="block text-xs text-muted mb-1.5">{t('tool.toolName')} *</label>
             <input
               type="text"
               value={name}
@@ -616,7 +627,7 @@ function ToolEditForm({
             )}
           </div>
           <div>
-            <label className="block text-xs text-muted mb-1.5">超时 (ms)</label>
+            <label className="block text-xs text-muted mb-1.5">{t('tool.timeout')}</label>
             <input
               type="number"
               value={timeout}
@@ -628,12 +639,12 @@ function ToolEditForm({
           </div>
         </div>
         <div>
-          <label className="block text-xs text-muted mb-1.5">描述</label>
+          <label className="block text-xs text-muted mb-1.5">{t('tool.description')}</label>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="工具的功能描述"
+            placeholder={t('tool.descriptionPlaceholder')}
             className="w-full px-3 py-2 text-sm bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-xl focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all"
           />
         </div>
@@ -641,7 +652,7 @@ function ToolEditForm({
 
       {/* 参数 Schema */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5">
-        <label className="block text-xs text-muted mb-2">参数 Schema (JSON)</label>
+        <label className="block text-xs text-muted mb-2">{t('tool.parameterSchema')}</label>
         <div className={`border rounded-xl overflow-hidden ${
           jsonError ? 'border-danger-400' : 'border-surface-200/80 dark:border-surface-700/60'
         }`}>
@@ -670,7 +681,7 @@ function ToolEditForm({
       {/* JS 代码 */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-muted">JS 函数代码</label>
+          <label className="text-xs text-muted">{t('tool.jsFunctionCode')}</label>
           <span className="text-[10px] text-muted">{'async (params) => { ... }'}</span>
         </div>
         <div className="border border-surface-200/80 dark:border-surface-700/60 rounded-xl overflow-hidden">
@@ -705,7 +716,7 @@ function ToolEditForm({
           className="flex items-center gap-2 bg-accent-500 hover:bg-accent-600 text-white rounded-xl px-4 py-2 text-sm font-medium transition-all shadow-sm disabled:opacity-50"
         >
           {saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
-          {saved ? '已保存' : '保存'}
+          {saved ? t('tool.saved') : t('tool.save')}
         </button>
       </div>
     </div>
@@ -713,7 +724,7 @@ function ToolEditForm({
 }
 
 // ==================== 工具测试面板 ====================
-function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfrastructure?: boolean }) {
+function ToolTestPanel({ tool, isInfrastructure = false, t }: { tool: Tool; isInfrastructure?: boolean; t: (key: string, options?: Record<string, unknown>) => string }) {
   const theme = useSettingsStore((s) => s.theme)
   const [inputJson, setInputJson] = useState(() => {
     // 根据 parameters Schema 生成示例参数
@@ -760,8 +771,8 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
       try {
         args = JSON.parse(inputJson)
       } catch {
-        setResult({ success: false, error: '输入参数 JSON 格式错误' })
-        setOutput('错误: 输入参数 JSON 格式错误')
+        setResult({ success: false, error: t('tool.inputJsonError') })
+        setOutput(t('tool.errorPrefix', { message: t('tool.inputJsonError') }))
         return
       }
 
@@ -782,16 +793,20 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
           setOutput(response.data)
         }
       } else {
-        setOutput(`错误: ${response.error}`)
+        setOutput(t('tool.errorPrefix', { message: response.error }))
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '执行失败'
+      const msg = e instanceof Error ? e.message : t('tool.executionFailure')
       setResult({ success: false, error: msg })
-      setOutput(`错误: ${msg}`)
+      setOutput(t('tool.errorPrefix', { message: msg }))
     } finally {
       setIsRunning(false)
     }
-  }, [tool.name, inputJson, allTools])
+  }, [tool.name, inputJson, allTools, t])
+
+  const infrastructureType = tool.isBuiltIn && AGENT_BUILTIN_TOOLS.some((t) => t.id === tool.id)
+    ? t('tool.agentProtocolType')
+    : t('tool.workspaceType')
 
   return (
     <div className="space-y-4">
@@ -802,11 +817,10 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
             <XCircle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                需要工作区上下文
+                {t('tool.needsWorkspaceContextTitle')}
               </p>
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                此工具是 {tool.isBuiltIn && AGENT_BUILTIN_TOOLS.some((t) => t.id === tool.id) ? 'Agent 协议' : '工作区'} 
-                基础设施工具，在实际对话中由系统自动调用。此处测试可能需要有效的工作区上下文。
+                {t('tool.needsWorkspaceContextDesc', { type: infrastructureType })}
               </p>
             </div>
           </div>
@@ -816,7 +830,7 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
       {/* 输入区 */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-xs text-muted">输入参数 (JSON)</label>
+          <label className="text-xs text-muted">{t('tool.inputParamsJson')}</label>
           <button
             onClick={handleExecute}
             disabled={isRunning || isInfrastructure}
@@ -824,11 +838,11 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
           >
             {isRunning ? (
               <>
-                <Loader2 size={12} className="animate-spin" /> 执行中...
+                <Loader2 size={12} className="animate-spin" /> {t('tool.executing')}
               </>
             ) : (
               <>
-                <Play size={12} /> 执行
+                <Play size={12} /> {t('tool.execute')}
               </>
             )}
           </button>
@@ -866,10 +880,10 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
             <XCircle size={16} />
           )}
           <span className="font-medium">
-            {result.success ? '执行成功' : '执行失败'}
+            {result.success ? t('tool.executionSuccess') : t('tool.executionFailed')}
           </span>
           {result.durationMs !== undefined && (
-            <span className="text-xs opacity-70">耗时 {result.durationMs}ms</span>
+            <span className="text-xs opacity-70">{t('tool.durationMs', { ms: result.durationMs })}</span>
           )}
           {result.error && (
             <span className="text-xs opacity-70 truncate">{result.error}</span>
@@ -879,13 +893,13 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
 
       {/* 输出区 */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5">
-        <label className="block text-xs text-muted mb-2">输出结果</label>
+        <label className="block text-xs text-muted mb-2">{t('tool.outputResult')}</label>
         <div className="border border-surface-200/80 dark:border-surface-700/60 rounded-xl overflow-hidden">
           <Editor
             height="250px"
             language="json"
             theme={monacoTheme}
-            value={output || '// 点击"执行"查看结果'}
+            value={output || t('tool.clickExecute')}
             options={{
               readOnly: true,
               minimap: { enabled: false },
@@ -904,29 +918,29 @@ function ToolTestPanel({ tool, isInfrastructure = false }: { tool: Tool; isInfra
 }
 
 // ==================== 工具统计面板 ====================
-function ToolStatsPanel({ toolName }: { toolName: string }) {
+function ToolStatsPanel({ toolName, t }: { toolName: string; t: (key: string, options?: Record<string, unknown>) => string }) {
   const stats = useToolStatsStore((s) => s.stats[toolName])
   const resetStats = useToolStatsStore((s) => s.resetStats)
   const { confirm, Dialog } = useConfirmDialog()
 
   const handleReset = useCallback(async () => {
     const ok = await confirm({
-      title: '重置统计',
-      message: '确定重置此工具的使用统计？此操作不可撤销。',
-      confirmLabel: '重置',
+      title: t('tool.resetStats'),
+      message: t('tool.resetStatsConfirm'),
+      confirmLabel: t('tool.reset'),
       variant: 'warning',
     })
     if (ok) {
       resetStats(toolName)
     }
-  }, [confirm, resetStats, toolName])
+  }, [confirm, resetStats, toolName, t])
 
   if (!stats || stats.callCount === 0) {
     return (
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-8 text-center">
         <BarChart3 size={40} className="mx-auto mb-3 text-muted opacity-30" />
-        <p className="text-sm text-muted">暂无使用统计</p>
-        <p className="text-xs text-muted mt-1">执行此工具后将自动记录统计数据</p>
+        <p className="text-sm text-muted">{t('tool.noStatsYet')}</p>
+        <p className="text-xs text-muted mt-1">{t('tool.noStatsDesc')}</p>
       </div>
     )
   }
@@ -935,30 +949,30 @@ function ToolStatsPanel({ toolName }: { toolName: string }) {
   const avgDuration = Math.round(stats.totalDurationMs / stats.callCount)
   const lastCalled = stats.lastCalledAt
     ? new Date(stats.lastCalledAt).toLocaleString()
-    : '未知'
+    : t('tool.unknown')
 
   return (
     <div className="space-y-4">
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatsCard label="调用次数" value={String(stats.callCount)} />
+        <StatsCard label={t('tool.callCount')} value={String(stats.callCount)} />
         <StatsCard
-          label="成功率"
+          label={t('tool.successRate')}
           value={`${successRate}%`}
           color={successRate >= 90 ? 'emerald' : successRate >= 70 ? 'amber' : 'red'}
         />
-        <StatsCard label="平均耗时" value={`${avgDuration}ms`} />
-        <StatsCard label="最后调用" value={lastCalled} small />
+        <StatsCard label={t('tool.avgDuration')} value={`${avgDuration}ms`} />
+        <StatsCard label={t('tool.lastCalled')} value={lastCalled} small />
       </div>
 
       {/* 详细统计 */}
       <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5">
-        <h4 className="text-xs font-medium text-muted mb-3">详细统计</h4>
+        <h4 className="text-xs font-medium text-muted mb-3">{t('tool.detailedStats')}</h4>
         <div className="space-y-2">
-          <StatsRow label="成功次数" value={String(stats.successCount)} />
-          <StatsRow label="失败次数" value={String(stats.failureCount)} />
-          <StatsRow label="总耗时" value={`${stats.totalDurationMs}ms`} />
-          <StatsRow label="平均耗时" value={`${avgDuration}ms`} />
+          <StatsRow label={t('tool.successCount')} value={String(stats.successCount)} />
+          <StatsRow label={t('tool.failureCount')} value={String(stats.failureCount)} />
+          <StatsRow label={t('tool.totalDuration')} value={`${stats.totalDurationMs}ms`} />
+          <StatsRow label={t('tool.avgDuration')} value={`${avgDuration}ms`} />
         </div>
       </div>
 
@@ -968,7 +982,7 @@ function ToolStatsPanel({ toolName }: { toolName: string }) {
           onClick={handleReset}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted hover:text-danger-500 rounded-lg hover:bg-danger-50 dark:hover:bg-danger-950/30 transition-all"
         >
-          <RotateCcw size={12} /> 重置统计
+          <RotateCcw size={12} /> {t('tool.resetStats')}
         </button>
       </div>
       <Dialog />

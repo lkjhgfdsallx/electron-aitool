@@ -17,11 +17,13 @@ import {
 import { useSkillStore } from '../../stores/skill-store'
 import { SkillEditor } from './SkillEditor'
 import { useConfirmDialog, SettingsEmptyState, StatusFeedback } from './ui'
+import { useAppTranslation } from '@/i18n/hooks'
 import type { Skill, SkillCreateInput } from '../../types'
 
 type LocationFilter = 'all' | 'global' | 'project'
 
 export function SkillManager() {
+  const { t } = useAppTranslation()
   const {
     skills,
     loading,
@@ -153,26 +155,28 @@ export function SkillManager() {
         const result = await importFromZip(zipData, 'global')
 
         if (result.imported.length > 0 && result.errors.length === 0) {
-          setImportMessage(`成功导入 ${result.imported.length} 个 Skill: ${result.imported.join(', ')}`)
+          setImportMessage(t('skill.importSuccess', { count: result.imported.length, names: result.imported.join(', ') }))
           setImportMessageType('success')
         } else if (result.imported.length > 0 && result.errors.length > 0) {
+          const errorList = result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')
           setImportMessage(
-            `部分导入成功 (${result.imported.length} 个): ${result.imported.join(', ')}\n\n失败详情:\n${result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+            t('skill.importPartialSuccess', { count: result.imported.length, names: result.imported.join(', '), errors: errorList })
           )
           setImportMessageType('error')
         } else if (result.errors.length > 0) {
+          const errorList = result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')
           setImportMessage(
-            `导入失败，共 ${result.errors.length} 个错误:\n${result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+            t('skill.importFailed', { count: result.errors.length, errors: errorList })
           )
           setImportMessageType('error')
         } else {
-          setImportMessage('ZIP 中未找到可导入的 Skill（未发现 SKILL.md 文件）')
+          setImportMessage(t('skill.importNoSkills'))
           setImportMessageType('error')
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        console.error('[SkillManager] 导入 ZIP 异常:', err)
-        setImportMessage(`导入失败: ${msg}`)
+        console.error('[SkillManager] import ZIP error:', err)
+        setImportMessage(t('skill.importError', { message: msg }))
         setImportMessageType('error')
       } finally {
         setImporting(false)
@@ -189,24 +193,26 @@ export function SkillManager() {
       const result = await importFromFolder('global')
 
       if (result.imported.length > 0 && result.errors.length === 0) {
-        setImportMessage(`成功导入 ${result.imported.length} 个 Skill: ${result.imported.join(', ')}`)
+        setImportMessage(t('skill.importSuccess', { count: result.imported.length, names: result.imported.join(', ') }))
         setImportMessageType('success')
       } else if (result.imported.length > 0 && result.errors.length > 0) {
+        const errorList = result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')
         setImportMessage(
-          `部分导入成功 (${result.imported.length} 个): ${result.imported.join(', ')}\n\n失败详情:\n${result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+          t('skill.importPartialSuccess', { count: result.imported.length, names: result.imported.join(', '), errors: errorList })
         )
         setImportMessageType('error')
       } else if (result.errors.length > 0) {
+        const errorList = result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')
         setImportMessage(
-          `导入失败，共 ${result.errors.length} 个错误:\n${result.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}`
+          t('skill.importFailed', { count: result.errors.length, errors: errorList })
         )
         setImportMessageType('error')
       }
-      // 用户取消时不显示消息
+      // No message when user cancels
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[SkillManager] 导入文件夹异常:', err)
-      setImportMessage(`导入失败: ${msg}`)
+      console.error('[SkillManager] import folder error:', err)
+      setImportMessage(t('skill.importError', { message: msg }))
       setImportMessageType('error')
     } finally {
       setImporting(false)
@@ -258,13 +264,13 @@ export function SkillManager() {
         <div>
           <h2 className="text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
             <Zap size={22} className="text-accent-500" />
-            Skills 管理
+            {t('skill.skillManagement')}
           </h2>
           <p className="text-sm text-surface-500 mt-1">
-            基于目录结构的专家知识包，从 ZIP 文件或文件夹导入
+            {t('skill.skillManagementDescription')}
           </p>
           <p className="text-[10px] text-surface-400 mt-0.5 font-mono">
-            存储: IndexedDB
+            {t('skill.storageIndexedDB')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -272,44 +278,44 @@ export function SkillManager() {
             onClick={handleRefresh}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/60 border border-surface-300 dark:border-surface-600 disabled:opacity-50 transition-all"
-            title="刷新"
+            title={t('common.refresh')}
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            刷新
+            {t('common.refresh')}
           </button>
           <button
             onClick={handleImportZip}
             disabled={importing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/60 border border-surface-300 dark:border-surface-600 disabled:opacity-50 transition-all"
-            title="从 ZIP 导入"
+            title={t('skill.importFromZip')}
           >
             <Upload size={14} />
-            导入 ZIP
+            {t('skill.importZip')}
           </button>
           <button
             onClick={handleImportFolder}
             disabled={importing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/60 border border-surface-300 dark:border-surface-600 disabled:opacity-50 transition-all"
-            title="从文件夹导入"
+            title={t('skill.importFromFolder')}
           >
             <FolderPlus size={14} />
-            导入文件夹
+            {t('skill.importFolder')}
           </button>
           <button
             onClick={handleExport}
             disabled={skills.length === 0}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/60 border border-surface-300 dark:border-surface-600 disabled:opacity-50 transition-all"
-            title="导出为 ZIP"
+            title={t('skill.exportAsZip')}
           >
             <Download size={14} />
-            导出
+            {t('skill.export')}
           </button>
           <button
             onClick={handleCreate}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-accent-500 hover:bg-accent-600 text-white shadow-sm transition-all"
           >
             <Plus size={14} />
-            新建 Skill
+            {t('skill.createSkill')}
           </button>
         </div>
       </div>
@@ -325,9 +331,9 @@ export function SkillManager() {
           <button
             onClick={() => navigator.clipboard.writeText(importMessage)}
             className="absolute top-2 right-2 px-2 py-1 text-[10px] rounded border opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 dark:bg-surface-800/80 hover:bg-white dark:hover:bg-surface-700 border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300"
-            title="复制错误信息"
+            title={t('skill.copyErrorInfo')}
           >
-            复制
+            {t('skill.copy')}
           </button>
         </div>
       )}
@@ -340,7 +346,7 @@ export function SkillManager() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索 Skill 名称、描述或内容..."
+            placeholder={t('skill.searchSkillPlaceholder')}
             className="w-full pl-9 pr-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 text-sm bg-white dark:bg-surface-800 text-surface-800 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-accent-500/40 transition-all"
           />
         </div>
@@ -348,9 +354,9 @@ export function SkillManager() {
         {/* 位置过滤 */}
         <div className="flex rounded-lg border border-surface-300 dark:border-surface-600 overflow-hidden">
           {([
-            { key: 'all', label: '全部' },
-            { key: 'global', label: '全局' },
-            { key: 'project', label: '项目' },
+            { key: 'all', label: t('skill.all') },
+            { key: 'global', label: t('skill.global') },
+            { key: 'project', label: t('skill.project') },
           ] as const).map((opt) => (
             <button
               key={opt.key}
@@ -372,7 +378,7 @@ export function SkillManager() {
       {loading && (
         <div className="flex items-center justify-center py-16 text-surface-400">
           <RefreshCw size={20} className="animate-spin mr-2" />
-          <span className="text-sm">正在扫描 Skills 目录...</span>
+          <span className="text-sm">{t('skill.scanningSkills')}</span>
         </div>
       )}
 
@@ -380,11 +386,11 @@ export function SkillManager() {
       {!loading && filteredSkills.length === 0 ? (
         <SettingsEmptyState
           icon={Zap}
-          title={skills.length === 0 ? '还没有发现任何 Skill' : '没有匹配的 Skill'}
+          title={skills.length === 0 ? t('skill.noSkillsFound') : t('skill.noMatchingSkills')}
           description={
             skills.length === 0
-              ? '从 ZIP 文件导入，或从文件夹导入 Skill'
-              : '尝试调整搜索条件或过滤器'
+              ? t('skill.importSkillHint')
+              : t('skill.tryAdjustSearch')
           }
           iconSize={40}
         />
@@ -411,23 +417,23 @@ export function SkillManager() {
                           : 'bg-surface-200 dark:bg-surface-700 text-surface-500'
                       }`}
                     >
-                      {skill.enabled ? '已启用' : '已禁用'}
+                      {skill.enabled ? t('skill.enabled') : t('skill.disabled')}
                     </span>
                   </div>
 
                   {/* 描述 */}
                   <p className="text-xs text-surface-500 dark:text-surface-400 line-clamp-2 mb-2">
-                    {skill.description || '无描述'}
+                    {skill.description || t('skill.noDescription')}
                   </p>
 
                   {/* 元信息 */}
                   <div className="flex items-center gap-3 text-[10px] text-surface-400">
                     <span className="flex items-center gap-1">
                       {skill.location === 'global' ? <Globe size={10} /> : <FolderOpen size={10} />}
-                      {skill.location === 'global' ? '全局' : '项目'}
+                      {skill.location === 'global' ? t('skill.global') : t('skill.project')}
                     </span>
                     <span>
-                      资源: {skill.resourceFiles.length} 文件
+                      {t('skill.resourcesCount', { count: skill.resourceFiles.length })}
                     </span>
                   </div>
                 </div>
@@ -440,29 +446,29 @@ export function SkillManager() {
                   <button
                     onClick={() => toggleSkill(skill.dirPath)}
                     className="p-1.5 rounded-lg text-muted hover:text-accent-500 hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-all"
-                    title={skill.enabled ? '禁用' : '启用'}
+                    title={skill.enabled ? t('skill.disable') : t('skill.enable')}
                   >
                     {skill.enabled ? <ToggleRight size={16} className="text-blue-500" /> : <ToggleLeft size={16} />}
                   </button>
                   <button
                     onClick={() => handleEdit(skill)}
                     className="p-1.5 rounded-lg text-muted hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-200/60 dark:hover:bg-surface-700/60 transition-all"
-                    title="编辑"
+                    title={t('common.edit')}
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={async () => {
                       const ok = await confirm({
-                        title: '删除 Skill',
-                        message: `确定删除 Skill "${skill.name}"？\n目录: ${skill.dirPath}`,
-                        confirmLabel: '删除',
+                        title: t('skill.deleteSkill'),
+                        message: t('skill.deleteSkillConfirm', { name: skill.name, path: skill.dirPath }),
+                        confirmLabel: t('common.delete'),
                         variant: 'danger',
                       })
                       if (ok) handleDelete(skill.dirPath)
                     }}
                     className="p-1.5 rounded-lg text-muted hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                    title="删除"
+                    title={t('common.delete')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -476,7 +482,7 @@ export function SkillManager() {
       {/* 统计信息 */}
       {!loading && skills.length > 0 && (
         <div className="mt-4 text-xs text-surface-400 text-center">
-          共 {skills.length} 个 Skill，{skills.filter((s) => s.enabled).length} 个已启用
+          {t('skill.skillStats', { total: skills.length, enabled: skills.filter((s) => s.enabled).length })}
         </div>
       )}
       <Dialog />

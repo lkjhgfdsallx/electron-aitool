@@ -10,6 +10,7 @@ import { useConversationStore } from '../../stores/conversation-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { ModelSelector } from '../chat/ModelSelector'
 import { BrandLogo } from '../brand'
+import { useAppTranslation } from '@/i18n/hooks'
 import type { ThemeMode } from '../../types'
 import type { ViewMode } from '../settings/SettingsNavRail'
 
@@ -20,6 +21,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) {
+  const { t } = useAppTranslation()
   const { theme, setTheme } = useSettingsStore()
   const { currentConversationId, getConversation } = useConversationStore()
   const { getAgent } = useAgentStore()
@@ -28,9 +30,9 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
   const currentAgent = currentConversation?.agentId ? getAgent(currentConversation.agentId) : undefined
 
   const themeOptions: { value: ThemeMode; icon: typeof Sun; label: string }[] = [
-    { value: 'light', icon: Sun, label: '亮色' },
-    { value: 'dark', icon: Moon, label: '暗色' },
-    { value: 'system', icon: Monitor, label: '跟随系统' }
+    { value: 'light', icon: Sun, label: t('settings.light') },
+    { value: 'dark', icon: Moon, label: t('settings.dark') },
+    { value: 'system', icon: Monitor, label: t('settings.system') }
   ]
 
   const cycleTheme = () => {
@@ -55,7 +57,7 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
       <div className="flex-1 flex items-center justify-center min-w-0 px-4">
         {viewMode === 'settings' ? (
           <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
-            设置
+            {t('nav.settings')}
           </span>
         ) : currentConversation ? (
           <div className="flex items-center gap-2 min-w-0">
@@ -70,7 +72,7 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
           </div>
         ) : (
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            选择或创建一个对话
+            {t('nav.selectOrCreateConversation')}
           </span>
         )}
       </div>
@@ -86,7 +88,8 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
         <button
           onClick={cycleTheme}
           className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all"
-          title={`当前: ${theme === 'light' ? '亮色' : theme === 'dark' ? '暗色' : '跟随系统'}`}
+          title={`${t('settings.theme')}: ${themeOptions.find((option) => option.value === theme)?.label}`}
+          aria-label={`${t('settings.theme')}: ${themeOptions.find((option) => option.value === theme)?.label}`}
         >
           <ThemeIcon size={16} />
         </button>
@@ -99,7 +102,8 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
               ? 'bg-accent-50 dark:bg-accent-900/20 text-accent-600 dark:text-accent-400'
               : 'hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
           }`}
-          title={viewMode === 'settings' ? '返回对话' : '设置'}
+          title={viewMode === 'settings' ? t('nav.backToChat') : t('nav.settings')}
+          aria-label={viewMode === 'settings' ? t('nav.backToChat') : t('nav.settings')}
         >
           <Settings size={16} />
         </button>

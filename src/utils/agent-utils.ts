@@ -73,14 +73,14 @@ export function getAgentCategory(agent: Pick<AgentProfile, 'id' | 'tags' | 'scop
   return 'custom'
 }
 
-/** Agent 分类展示元数据：标签文案、图标 key、主题色类 */
+/** Agent 分类展示元数据：翻译键、图标 key、主题色类 */
 export interface AgentCategoryMeta {
   /** 分类唯一标识 */
   category: AgentCategory
-  /** 中文标签文案 */
-  label: string
-  /** 简短文案（用于紧凑场景，如选择器内联标签） */
-  shortLabel: string
+  /** 完整分类标签的 i18n 键 */
+  labelKey: 'chat.presetAgents' | 'chat.workspaceAgents' | 'chat.customAgents'
+  /** 紧凑场景分类标签的 i18n 键 */
+  shortLabelKey: 'chat.presetAgents' | 'chat.workspaceAgentsShort' | 'chat.customAgents'
   /** lucide 图标名（供组件按需映射为图标） */
   icon: 'Sparkles' | 'FolderOpen' | 'User'
   /** 亮色主题下的 Tailwind 类（背景 + 文字） */
@@ -93,24 +93,24 @@ export interface AgentCategoryMeta {
 export const AGENT_CATEGORY_META: Record<AgentCategory, AgentCategoryMeta> = {
   preset: {
     category: 'preset',
-    label: '预设',
-    shortLabel: '预设',
+    labelKey: 'chat.presetAgents',
+    shortLabelKey: 'chat.presetAgents',
     icon: 'Sparkles',
     lightClass: 'bg-violet-100 text-violet-600',
     darkClass: 'dark:bg-violet-900/30 dark:text-violet-300',
   },
   workspace: {
     category: 'workspace',
-    label: '工作区专属',
-    shortLabel: '工作区',
+    labelKey: 'chat.workspaceAgents',
+    shortLabelKey: 'chat.workspaceAgentsShort',
     icon: 'FolderOpen',
     lightClass: 'bg-amber-100 text-amber-600',
     darkClass: 'dark:bg-amber-900/30 dark:text-amber-400',
   },
   custom: {
     category: 'custom',
-    label: '自定义',
-    shortLabel: '自定义',
+    labelKey: 'chat.customAgents',
+    shortLabelKey: 'chat.customAgents',
     icon: 'User',
     lightClass: 'bg-sky-100 text-sky-600',
     darkClass: 'dark:bg-sky-900/30 dark:text-sky-300',

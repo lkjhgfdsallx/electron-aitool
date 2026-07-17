@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Palette, Type, Code2, Layout, Keyboard, Bell, PanelLeft,
-  Monitor
+  Monitor, Globe
 } from 'lucide-react'
+import { languages } from '@/i18n/config'
+import { useAppTranslation } from '@/i18n/hooks'
 import hljs from 'highlight.js'
 import { useSettingsStore, applyCSSVariables } from '../../stores/settings-store'
 import type { CodeHighlightTheme, MessageAlignment } from '../../types'
@@ -39,20 +41,21 @@ const CODE_FONT_SIZE_MAX = 20
 const SIDEBAR_WIDTH_MIN = 200
 const SIDEBAR_WIDTH_MAX = 480
 
-const FONT_FAMILIES = [
-  { label: '系统默认', value: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
-  { label: '思源黑体', value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif" },
-  { label: '苹方', value: "'PingFang SC', 'Hiragino Sans GB', sans-serif" },
-  { label: '微软雅黑', value: "'Microsoft YaHei', sans-serif" },
-  { label: 'Georgia', value: "Georgia, 'Times New Roman', serif" },
+// Font families (values are CSS font stacks, labels are translated dynamically)
+const FONT_FAMILY_VALUES = [
+  { value: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", i18nKey: 'settings.fontSystemDefault' },
+  { value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif", i18nKey: 'settings.fontSourceHanSans' },
+  { value: "'PingFang SC', 'Hiragino Sans GB', sans-serif", i18nKey: 'settings.fontPingFang' },
+  { value: "'Microsoft YaHei', sans-serif", i18nKey: 'settings.fontMicrosoftYaHei' },
+  { value: "Georgia, 'Times New Roman', serif", i18nKey: 'settings.fontGeorgia' },
 ]
 
-const CODE_FONT_FAMILIES = [
-  { label: 'JetBrains Mono', value: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace" },
-  { label: 'Fira Code', value: "'Fira Code', 'Cascadia Code', Consolas, monospace" },
-  { label: 'Cascadia Code', value: "'Cascadia Code', Consolas, monospace" },
-  { label: 'Source Code Pro', value: "'Source Code Pro', Consolas, monospace" },
-  { label: 'Consolas', value: "Consolas, 'Courier New', monospace" },
+const CODE_FONT_FAMILY_VALUES = [
+  { value: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace", i18nKey: 'settings.codeFontJetBrains' },
+  { value: "'Fira Code', 'Cascadia Code', Consolas, monospace", i18nKey: 'settings.codeFontFiraCode' },
+  { value: "'Cascadia Code', Consolas, monospace", i18nKey: 'settings.codeFontCascadia' },
+  { value: "'Source Code Pro', Consolas, monospace", i18nKey: 'settings.codeFontSourceCodePro' },
+  { value: "Consolas, 'Courier New', monospace", i18nKey: 'settings.codeFontConsolas' },
 ]
 
 const CODE_HIGHLIGHT_THEMES: { label: string; value: CodeHighlightTheme }[] = [
@@ -67,24 +70,57 @@ const CODE_HIGHLIGHT_THEMES: { label: string; value: CodeHighlightTheme }[] = [
   { label: 'Night Owl', value: 'night-owl' },
 ]
 
-const MESSAGE_ALIGNMENTS: { label: string; value: MessageAlignment; desc: string }[] = [
-  { label: '左右对齐', value: 'left-right', desc: '用户消息靠右，AI 消息靠左' },
-  { label: '全部靠左', value: 'all-left', desc: '所有消息都靠左对齐' },
-  { label: '全部靠右', value: 'all-right', desc: '所有消息都靠右对齐' },
-  { label: '全宽', value: 'full-width', desc: '消息占满整行宽度' },
-]
+// ---- 语言选择组件 ----
 
-const NOTIFICATION_SOUNDS = [
-  { label: '默认提示音', value: 'default' },
-  { label: '清脆', value: 'chime' },
-  { label: '柔和', value: 'soft' },
-  { label: '无', value: 'none' },
-]
+function LanguageSelector() {
+  const { t, currentLang, changeLanguage } = useAppTranslation()
+  const [isSelecting, setIsSelecting] = useState(false)
+
+  const handleLanguageChange = async (lang: string) => {
+    if (lang === currentLang) return
+    setIsSelecting(true)
+    await changeLanguage(lang)
+    setIsSelecting(false)
+  }
+
+  const currentLabel = languages.find(l => l.code === currentLang)?.label || 'EN'
+
+  return (
+    <div className="py-3">
+      <label className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-2 block">
+        {t('language.switchLanguage')}
+      </label>
+      <p className="text-xs text-muted mb-3">{t('settings.languageDescription')}</p>
+      <div className="flex gap-2">
+        {languages.map((lang) => (
+          <button
+            key={lang.code}
+            onClick={() => handleLanguageChange(lang.code)}
+            disabled={isSelecting}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm text-left transition-all border ${
+              currentLang === lang.code
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 shadow-sm'
+                : 'border-surface-200 dark:border-surface-700 hover:border-blue-300 dark:hover:border-blue-700 text-surface-600 dark:text-surface-400'
+            }`}
+          >
+            <div className="font-medium">{lang.label}</div>
+            <div className="text-xs opacity-70">{lang.name}</div>
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+        <Globe className="w-3 h-3" />
+        <span>{t('settings.currentLanguage', { language: currentLabel })}</span>
+      </div>
+    </div>
+  )
+}
 
 // ---- 主组件 ----
 
 export function UIPreferencesSection() {
   const settings = useSettingsStore()
+  const { t } = useAppTranslation()
 
   // 动态加载代码高亮主题 CSS
   useEffect(() => {
@@ -106,54 +142,78 @@ export function UIPreferencesSection() {
     applyCSSVariables(settings)
   }, [settings.fontFamily, settings.codeFontFamily, settings.fontSize, settings.codeFontSize, settings.sidebarWidth])
 
-  const toggleItems: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }[] = [
+  // Dynamic font families with translated labels
+  const fontFamilies = useMemo(() => FONT_FAMILY_VALUES.map(f => ({ label: t(f.i18nKey), value: f.value })), [t])
+  const codeFontFamilies = useMemo(() => CODE_FONT_FAMILY_VALUES.map(f => ({ label: t(f.i18nKey), value: f.value })), [t])
+
+  // Dynamic message alignments with translated labels
+  const messageAlignments = useMemo(() => [
+    { label: t('settings.alignLeftRight'), value: 'left-right' as MessageAlignment, desc: t('settings.alignLeftRightDesc') },
+    { label: t('settings.alignAllLeft'), value: 'all-left' as MessageAlignment, desc: t('settings.alignAllLeftDesc') },
+    { label: t('settings.alignAllRight'), value: 'all-right' as MessageAlignment, desc: t('settings.alignAllRightDesc') },
+    { label: t('settings.alignFullWidth'), value: 'full-width' as MessageAlignment, desc: t('settings.alignFullWidthDesc') },
+  ], [t])
+
+  // Dynamic notification sounds with translated labels
+  const notificationSounds = useMemo(() => [
+    { label: t('settings.soundDefault'), value: 'default' },
+    { label: t('settings.soundChime'), value: 'chime' },
+    { label: t('settings.soundSoft'), value: 'soft' },
+    { label: t('settings.soundNone'), value: 'none' },
+  ], [t])
+
+  const toggleItems = useMemo(() => [
     {
-      label: '显示 Token 用量',
-      description: '在消息气泡下方显示 Token 消耗信息',
+      label: t('settings.showTokenUsage'),
+      description: t('settings.showTokenUsageDesc'),
       checked: settings.showTokenUsage,
       onChange: () => settings.toggleTokenUsage()
     },
     {
-      label: '显示时间戳',
-      description: '在消息气泡下方显示发送时间',
+      label: t('settings.showTimestamp'),
+      description: t('settings.showTimestampDesc'),
       checked: settings.showTimestamp,
       onChange: () => settings.toggleTimestamp()
     },
     {
-      label: 'Enter 发送消息',
-      description: '按 Enter 键直接发送，Shift+Enter 换行',
+      label: t('settings.enterToSend'),
+      description: t('settings.enterToSendDesc'),
       checked: settings.sendWithEnter,
       onChange: () => settings.setSendWithEnter(!settings.sendWithEnter)
     },
     {
-      label: '联网搜索',
-      description: '允许 AI 在回答时搜索互联网获取最新信息',
+      label: t('settings.webSearchEnabled'),
+      description: t('settings.webSearchEnabledDesc'),
       checked: settings.webSearchEnabled,
       onChange: () => settings.toggleWebSearch()
     }
-  ]
+  ], [t, settings])
 
   return (
     <div className="space-y-8">
-      <SettingsHeader icon={Palette} title="界面偏好" description="自定义界面显示方式、交互行为和快捷键" />
+      <SettingsHeader
+        icon={Palette}
+        title={t('settings.uiPreferences')}
+        description={t('settings.uiPreferencesDescription')}
+      />
 
       {/* ---- 1. 字体与排版 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={Type} title="字体与排版" description="调节消息和代码的字体、字号" />
+        <SettingsSectionHeader icon={Type} title={t('settings.fontAndTypography')} description={t('settings.fontAndTypographyDesc')} />
 
         <SettingsSelect
-          label="消息字体"
-          description="对话内容的字体族"
+          label={t('settings.messageFont')}
+          description={t('settings.messageFontDesc')}
           value={settings.fontFamily}
-          options={FONT_FAMILIES}
+          options={fontFamilies}
           onChange={(v) => settings.setFontFamily(v)}
           layout="horizontal"
           className="py-3"
         />
 
         <SettingsSlider
-          label="消息字号"
-          description="正文字体大小"
+          label={t('settings.messageFontSize')}
+          description={t('settings.messageFontSizeDesc')}
           value={settings.fontSize}
           min={FONT_SIZE_MIN}
           max={FONT_SIZE_MAX}
@@ -164,18 +224,18 @@ export function UIPreferencesSection() {
         />
 
         <SettingsSelect
-          label="代码字体"
-          description="代码块的等宽字体"
+          label={t('settings.codeFont')}
+          description={t('settings.codeFontDesc')}
           value={settings.codeFontFamily}
-          options={CODE_FONT_FAMILIES}
+          options={codeFontFamilies}
           onChange={(v) => settings.setCodeFontFamily(v)}
           layout="horizontal"
           className="py-3"
         />
 
         <SettingsSlider
-          label="代码字号"
-          description="代码块字体大小"
+          label={t('settings.codeFontSize')}
+          description={t('settings.codeFontSizeDesc')}
           value={settings.codeFontSize}
           min={CODE_FONT_SIZE_MIN}
           max={CODE_FONT_SIZE_MAX}
@@ -188,11 +248,11 @@ export function UIPreferencesSection() {
 
       {/* ---- 2. 代码高亮主题 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={Code2} title="代码高亮" description="选择代码块的语法高亮风格" />
+        <SettingsSectionHeader icon={Code2} title={t('settings.codeHighlight')} description={t('settings.codeHighlightSectionDesc')} />
 
         <SettingsSelect
-          label="高亮主题"
-          description="代码块的 syntax highlight 风格"
+          label={t('settings.codeHighlightTheme')}
+          description={t('settings.codeHighlightDesc')}
           value={settings.codeHighlightTheme}
           options={CODE_HIGHLIGHT_THEMES}
           onChange={(v) => settings.setCodeHighlightTheme(v)}
@@ -202,7 +262,7 @@ export function UIPreferencesSection() {
 
         {/* 主题预览 */}
         <div className="py-3">
-          <p className="text-xs text-muted mb-2">预览：</p>
+          <p className="text-xs text-muted mb-2">{t('settings.preview')}：</p>
           <pre className="rounded-lg p-3 text-xs overflow-x-auto bg-surface-800 text-gray-200">
             <code
               className="hljs"
@@ -214,15 +274,15 @@ export function UIPreferencesSection() {
 
       {/* ---- 3. 消息布局 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={Layout} title="消息布局" description="控制消息对齐方式和头像显示" />
+        <SettingsSectionHeader icon={Layout} title={t('settings.messageLayout')} description={t('settings.messageLayoutDesc')} />
 
         <div className="py-3">
           <label className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-2 block">
-            消息对齐方式
+            {t('settings.messageAlignment')}
           </label>
-          <p className="text-xs text-muted mb-3">选择用户和 AI 消息的排列方式</p>
+          <p className="text-xs text-muted mb-3">{t('settings.messageAlignmentDesc')}</p>
           <div className="grid grid-cols-2 gap-2">
-            {MESSAGE_ALIGNMENTS.map((opt) => (
+            {messageAlignments.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => settings.setMessageAlignment(opt.value)}
@@ -240,8 +300,8 @@ export function UIPreferencesSection() {
         </div>
 
         <SettingsToggle
-          label="显示头像"
-          description="在消息旁显示用户/AI 头像图标"
+          label={t('settings.showAvatar')}
+          description={t('settings.showAvatarDesc')}
           checked={settings.showAvatar}
           onChange={() => settings.toggleAvatar()}
           className="py-3"
@@ -250,11 +310,11 @@ export function UIPreferencesSection() {
 
       {/* ---- 4. 侧边栏行为 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={PanelLeft} title="侧边栏" description="调整侧边栏宽度和行为" />
+        <SettingsSectionHeader icon={PanelLeft} title={t('settings.sidebar')} description={t('settings.sidebarDesc')} />
 
         <SettingsSlider
-          label="侧边栏宽度"
-          description="拖拽调节或在此精确设置"
+          label={t('settings.sidebarWidth')}
+          description={t('settings.sidebarWidthDesc')}
           value={settings.sidebarWidth}
           min={SIDEBAR_WIDTH_MIN}
           max={SIDEBAR_WIDTH_MAX}
@@ -267,19 +327,19 @@ export function UIPreferencesSection() {
 
       {/* ---- 5. 通知设置 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={Bell} title="通知设置" description="后台对话完成时的通知行为" />
+        <SettingsSectionHeader icon={Bell} title={t('settings.notificationSettings')} description={t('settings.notificationSettingsDesc')} />
 
         <SettingsToggle
-          label="系统通知"
-          description="后台对话完成时弹出系统通知"
+          label={t('settings.systemNotification')}
+          description={t('settings.systemNotificationDesc')}
           checked={settings.enableNotification}
           onChange={() => settings.setEnableNotification(!settings.enableNotification)}
           className="py-3"
         />
 
         <SettingsToggle
-          label="声音提示"
-          description="通知时播放提示音"
+          label={t('settings.soundEnabled')}
+          description={t('settings.soundEnabledDesc')}
           checked={settings.enableSound}
           onChange={() => settings.setEnableSound(!settings.enableSound)}
           className="py-3"
@@ -287,10 +347,10 @@ export function UIPreferencesSection() {
 
         {settings.enableSound && (
           <SettingsSelect
-            label="提示音风格"
-            description="选择提示音效"
+            label={t('settings.soundStyle')}
+            description={t('settings.soundStyleDesc')}
             value={settings.notificationSound}
-            options={NOTIFICATION_SOUNDS}
+            options={notificationSounds}
             onChange={(v) => settings.setNotificationSound(v)}
             layout="horizontal"
             className="py-3"
@@ -300,43 +360,59 @@ export function UIPreferencesSection() {
 
       {/* ---- 6. 快捷键自定义 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={Keyboard} title="快捷键" description="自定义键盘快捷键绑定" />
+        <SettingsSectionHeader icon={Keyboard} title={t('settings.shortcutSettings')} description={t('settings.shortcutSettingsDesc')} />
 
         <ShortcutRow
-          label="新建对话"
+          label={t('settings.shortcutNewConversation')}
           binding={settings.shortcuts.newConversation}
           onChange={(b) => settings.setShortcut('newConversation', b)}
+          t={t}
         />
         <ShortcutRow
-          label="切换侧边栏"
+          label={t('settings.shortcutToggleSidebar')}
           binding={settings.shortcuts.toggleSidebar}
           onChange={(b) => settings.setShortcut('toggleSidebar', b)}
+          t={t}
         />
         <ShortcutRow
-          label="打开设置"
+          label={t('settings.shortcutOpenSettings')}
           binding={settings.shortcuts.openSettings}
           onChange={(b) => settings.setShortcut('openSettings', b)}
+          t={t}
         />
         <ShortcutRow
-          label="聚焦输入框"
+          label={t('settings.shortcutFocusInput')}
           binding={settings.shortcuts.focusInput}
           onChange={(b) => settings.setShortcut('focusInput', b)}
+          t={t}
         />
         <ShortcutRow
-          label="下一个 Agent"
+          label={t('settings.shortcutNextAgent')}
           binding={settings.shortcuts.switchNextAgent}
           onChange={(b) => settings.setShortcut('switchNextAgent', b)}
+          t={t}
         />
         <ShortcutRow
-          label="上一个 Agent"
+          label={t('settings.shortcutPrevAgent')}
           binding={settings.shortcuts.switchPrevAgent}
           onChange={(b) => settings.setShortcut('switchPrevAgent', b)}
+          t={t}
         />
       </SettingsCard>
 
-      {/* ---- 7. 基础开关（保留原有） ---- */}
+      {/* ---- 7. 语言设置 ---- */}
       <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
-        <SettingsSectionHeader icon={Monitor} title="显示选项" description="基础显示和交互开关" />
+        <SettingsSectionHeader
+          icon={Globe}
+          title={t('settings.languageSettings')}
+          description={t('settings.languageSettingsDescription')}
+        />
+        <LanguageSelector />
+      </SettingsCard>
+
+      {/* ---- 8. 基础开关（保留原有） ---- */}
+      <SettingsCard className="divide-y divide-surface-200/80 dark:divide-surface-700/60">
+        <SettingsSectionHeader icon={Monitor} title={t('settings.displayOptions')} description={t('settings.displayOptionsDesc')} />
         {toggleItems.map((item) => (
           <SettingsToggle key={item.label} {...item} className="py-3" />
         ))}
@@ -348,7 +424,7 @@ export function UIPreferencesSection() {
           onClick={settings.resetPreferences}
           className="px-4 py-2 text-xs text-muted hover:text-surface-700 dark:hover:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
         >
-          恢复默认设置
+          {t('settings.resetToDefaults')}
         </button>
       </div>
     </div>
@@ -357,10 +433,11 @@ export function UIPreferencesSection() {
 
 // ---- 快捷键编辑行 ----
 
-function ShortcutRow({ label, binding, onChange }: {
+function ShortcutRow({ label, binding, onChange, t }: {
   label: string
   binding: { key: string; modifiers: string[] }
   onChange: (b: { key: string; modifiers: string[] }) => void
+  t: (key: string) => string
 }) {
   const [recording, setRecording] = useState(false)
 
@@ -402,7 +479,7 @@ function ShortcutRow({ label, binding, onChange }: {
         <label className="text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
         {!isShortcutBindingSupported(binding) && (
           <span className="text-[11px] text-red-500 dark:text-red-400 mt-0.5 leading-tight">
-            此键名不支持全局快捷键注册，快捷键将无法生效
+            {t('settings.shortcutNotSupported')}
           </span>
         )}
       </div>
@@ -416,7 +493,7 @@ function ShortcutRow({ label, binding, onChange }: {
               : 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:border-accent-300'
         }`}
       >
-        {recording ? '按下快捷键...' : formatShortcut(binding)}
+        {recording ? t('settings.shortcutPressKey') : formatShortcut(binding)}
       </button>
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, ChevronRight, Brain } from 'lucide-react'
+import { useAppTranslation } from '@/i18n/hooks'
 
 interface ThinkingSectionProps {
   content: string
@@ -10,6 +11,7 @@ interface ThinkingSectionProps {
 }
 
 export function ThinkingSection({ content, isStreaming = false, defaultExpanded = false }: ThinkingSectionProps) {
+  const { t } = useAppTranslation()
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const scrollRef = useRef<HTMLDivElement>(null)
   const userScrolledUpRef = useRef(false)
@@ -43,19 +45,21 @@ export function ThinkingSection({ content, isStreaming = false, defaultExpanded 
     <div className="mb-2 rounded-xl border border-surface-200/60 dark:border-surface-700/40 overflow-hidden bg-surface-50/60 dark:bg-surface-800/30">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
+        aria-label={t('chat.thinkingProcess')}
         className="flex items-center gap-2 w-full px-3 py-1.5 text-xs rounded-lg border-none bg-transparent hover:bg-surface-100 dark:hover:bg-surface-700/60 transition-all text-muted cursor-pointer"
       >
         <div className="w-5 h-5 rounded-md bg-accent-50 dark:bg-accent-950/30 flex items-center justify-center flex-shrink-0">
           <Brain size={12} className="text-accent-400" />
         </div>
-        <span className="font-medium">思考过程</span>
+        <span className="font-medium">{t('chat.thinkingProcess')}</span>
         {isStreaming ? (
           <span className="inline-flex items-center gap-1 text-accent-500">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-400 animate-pulse" />
-            思考中...
+            {t('chat.thinkingInProgress')}
           </span>
         ) : (
-          <span className="text-muted/70">已完成</span>
+          <span className="text-muted/70">{t('chat.thinkingCompleted')}</span>
         )}
         <div className="ml-auto flex-shrink-0">
           {isExpanded ? (

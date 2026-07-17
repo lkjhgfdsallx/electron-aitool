@@ -14,12 +14,13 @@ import { useKnowledgeBaseStore } from '../../stores/knowledge-base-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { knowledgeBaseService } from '../../services/knowledge-base-service'
 import type { SearchMode } from '../../types'
+import { useAppTranslation } from '@/i18n/hooks'
 
 /** 搜索模式配置 */
-const SEARCH_MODES: { mode: SearchMode; label: string; title: string }[] = [
-  { mode: 'hybrid', label: '混合', title: '混合检索：结合向量语义和 BM25 关键词，推荐' },
-  { mode: 'vector', label: '向量', title: '向量检索：基于语义相似度' },
-  { mode: 'keyword', label: '关键词', title: '关键词检索：BM25 算法，适合代码和专有名词' }
+const SEARCH_MODES: { mode: SearchMode; labelKey: string; titleKey: string }[] = [
+  { mode: 'hybrid', labelKey: 'knowledgeBase.searchModeHybrid', titleKey: 'knowledgeBase.searchModeHybridTitle' },
+  { mode: 'vector', labelKey: 'knowledgeBase.searchModeVector', titleKey: 'knowledgeBase.searchModeVectorTitle' },
+  { mode: 'keyword', labelKey: 'knowledgeBase.searchModeKeyword', titleKey: 'knowledgeBase.searchModeKeywordTitle' }
 ]
 
 interface KnowledgeBaseTopBarProps {
@@ -28,6 +29,7 @@ interface KnowledgeBaseTopBarProps {
 }
 
 export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTopBarProps) {
+  const { t } = useAppTranslation()
   const {
     searchQuery,
     setSearchQuery,
@@ -85,7 +87,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
       const uploadCollectionId = collectionActiveId ?? undefined
 
       for (const file of Array.from(fileList)) {
-        setUploadProgress(`正在处理: ${file.name}`)
+        setUploadProgress(t('knowledgeBase.processingFile', { name: file.name }))
         try {
           const metadata = await knowledgeBaseService.uploadFile(file, (status) => {
             setUploadProgress(`${file.name}: ${status}`)
@@ -100,7 +102,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
       setUploadProgress('')
       e.target.value = ''
     },
-    [addFile, collectionActiveId]
+    [addFile, collectionActiveId, t]
   )
 
   // URL 导入
@@ -114,11 +116,11 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
       setUrlValue('')
       setShowUrlInput(false)
     } catch (error) {
-      setUrlError(error instanceof Error ? error.message : 'URL 导入失败')
+      setUrlError(error instanceof Error ? error.message : t('knowledgeBase.urlImportFailed'))
     } finally {
       setImportingUrl(false)
     }
-  }, [urlValue, collectionActiveId, importUrl])
+  }, [urlValue, collectionActiveId, importUrl, t])
 
   const handleUrlKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -143,14 +145,14 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
         <button
           onClick={onBack}
           className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-all flex-shrink-0"
-          title="返回对话"
+          title={t('nav.backToChat')}
         >
           <ArrowLeft size={18} />
         </button>
 
         {/* 标题 */}
         <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-200 flex-shrink-0">
-          知识库
+          {t('knowledgeBase.knowledgeBase')}
         </h2>
 
         {/* 搜索框 */}
@@ -161,7 +163,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="搜索文件名或内容..."
+            placeholder={t('knowledgeBase.searchFilesOrContent')}
             className="w-full pl-9 pr-20 py-1.5 text-sm rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -183,9 +185,9 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                     : 'bg-surface-200 dark:bg-surface-700 text-surface-500'
               }`}
-              title={currentModeConfig.title}
+              title={t(currentModeConfig.titleKey)}
             >
-              {currentModeConfig.label}
+              {t(currentModeConfig.labelKey)}
             </button>
           </div>
         </div>
@@ -198,10 +200,10 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
               ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
               : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
           }`}
-          title="向量查询模拟器"
+          title={t('knowledgeBase.vectorQuerySimulator')}
         >
           <Brain size={14} />
-          <span className="hidden sm:inline">模拟器</span>
+          <span className="hidden sm:inline">{t('knowledgeBase.simulator')}</span>
         </button>
 
         {/* URL 导入按钮 */}
@@ -212,7 +214,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
               ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
               : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
           }`}
-          title="从 URL 导入网页内容"
+          title={t('knowledgeBase.importUrlContent')}
         >
           <Globe size={14} />
           <span className="hidden sm:inline">URL</span>
@@ -234,7 +236,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
           ) : (
             <>
               <Upload size={14} />
-              <span className="hidden sm:inline">上传</span>
+              <span className="hidden sm:inline">{t('knowledgeBase.upload')}</span>
             </>
           )}
           <input
@@ -251,7 +253,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
         <button
           onClick={() => onOpenSettings('knowledge-base')}
           className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-all flex-shrink-0"
-          title="知识库设置"
+          title={t('knowledgeBase.knowledgeBaseSettings')}
         >
           <Settings size={16} />
         </button>
@@ -266,7 +268,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
             value={urlValue}
             onChange={(e) => { setUrlValue(e.target.value); setUrlError('') }}
             onKeyDown={handleUrlKeyDown}
-            placeholder="输入网址，如 https://example.com/article"
+            placeholder={t('knowledgeBase.urlInputPlaceholder')}
             disabled={importingUrl}
             className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-surface-100 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-800 dark:text-surface-200 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50"
           />
@@ -280,7 +282,7 @@ export function KnowledgeBaseTopBar({ onBack, onOpenSettings }: KnowledgeBaseTop
             ) : (
               <Globe size={12} />
             )}
-            导入
+            {t('knowledgeBase.import')}
           </button>
           <button
             onClick={() => { setShowUrlInput(false); setUrlValue(''); setUrlError('') }}
