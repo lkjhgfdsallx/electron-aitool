@@ -171,6 +171,12 @@ export interface ElectronAPI {
         error?: string
       }>
     }
+    /** 代码库检索（由主进程执行，避免暴露 Node API） */
+    search: {
+      findFiles: (rootPath: string, options?: { glob?: string; maxResults?: number }) => Promise<any>
+      searchFiles: (rootPath: string, options: { query: string; glob?: string; isRegex?: boolean; caseSensitive?: boolean; contextLines?: number; maxResults?: number }) => Promise<any>
+      findSymbols: (rootPath: string, options?: { query?: string; glob?: string; maxResults?: number }) => Promise<any>
+    }
     /** 版本控制（VCS）相关操作 */
     vcs: {
       /** 初始化 .ai-workspace-vcs 目录结构 */
@@ -349,6 +355,14 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.invoke('workspace:fs:createDir', dirPath),
       deleteFile: (filePath: string) =>
         ipcRenderer.invoke('workspace:fs:deleteFile', filePath),
+    },
+    search: {
+      findFiles: (rootPath: string, options?: { glob?: string; maxResults?: number }) =>
+        ipcRenderer.invoke('workspace:search:findFiles', rootPath, options),
+      searchFiles: (rootPath: string, options: { query: string; glob?: string; isRegex?: boolean; caseSensitive?: boolean; contextLines?: number; maxResults?: number }) =>
+        ipcRenderer.invoke('workspace:search:searchFiles', rootPath, options),
+      findSymbols: (rootPath: string, options?: { query?: string; glob?: string; maxResults?: number }) =>
+        ipcRenderer.invoke('workspace:search:findSymbols', rootPath, options),
     },
     vcs: {
       init: (folderPath: string) =>

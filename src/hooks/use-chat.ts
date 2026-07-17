@@ -20,6 +20,7 @@ import { useWorkspaceAgentStore } from '../stores/workspace-agent-store'
 import { useSettingsStore } from '../stores'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import { applyWebSearchPolicy, getWebToolsIfEnabled, isWebTool } from '../utils/web-tools'
+import { DEFAULT_POST_WRITE_LINT_CONFIG } from '../types'
 import type { Message, Tool, ToolDefinition, ToolExecuteResult, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
 import type { AgentEvent } from '../services/agent/event-bus'
 
@@ -363,8 +364,9 @@ export function useChat(options: UseChatOptions = {}) {
     const createAgent = async (input: CreateAgentInput): Promise<string> => {
       // 为新 Agent 设置合理的默认工具：工作区文件工具 + 核心工具
       const defaultWorkspaceToolIds = [
-        'workspace:read_file', 'workspace:write_file',
-        'workspace:list_files', 'workspace:execute_command'
+        'workspace:read_file', 'workspace:write_file', 'workspace:str_replace_editor',
+        'workspace:list_files', 'workspace:find_files', 'workspace:search_files',
+        'workspace:find_symbols', 'workspace:execute_command'
       ]
       const toolIds = input.enabledToolIds && input.enabledToolIds.length > 0
         ? input.enabledToolIds
@@ -495,6 +497,7 @@ export function useChat(options: UseChatOptions = {}) {
       dispatchTasks,
       createAgent,
       autoApproval: ws.autoApproval,
+      postWriteLint: ws.postWriteLint ?? DEFAULT_POST_WRITE_LINT_CONFIG,
       onFileActionApproval,
     }
   }, [])

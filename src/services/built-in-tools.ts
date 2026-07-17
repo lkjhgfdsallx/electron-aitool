@@ -812,6 +812,142 @@ export const WORKSPACE_TOOLS: Tool[] = [
     enabled: true
   },
   {
+    id: 'workspace:str_replace_editor',
+    name: 'workspace_str_replace_editor',
+    description: '以精确文本操作批量编辑工作区中的已有文件，适合局部修改，避免重写整份文件。一次可提交跨文件的多项操作，按 operations 数组顺序在每个文件的内存副本上执行；所有操作必须校验成功后才会一次性写入，任意失败均不会修改任何文件。replace 的 old_string 必须在当前内容中恰好出现一次；insert_before/insert_after 的 anchor_string 必须恰好出现一次；append 追加到文件末尾。调用前先用 workspace_read_file 获取最新完整文本，字符串必须保留准确的空格和换行。删除内容时将 replace 的 new_string 传空字符串。仅用于修改已有文件；创建新文件或整体重写请使用 workspace_write_file。',
+    parameters: {
+      type: 'object',
+      properties: {
+        operations: {
+          type: 'array',
+          minItems: 1,
+          description: '要执行的编辑操作。可包含多个文件；同一文件的操作严格按数组顺序执行。',
+          items: {
+            type: 'object',
+            properties: {
+              file_path: {
+                type: 'string',
+                description: '相对于工作区根目录的已有文件路径，例如 "src/index.ts"'
+              },
+              operation: {
+                type: 'string',
+                enum: ['replace', 'insert_before', 'insert_after', 'append'],
+                description: 'replace 为精确替换；insert_before/insert_after 为在唯一锚点前/后插入；append 为追加到文件末尾。'
+              },
+              old_string: {
+                type: 'string',
+                description: 'replace 操作必须提供：要替换的精确文本，必须在当前内容中恰好匹配一次。'
+              },
+              new_string: {
+                type: 'string',
+                description: 'replace 操作必须提供：替换后的文本；可为空字符串以删除 old_string。'
+              },
+              anchor_string: {
+                type: 'string',
+                description: 'insert_before 或 insert_after 操作必须提供：唯一定位的精确锚点文本。'
+              },
+              content: {
+                type: 'string',
+                description: 'insert_before、insert_after 或 append 操作必须提供：要插入或追加的文本；可为空字符串。'
+              }
+            },
+            required: ['file_path', 'operation']
+          }
+        }
+      },
+      required: ['operations']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:find_files',
+    name: 'workspace_find_files',
+    description: '按 glob 模式递归查找工作区文件名，适合快速定位文件而无需逐层列目录。默认搜索全部文件；支持 *、** 和 ? 通配符，以及用逗号分隔多个模式。会忽略 node_modules、.git、构建产物等常见目录，最多返回 100 条结果。',
+    parameters: {
+      type: 'object',
+      properties: {
+        glob: {
+          type: 'string',
+          description: '可选的文件路径 glob，例如 "src 下所有 TypeScript 文件"、"任意位置的 package.json" 或 "*.md,*.txt"。路径相对于工作区根目录。'
+        },
+        max_results: {
+          type: 'number',
+          description: '可选的最大返回数量，默认且最大为 100。'
+        }
+      },
+      required: []
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:search_files',
+    name: 'workspace_search_files',
+    description: '在工作区文件内容中递归搜索文本或正则表达式，适合查找函数调用、配置键、错误信息和符号引用。默认不区分大小写，返回命中行及前后各 2 行上下文，最多返回 100 条结果；可用 glob 限定文件范围。会忽略 node_modules、.git、构建产物等常见目录，并受扫描文件数和文本总量限制。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '要搜索的文本；当 is_regex 为 true 时为 JavaScript 正则表达式源字符串。'
+        },
+        glob: {
+          type: 'string',
+          description: '可选的文件路径 glob，用于限定搜索范围，例如 src 目录中的 TypeScript 文件。路径相对于工作区根目录。'
+        },
+        is_regex: {
+          type: 'boolean',
+          description: '是否将 query 作为正则表达式解析，默认 false。'
+        },
+        case_sensitive: {
+          type: 'boolean',
+          description: '是否区分大小写，默认 false。'
+        },
+        context_lines: {
+          type: 'number',
+          description: '每个命中行前后返回的上下文行数，默认 2，最大 10。'
+        },
+        max_results: {
+          type: 'number',
+          description: '最大返回命中数，默认且最大为 100。'
+        }
+      },
+      required: ['query']
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
+    id: 'workspace:find_symbols',
+    name: 'workspace_find_symbols',
+    description: '使用 TypeScript AST 查找工作区 TypeScript/JavaScript 文件中的函数、类和变量定义，并标记是否导出。适合快速定位定义；它不等同于完整语言服务器，不能查找所有引用。可按名称关键字或 glob 过滤，默认不区分大小写，最多返回 100 条结果。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '可选的符号名称关键字；留空则列出匹配文件范围内的符号。默认不区分大小写。'
+        },
+        glob: {
+          type: 'string',
+          description: '可选的文件路径 glob，用于限定解析范围。仅会解析 TypeScript/JavaScript 文件。'
+        },
+        max_results: {
+          type: 'number',
+          description: '最大返回符号数，默认且最大为 100。'
+        }
+      },
+      required: []
+    },
+    isBuiltIn: true,
+    isMCP: false,
+    enabled: true
+  },
+  {
     id: 'workspace:list_files',
     name: 'workspace_list_files',
     description: '列出工作区中指定目录下的文件和子目录。返回每个条目的名称、路径、是否为目录、大小和扩展名。用于了解项目结构、浏览代码目录。',

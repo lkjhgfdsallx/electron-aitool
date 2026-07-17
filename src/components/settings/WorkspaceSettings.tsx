@@ -221,6 +221,7 @@ function WorkspaceEditForm({
         safeCommandWhitelist: form.safeCommandWhitelist,
         commandBlacklist: form.commandBlacklist,
         contextConfig: form.contextConfig,
+        postWriteLint: form.postWriteLint,
         knowledgeBaseIds: form.knowledgeBaseIds,
         mcpServerIds: form.mcpServerIds,
         autoApproval: form.autoApproval,

@@ -182,6 +182,13 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
       browser: false,
       mcpTools: false,
     },
+    postWriteLint: {
+      enabled: true,
+      timeoutMs: 30000,
+      maxOutputChars: 6000,
+      disabledLinters: [],
+      customCommands: [],
+    },
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,

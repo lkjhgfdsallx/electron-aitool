@@ -18,6 +18,7 @@ import type {
   Tool,
   ToolExecuteResult,
   AutoApprovalConfig,
+  PostWriteLintConfig,
   PlanningStrategy,
   MemoryConfig,
   TerminationConfig,
@@ -190,6 +191,8 @@ export interface WorkspaceContext {
 
   /** 工作区的自动审批配置矩阵（来自 workspace.autoApproval） */
   autoApproval?: AutoApprovalConfig
+  /** 写入完成后自动执行的 lint / 类型检查配置 */
+  postWriteLint?: PostWriteLintConfig
   /** 文件操作审批回调（当自动审批未通过时，由上层弹出审批弹窗） */
   onFileActionApproval?: (request: FileActionApprovalRequest) => Promise<FileActionApprovalResult>
 }
@@ -429,12 +432,29 @@ function buildAgentSystemPrompt(
       const workspaceRules: string[] = []
       workspaceRules.push(`1. **绝对禁止**在你的回复中输出代码块（\`\`\`）。你的回复只包含分析、计划和说明文字。`)
       let ruleNo = 2
+      if (hasTool('workspace_str_replace_editor')) {
+        workspaceRules.push(`${ruleNo}. 修改已有文件中的局部内容时，**优先使用** \`workspace_str_replace_editor\`：先读取最新文件，再提供唯一匹配的精确文本；它支持一次原子提交多处及多文件编辑。创建新文件或确需整体重写时才使用 \`workspace_write_file\`。`)
+        ruleNo++
+      }
       if (hasTool('workspace_write_file')) {
-        workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_write_file\` 工具来创建或修改文件。代码只能通过此工具写入工作区文件系统。`)
+        workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_write_file\` 来创建新文件或整体重写文件；代码只能通过可用的工作区写入工具写入文件系统。`)
+        ruleNo++
+      }
+      if (workspaceContext?.postWriteLint?.enabled && (hasTool('workspace_write_file') || hasTool('workspace_str_replace_editor'))) {
+        workspaceRules.push(`${ruleNo}. 若写入工具返回 \`POST_WRITE_LINT_BLOCKED\` 或 \`decision: block\`，文件已保存但检查未通过。你必须立即读取相关文件、修复报告中的问题并再次写入；在检查通过前不得转向其他任务。`)
         ruleNo++
       }
       if (hasTool('workspace_read_file')) {
         workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_read_file\` 来读取现有文件内容，不要凭记忆猜测。`)
+        ruleNo++
+      }
+      if (hasTool('workspace_search_files') || hasTool('workspace_find_symbols') || hasTool('workspace_find_files')) {
+        const searchTools = [
+          hasTool('workspace_find_files') ? '\`workspace_find_files\`（按路径模式找文件）' : '',
+          hasTool('workspace_search_files') ? '\`workspace_search_files\`（查文本或正则引用）' : '',
+          hasTool('workspace_find_symbols') ? '\`workspace_find_symbols\`（查 TypeScript/JavaScript 定义）' : '',
+        ].filter(Boolean).join('、')
+        workspaceRules.push(`${ruleNo}. 在需要定位文件、文本引用或 TypeScript/JavaScript 定义时，**优先使用** ${searchTools} 缩小范围，再读取必要文件；不要逐个读取文件进行盲目查找。`)
         ruleNo++
       }
       if (hasTool('workspace_list_files')) {

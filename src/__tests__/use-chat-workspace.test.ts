@@ -163,6 +163,13 @@ function makeWorkspace(overrides: Partial<Workspace> = {}): Workspace {
       browser: false,
       mcpTools: false,
     },
+    postWriteLint: {
+      enabled: true,
+      timeoutMs: 30000,
+      maxOutputChars: 6000,
+      disabledLinters: [],
+      customCommands: [],
+    },
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,
@@ -571,9 +578,16 @@ describe('buildWorkspaceContext', () => {
       })
 
       const createArg = mockCreateWorkspaceAgent.mock.calls[0][0]
+      // 默认工具集由 useChat 提供；新加入的查找、搜索及符号定位工具也应保留。
       expect(createArg.enabledToolIds).toEqual([
-        'workspace:read_file', 'workspace:write_file',
-        'workspace:list_files', 'workspace:execute_command',
+        'workspace:read_file',
+        'workspace:write_file',
+        'workspace:str_replace_editor',
+        'workspace:list_files',
+        'workspace:find_files',
+        'workspace:search_files',
+        'workspace:find_symbols',
+        'workspace:execute_command',
       ])
     })
 

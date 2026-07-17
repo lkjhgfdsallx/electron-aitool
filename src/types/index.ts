@@ -160,6 +160,8 @@ export type {
   CommandApprovalResult,
   CommandApprovalRequest,
   ContextConfig,
+  PostWriteLintConfig,
+  PostWriteLintCustomCommand,
   FolderSelectResult,
   CreateCheckpointParams,
   RestoreConfirmInfo,
@@ -167,7 +169,12 @@ export type {
   AgentToolPermission,
   AutoApprovalConfig,
 } from './workspace'
-export { DEFAULT_CONTEXT_CONFIG, DEFAULT_WORKSPACE_INPUT, DEFAULT_AUTO_APPROVAL_CONFIG } from './workspace'
+export {
+  DEFAULT_CONTEXT_CONFIG,
+  DEFAULT_WORKSPACE_INPUT,
+  DEFAULT_AUTO_APPROVAL_CONFIG,
+  DEFAULT_POST_WRITE_LINT_CONFIG,
+} from './workspace'
 
 // ==================== 界面偏好类型 ====================
 

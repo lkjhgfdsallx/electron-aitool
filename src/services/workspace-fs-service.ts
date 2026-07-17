@@ -25,6 +25,36 @@ export interface ReadFileResult {
   error?: string
 }
 
+export interface WorkspaceSearchMatch {
+  file_path: string
+  line: number
+  column: number
+  line_text: string
+  context: Array<{ line: number; text: string }>
+}
+
+export interface WorkspaceSymbol {
+  name: string
+  kind: 'function' | 'class' | 'variable'
+  exported: boolean
+  file_path: string
+  line: number
+  column: number
+  signature: string
+}
+
+export interface WorkspaceSearchResult<T> {
+  success: boolean
+  error?: string
+  count?: number
+  filesScanned?: number
+  bytesScanned?: number
+  truncated?: boolean
+  files?: string[]
+  matches?: T[]
+  symbols?: T[]
+}
+
 // ---- 服务 ----
 
 export const workspaceFsService = {
@@ -60,6 +90,21 @@ export const workspaceFsService = {
     if (!result.success) {
       throw new Error(result.error || '写入文件失败')
     }
+  },
+
+  /** 按 glob 查找工作区文件（例如 TypeScript 源文件模式） */
+  async findFiles(rootPath: string, options?: { glob?: string; maxResults?: number }): Promise<WorkspaceSearchResult<string>> {
+    return api().workspace.search.findFiles(rootPath, options)
+  },
+
+  /** 在代码库中搜索文本或正则表达式 */
+  async searchFiles(rootPath: string, options: { query: string; glob?: string; isRegex?: boolean; caseSensitive?: boolean; contextLines?: number; maxResults?: number }): Promise<WorkspaceSearchResult<WorkspaceSearchMatch>> {
+    return api().workspace.search.searchFiles(rootPath, options)
+  },
+
+  /** 提取 TypeScript/JavaScript 的函数、类和变量定义 */
+  async findSymbols(rootPath: string, options?: { query?: string; glob?: string; maxResults?: number }): Promise<WorkspaceSearchResult<WorkspaceSymbol>> {
+    return api().workspace.search.findSymbols(rootPath, options)
   },
 
   /**

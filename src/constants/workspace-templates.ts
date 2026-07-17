@@ -8,7 +8,7 @@
  */
 
 import type { WorkspaceCreateInput, ContextConfig } from '../types'
-import { DEFAULT_CONTEXT_CONFIG, DEFAULT_AUTO_APPROVAL_CONFIG } from '../types/workspace'
+import { DEFAULT_CONTEXT_CONFIG, DEFAULT_AUTO_APPROVAL_CONFIG, DEFAULT_POST_WRITE_LINT_CONFIG } from '../types/workspace'
 
 // ---- 模板接口 ----
 
@@ -64,6 +64,7 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
       knowledgeBaseIds: [],
       mcpServerIds: [],
       autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
+      postWriteLint: DEFAULT_POST_WRITE_LINT_CONFIG,
     },
     tips: [
       '检测到 package.json 后，AI 可自动读取 scripts 和依赖',
@@ -91,6 +92,7 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
       knowledgeBaseIds: [],
       mcpServerIds: [],
       autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
+      postWriteLint: DEFAULT_POST_WRITE_LINT_CONFIG,
     },
     tips: [
       'AI 可自动识别 app/ 或 pages/ 路由结构',
@@ -118,6 +120,7 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
       knowledgeBaseIds: [],
       mcpServerIds: [],
       autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
+      postWriteLint: DEFAULT_POST_WRITE_LINT_CONFIG,
     },
     tips: [
       '检测到 requirements.txt 后，AI 可自动分析依赖',
@@ -145,6 +148,7 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
       knowledgeBaseIds: [],
       mcpServerIds: [],
       autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
+      postWriteLint: DEFAULT_POST_WRITE_LINT_CONFIG,
     },
     tips: [
       'vite dev / vite build 已加入安全白名单',
@@ -172,6 +176,7 @@ export const WORKSPACE_TEMPLATES: WorkspaceTemplate[] = [
       knowledgeBaseIds: [],
       mcpServerIds: [],
       autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
+      postWriteLint: DEFAULT_POST_WRITE_LINT_CONFIG,
     },
     tips: [
       '默认仅允许 git 和基础文件操作命令',

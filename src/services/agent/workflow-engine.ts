@@ -182,8 +182,12 @@ export function isTaskExecutionTool(toolName: string): boolean {
   const taskTools = new Set([
     'workspace_execute_command',
     'workspace_write_file',
+    'workspace_str_replace_editor',
     'workspace_read_file',
     'workspace_list_files',
+    'workspace_find_files',
+    'workspace_search_files',
+    'workspace_find_symbols',
     'workspace_create_agent',
     'workspace_dispatch_task',
     'workspace_dispatch_parallel',

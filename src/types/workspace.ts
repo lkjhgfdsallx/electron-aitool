@@ -77,6 +77,32 @@ export interface AgentToolPermission {
   deniedToolIds?: string[]
 }
 
+// ---- 写后自动检查（参考 Claude Code PostToolUse hook） ----
+
+/** 用户定义的写后检查命令。占位符：{file}、{relative}、{workspace}。 */
+export interface PostWriteLintCustomCommand {
+  /** 匹配变更文件的简单 glob，例如 *.ts 或包含 ts、tsx 扩展名的双星模式。 */
+  glob: string
+  /** 在工作区根目录执行的命令 */
+  command: string
+  /** 可选的稳定标识，用于日志和禁用规则 */
+  id?: string
+}
+
+/** 每次 Agent 写入代码后执行的自动检查配置。 */
+export interface PostWriteLintConfig {
+  /** 默认开启；关闭后写入操作不触发自动检查。 */
+  enabled: boolean
+  /** 单条检查命令的超时（毫秒）。 */
+  timeoutMs: number
+  /** 回灌 Agent 的检查输出最大字符数。 */
+  maxOutputChars: number
+  /** 要跳过的内置检查器 ID，例如 eslint、tsc、ruff。 */
+  disabledLinters: string[]
+  /** 优先于自动探测的自定义检查命令。 */
+  customCommands: PostWriteLintCustomCommand[]
+}
+
 // ---- 精细自动审批矩阵（参考 ROO CODE Auto-Approve Dropdown） ----
 
 /** 自动审批配置矩阵（按操作类型独立开关） */
@@ -137,6 +163,8 @@ export interface Workspace {
   mcpServerIds: string[]
   /** 自动审批矩阵（精细控制，参考 ROO CODE） */
   autoApproval: AutoApprovalConfig
+  /** 写入文件后自动执行的 lint / 类型检查配置 */
+  postWriteLint: PostWriteLintConfig
   /** 创建时间 */
   createdAt: number
   /** 更新时间 */
@@ -294,6 +322,15 @@ export const DEFAULT_AUTO_APPROVAL_CONFIG: AutoApprovalConfig = {
   mcpTools: false,               // MCP 工具：风险不定，默认需确认
 }
 
+/** 默认写后自动检查配置：默认开启，未检测到可用检查器时静默跳过。 */
+export const DEFAULT_POST_WRITE_LINT_CONFIG: PostWriteLintConfig = {
+  enabled: true,
+  timeoutMs: 30_000,
+  maxOutputChars: 6_000,
+  disabledLinters: [],
+  customCommands: [],
+}
+
 /** 默认工作区配置 */
 export const DEFAULT_WORKSPACE_INPUT: Omit<WorkspaceCreateInput, 'folderPath'> = {
   name: '',
@@ -313,4 +350,5 @@ export const DEFAULT_WORKSPACE_INPUT: Omit<WorkspaceCreateInput, 'folderPath'> =
   knowledgeBaseIds: [],
   mcpServerIds: [],
   autoApproval: DEFAULT_AUTO_APPROVAL_CONFIG,
+  postWriteLint: DEFAULT_POST_WRITE_LINT_CONFIG,
 }

@@ -11,7 +11,9 @@ import type {
   CommandApprovalRequest,
   CommandApprovalResult,
   AutoApprovalConfig,
+  PostWriteLintConfig,
 } from '../types'
+import { DEFAULT_POST_WRITE_LINT_CONFIG } from '../types'
 import type { FileActionApprovalRequest, FileActionApprovalResult } from '../services/agent-engine'
 import { STORE_VERSIONS } from '../utils/store-migration'
 
@@ -155,6 +157,12 @@ const defaultAutoApprovalConfig: AutoApprovalConfig = {
   mcpTools: false,
 }
 
+const defaultPostWriteLintConfig: PostWriteLintConfig = {
+  ...DEFAULT_POST_WRITE_LINT_CONFIG,
+  disabledLinters: [],
+  customCommands: [],
+}
+
 // ---- Store 创建 ----
 
 export const useWorkspaceStore = create<WorkspaceStore>()(
@@ -199,6 +207,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           knowledgeBaseIds: input.knowledgeBaseIds ?? [],
           mcpServerIds: input.mcpServerIds ?? [],
           autoApproval: input.autoApproval ?? { ...defaultAutoApprovalConfig },
+          postWriteLint: input.postWriteLint ?? { ...defaultPostWriteLintConfig },
           createdAt: now,
           updatedAt: now,
         }
@@ -545,6 +554,20 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           const workspaces = (state.workspaces as Array<Record<string, unknown>>) || []
           state.workspaces = workspaces.map((w) =>
             w.autoApproval ? w : { ...w, autoApproval: { ...defaultAutoApproval } }
+          )
+        }
+        // v3 → v4: 为旧工作区补充默认开启的写后 lint 配置。
+        if (version < 4) {
+          const defaultPostWriteLint = {
+            enabled: true,
+            timeoutMs: 30_000,
+            maxOutputChars: 6_000,
+            disabledLinters: [],
+            customCommands: [],
+          }
+          const workspaces = (state.workspaces as Array<Record<string, unknown>>) || []
+          state.workspaces = workspaces.map((w) =>
+            w.postWriteLint ? w : { ...w, postWriteLint: { ...defaultPostWriteLint } }
           )
         }
         return state as unknown as WorkspaceStore

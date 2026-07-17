@@ -24,10 +24,14 @@ export const TOOL_GROUP_MAP: Record<ToolGroup, string[]> = {
   read: [
     'workspace:list_files',
     'workspace:read_file',
+    'workspace:find_files',
+    'workspace:search_files',
+    'workspace:find_symbols',
   ],
-  /** 编辑组：写文件、打补丁 */
+  /** 编辑组：写文件、精确文本编辑 */
   edit: [
     'workspace:write_file',
+    'workspace:str_replace_editor',
   ],
   /** 终端组：执行命令 */
   terminal: [
@@ -280,9 +284,9 @@ export type ToolActionType =
 export function getToolActionType(tool: Tool): ToolActionType {
   const id = tool.id
   // 工作区文件操作
-  if (id === 'workspace:read_file') return 'read-file'
-  if (id === 'workspace:list_files') return 'list-files'
-  if (id === 'workspace:write_file') return 'write-file'
+  if (id === 'workspace:read_file' || id === 'workspace:search_files' || id === 'workspace:find_symbols') return 'read-file'
+  if (id === 'workspace:list_files' || id === 'workspace:find_files') return 'list-files'
+  if (id === 'workspace:write_file' || id === 'workspace:str_replace_editor') return 'write-file'
   if (id === 'workspace:execute_command') return 'execute-command'
   if (id === 'workspace:dispatch_task' || id === 'workspace:create_agent') return 'dispatch'
 

@@ -4,6 +4,7 @@
  * 处理所有 workspace_* 工具：
  * - workspace_read_file
  * - workspace_write_file
+ * - workspace_find_files / workspace_search_files / workspace_find_symbols
  * - workspace_list_files
  * - workspace_execute_command
  * - workspace_dispatch_task
@@ -13,6 +14,7 @@
  */
 
 import { workspaceFsService } from '../../workspace-fs-service'
+import { formatPostWriteLintBlock, runPostWriteLint } from '../../workspace-post-write-lint'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../built-in-tools'
 import { isToolAutoApproved } from '../../tool-group-service'
 import { useConversationStore } from '../../../stores/conversation-store'
@@ -35,10 +37,33 @@ import type {
   FileActionApprovalResult,
 } from '../../agent-engine'
 
+type StringEditOperation = 'replace' | 'insert_before' | 'insert_after' | 'append'
+
+interface StringEdit {
+  file_path: string
+  operation: StringEditOperation
+  old_string?: string
+  new_string?: string
+  anchor_string?: string
+  content?: string
+}
+
+interface EditedFile {
+  relativePath: string
+  absolutePath: string
+  originalContent: string
+  content: string
+  operationCount: number
+}
+
 export class WorkspaceToolExecutor implements ToolExecutor {
   readonly toolNames = [
     'workspace_read_file',
     'workspace_write_file',
+    'workspace_str_replace_editor',
+    'workspace_find_files',
+    'workspace_search_files',
+    'workspace_find_symbols',
     'workspace_list_files',
     'workspace_execute_command',
     'workspace_dispatch_task',
@@ -61,6 +86,14 @@ export class WorkspaceToolExecutor implements ToolExecutor {
         return this.handleReadFile(args, agentSessionCtx)
       case 'workspace_write_file':
         return this.handleWriteFile(args, agentSessionCtx)
+      case 'workspace_str_replace_editor':
+        return this.handleStringReplaceEditor(args, agentSessionCtx)
+      case 'workspace_find_files':
+        return this.handleFindFiles(args, agentSessionCtx)
+      case 'workspace_search_files':
+        return this.handleSearchFiles(args, agentSessionCtx)
+      case 'workspace_find_symbols':
+        return this.handleFindSymbols(args, agentSessionCtx)
       case 'workspace_list_files':
         return this.handleListFiles(args, agentSessionCtx)
       case 'workspace_execute_command':
@@ -114,11 +147,13 @@ export class WorkspaceToolExecutor implements ToolExecutor {
       return false
     }
 
-    const riskLevel = toolId === 'workspace:write_file' ? 'medium' : 'low'
+    const isWriteOperation = toolId === 'workspace:write_file' || toolId === 'workspace:str_replace_editor'
+    const isReadOperation = toolId === 'workspace:read_file' || toolId === 'workspace:search_files' || toolId === 'workspace:find_symbols'
+    const riskLevel = isWriteOperation ? 'medium' : 'low'
     const request: FileActionApprovalRequest = {
       id: `fa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      actionType: toolId === 'workspace:write_file' ? 'write-file'
-        : toolId === 'workspace:read_file' ? 'read-file'
+      actionType: isWriteOperation ? 'write-file'
+        : isReadOperation ? 'read-file'
         : 'list-files',
       toolName: toolId,
       filePath,
@@ -134,11 +169,11 @@ export class WorkspaceToolExecutor implements ToolExecutor {
       return false
     }
     if (result === 'approved-always' && wsCtx.autoApproval) {
-      if (toolId === 'workspace:write_file') {
+      if (toolId === 'workspace:write_file' || toolId === 'workspace:str_replace_editor') {
         wsCtx.autoApproval.writeFiles = true
-      } else if (toolId === 'workspace:read_file') {
+      } else if (isReadOperation) {
         wsCtx.autoApproval.readFiles = true
-      } else if (toolId === 'workspace:list_files') {
+      } else if (toolId === 'workspace:list_files' || toolId === 'workspace:find_files') {
         wsCtx.autoApproval.listFiles = true
       }
     }
@@ -146,6 +181,32 @@ export class WorkspaceToolExecutor implements ToolExecutor {
   }
 
   // ---- 工具处理函数 ----
+
+  /** 文件已写入后执行检查；失败时以工具失败结果回灌 Agent，但不回滚写入。 */
+  private async buildPostWriteLintResult(
+    wsCtx: WorkspaceContext,
+    relativePaths: string[],
+    successData: Record<string, unknown>,
+  ): Promise<ToolExecuteResult | null> {
+    if (!wsCtx.postWriteLint) return null
+    const lintResult = await runPostWriteLint({
+      workspaceRoot: wsCtx.folderPath,
+      relativePaths,
+      config: wsCtx.postWriteLint,
+    })
+    if (lintResult.decision !== 'block') return null
+    return {
+      success: false,
+      data: JSON.stringify({
+        ...successData,
+        decision: 'block',
+        written: true,
+        files: relativePaths,
+        lint: lintResult,
+      }),
+      error: formatPostWriteLintBlock(lintResult, wsCtx.postWriteLint.maxOutputChars),
+    }
+  }
 
   private async handleReadFile(
     args: Record<string, unknown>,
@@ -207,17 +268,242 @@ export class WorkspaceToolExecutor implements ToolExecutor {
       if (!agentSessionCtx.artifacts.includes(relativePath)) {
         agentSessionCtx.artifacts.push(relativePath)
       }
-      return {
-        success: true,
-        data: JSON.stringify({
-          file_path: relativePath,
-          absolute_path: absolutePath,
-          bytes_written: new TextEncoder().encode(content).byteLength,
-          message: `文件 ${relativePath} 已成功写入`,
-        }),
+      const successData = {
+        file_path: relativePath,
+        absolute_path: absolutePath,
+        bytes_written: new TextEncoder().encode(content).byteLength,
+        message: `文件 ${relativePath} 已成功写入`,
       }
+      const lintBlock = await this.buildPostWriteLintResult(wsCtx, [relativePath], successData)
+      if (lintBlock) return lintBlock
+      return { success: true, data: JSON.stringify(successData) }
     } catch (e) {
       return { success: false, data: '', error: e instanceof Error ? e.message : '写入文件失败' }
+    }
+  }
+
+  private countOccurrences(content: string, search: string): number {
+    if (search.length === 0) return 0
+    let count = 0
+    let startIndex = 0
+    while (true) {
+      const index = content.indexOf(search, startIndex)
+      if (index === -1) return count
+      count++
+      startIndex = index + search.length
+    }
+  }
+
+  private validateStringEdit(raw: unknown, index: number): StringEdit | string {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return `operations[${index}] 必须是对象`
+    }
+    const operation = raw as Record<string, unknown>
+    const filePath = operation.file_path
+    const kind = operation.operation
+    if (typeof filePath !== 'string' || !filePath.trim()) return `operations[${index}].file_path 必须是非空字符串`
+    if (!['replace', 'insert_before', 'insert_after', 'append'].includes(String(kind))) {
+      return `operations[${index}].operation 必须是 replace、insert_before、insert_after 或 append`
+    }
+    if (kind === 'replace') {
+      if (typeof operation.old_string !== 'string' || operation.old_string.length === 0) return `operations[${index}].old_string 必须是非空字符串`
+      if (typeof operation.new_string !== 'string') return `operations[${index}].new_string 必须是字符串（删除时传空字符串）`
+    } else if (kind === 'insert_before' || kind === 'insert_after') {
+      if (typeof operation.anchor_string !== 'string' || operation.anchor_string.length === 0) return `operations[${index}].anchor_string 必须是非空字符串`
+      if (typeof operation.content !== 'string') return `operations[${index}].content 必须是字符串`
+    } else if (typeof operation.content !== 'string') {
+      return `operations[${index}].content 必须是字符串`
+    }
+    return {
+      file_path: filePath,
+      operation: kind as StringEditOperation,
+      old_string: operation.old_string as string | undefined,
+      new_string: operation.new_string as string | undefined,
+      anchor_string: operation.anchor_string as string | undefined,
+      content: operation.content as string | undefined,
+    }
+  }
+
+  private async handleStringReplaceEditor(
+    args: Record<string, unknown>,
+    agentSessionCtx: AgentSessionContext,
+  ): Promise<ToolExecuteResult> {
+    const wsCtx = agentSessionCtx.workspace
+    if (!wsCtx) return { success: false, data: '', error: '当前对话未关联工作区' }
+    if (!Array.isArray(args.operations) || args.operations.length === 0) {
+      return { success: false, data: '', error: 'operations 必须是非空数组' }
+    }
+
+    const operations: StringEdit[] = []
+    for (let index = 0; index < args.operations.length; index++) {
+      const validation = this.validateStringEdit(args.operations[index], index)
+      if (typeof validation === 'string') return { success: false, data: '', error: validation }
+      operations.push(validation)
+    }
+
+    try {
+      const files = new Map<string, EditedFile>()
+      for (const operation of operations) {
+        let file = files.get(operation.file_path)
+        if (!file) {
+          const absolutePath = this.resolveWorkspacePath(operation.file_path, wsCtx)
+          const result = await workspaceFsService.readFile(absolutePath)
+          if (!result.success || result.content === undefined) {
+            return { success: false, data: '', error: `无法读取 ${operation.file_path}：${result.error || '文件不存在或不可读'}` }
+          }
+          if (result.truncated) {
+            return { success: false, data: '', error: `无法安全编辑 ${operation.file_path}：文件读取结果已截断` }
+          }
+          file = {
+            relativePath: operation.file_path,
+            absolutePath,
+            originalContent: result.content,
+            content: result.content,
+            operationCount: 0,
+          }
+          files.set(operation.file_path, file)
+        }
+
+        const target = operation.operation === 'replace' ? operation.old_string! : operation.anchor_string
+        if (operation.operation !== 'append') {
+          const matches = this.countOccurrences(file.content, target!)
+          if (matches !== 1) {
+            return { success: false, data: '', error: `操作 ${file.operationCount + 1}（${operation.file_path}）定位文本匹配了 ${matches} 次；必须恰好匹配一次。请先读取文件并提供更精确的上下文。` }
+          }
+        }
+
+        if (operation.operation === 'replace') {
+          file.content = file.content.replace(operation.old_string!, operation.new_string!)
+        } else if (operation.operation === 'insert_before') {
+          file.content = file.content.replace(operation.anchor_string!, `${operation.content!}${operation.anchor_string!}`)
+        } else if (operation.operation === 'insert_after') {
+          file.content = file.content.replace(operation.anchor_string!, `${operation.anchor_string!}${operation.content!}`)
+        } else {
+          file.content += operation.content!
+        }
+        file.operationCount++
+      }
+
+      const changedFiles = [...files.values()]
+      const preview = changedFiles.map((file) => `${file.relativePath}（${file.operationCount} 项操作）`).join('\n')
+      const approved = await this.checkFileActionApproval(
+        'workspace:str_replace_editor',
+        changedFiles.map((file) => file.relativePath).join(', '),
+        wsCtx,
+        agentSessionCtx,
+        preview,
+      )
+      if (!approved) return { success: false, data: '', error: '用户拒绝了批量精确编辑操作；未修改任何文件' }
+
+      const writtenFiles: EditedFile[] = []
+      try {
+        for (const file of changedFiles) {
+          await workspaceFsService.writeFile(file.absolutePath, file.content)
+          writtenFiles.push(file)
+        }
+      } catch (writeError) {
+        const rollbackFailures: string[] = []
+        for (const file of writtenFiles.reverse()) {
+          try {
+            await workspaceFsService.writeFile(file.absolutePath, file.originalContent)
+          } catch {
+            rollbackFailures.push(file.relativePath)
+          }
+        }
+        const reason = writeError instanceof Error ? writeError.message : '未知写入错误'
+        const rollbackMessage = rollbackFailures.length > 0
+          ? `；回滚失败文件：${rollbackFailures.join(', ')}`
+          : '；已回滚此前写入的文件'
+        return { success: false, data: '', error: `批量精确编辑写入失败：${reason}${rollbackMessage}` }
+      }
+      for (const file of changedFiles) {
+        if (!agentSessionCtx.artifacts.includes(file.relativePath)) agentSessionCtx.artifacts.push(file.relativePath)
+      }
+      const successData = {
+        message: `已原子提交 ${operations.length} 项精确编辑，涉及 ${changedFiles.length} 个文件`,
+        files: changedFiles.map((file) => ({
+          file_path: file.relativePath,
+          absolute_path: file.absolutePath,
+          operation_count: file.operationCount,
+          bytes_written: new TextEncoder().encode(file.content).byteLength,
+        })),
+      }
+      const lintBlock = await this.buildPostWriteLintResult(
+        wsCtx,
+        changedFiles.map((file) => file.relativePath),
+        successData,
+      )
+      if (lintBlock) return lintBlock
+      return { success: true, data: JSON.stringify(successData) }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? `批量精确编辑失败：${e.message}` : '批量精确编辑失败；未保证写入状态' }
+    }
+  }
+
+  private async handleFindFiles(
+    args: Record<string, unknown>,
+    agentSessionCtx: AgentSessionContext,
+  ): Promise<ToolExecuteResult> {
+    const wsCtx = agentSessionCtx.workspace
+    if (!wsCtx) return { success: false, data: '', error: '当前对话未关联工作区' }
+    try {
+      const approved = await this.checkFileActionApproval('workspace:find_files', wsCtx.folderPath, wsCtx, agentSessionCtx)
+      if (!approved) return { success: false, data: '', error: '用户拒绝了查找文件操作' }
+      const result = await workspaceFsService.findFiles(wsCtx.folderPath, {
+        glob: typeof args.glob === 'string' ? args.glob : undefined,
+        maxResults: typeof args.max_results === 'number' ? args.max_results : undefined,
+      })
+      if (!result.success) return { success: false, data: '', error: result.error || '查找文件失败' }
+      return { success: true, data: JSON.stringify(result) }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '查找文件失败' }
+    }
+  }
+
+  private async handleSearchFiles(
+    args: Record<string, unknown>,
+    agentSessionCtx: AgentSessionContext,
+  ): Promise<ToolExecuteResult> {
+    const wsCtx = agentSessionCtx.workspace
+    if (!wsCtx) return { success: false, data: '', error: '当前对话未关联工作区' }
+    const query = typeof args.query === 'string' ? args.query : ''
+    if (!query) return { success: false, data: '', error: '需要非空 query 参数' }
+    try {
+      const approved = await this.checkFileActionApproval('workspace:search_files', wsCtx.folderPath, wsCtx, agentSessionCtx, query)
+      if (!approved) return { success: false, data: '', error: '用户拒绝了搜索文件内容操作' }
+      const result = await workspaceFsService.searchFiles(wsCtx.folderPath, {
+        query,
+        glob: typeof args.glob === 'string' ? args.glob : undefined,
+        isRegex: typeof args.is_regex === 'boolean' ? args.is_regex : undefined,
+        caseSensitive: typeof args.case_sensitive === 'boolean' ? args.case_sensitive : undefined,
+        contextLines: typeof args.context_lines === 'number' ? args.context_lines : undefined,
+        maxResults: typeof args.max_results === 'number' ? args.max_results : undefined,
+      })
+      if (!result.success) return { success: false, data: '', error: result.error || '搜索文件内容失败' }
+      return { success: true, data: JSON.stringify(result) }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '搜索文件内容失败' }
+    }
+  }
+
+  private async handleFindSymbols(
+    args: Record<string, unknown>,
+    agentSessionCtx: AgentSessionContext,
+  ): Promise<ToolExecuteResult> {
+    const wsCtx = agentSessionCtx.workspace
+    if (!wsCtx) return { success: false, data: '', error: '当前对话未关联工作区' }
+    try {
+      const approved = await this.checkFileActionApproval('workspace:find_symbols', wsCtx.folderPath, wsCtx, agentSessionCtx, typeof args.query === 'string' ? args.query : undefined)
+      if (!approved) return { success: false, data: '', error: '用户拒绝了查找符号操作' }
+      const result = await workspaceFsService.findSymbols(wsCtx.folderPath, {
+        query: typeof args.query === 'string' ? args.query : undefined,
+        glob: typeof args.glob === 'string' ? args.glob : undefined,
+        maxResults: typeof args.max_results === 'number' ? args.max_results : undefined,
+      })
+      if (!result.success) return { success: false, data: '', error: result.error || '查找符号失败' }
+      return { success: true, data: JSON.stringify(result) }
+    } catch (e) {
+      return { success: false, data: '', error: e instanceof Error ? e.message : '查找符号失败' }
     }
   }
 
