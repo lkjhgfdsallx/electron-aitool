@@ -32,6 +32,12 @@
   <a href="#-license"><strong>License</strong></a>
 </p>
 
+<p align="center">
+  <a href="README.zh-CN.md"><strong>🌏 中文版本介绍</strong></a>
+  <span> · </span>
+  <sub>Prefer Chinese? Read the localized guide.</sub>
+</p>
+
 ---
 
 Take control of your **API Key**. Conversations, knowledge base, Agent configurations, and workspace data are all stored locally — **no third-party intermediaries**, **no account required**, and no forced cloud uploads.
