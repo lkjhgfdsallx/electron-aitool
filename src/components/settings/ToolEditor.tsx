@@ -16,6 +16,7 @@ import { isWebTool } from '../../utils/web-tools'
 import { useAppTranslation } from '@/i18n/hooks'
 import type { Tool } from '../../types'
 import { SettingsHeader, SettingsTabs, useConfirmDialog, SettingsEmptyState } from './ui'
+import { BrowserRuntimeSettings } from './BrowserRuntimeSettings'
 
 // ==================== 默认 JS 代码模板 ====================
 const DEFAULT_CODE_TEMPLATE = `// 自定义工具函数
@@ -216,6 +217,9 @@ export function ToolEditor() {
           </button>
         }
       />
+
+      {/* 网页分析浏览器 */}
+      <BrowserRuntimeSettings />
 
       {/* 工具区域 */}
       {regionConfig.map((region) => (

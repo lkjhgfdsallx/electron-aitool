@@ -118,6 +118,22 @@ export interface ElectronAPI {
       timeout?: number
     ) => Promise<{ success: boolean; data?: string; error?: string; durationMs?: number }>
   }
+  /** 用户配置的 Chromium 浏览器 */
+  browserConfig: {
+    selectExecutable: () => Promise<{
+      success: boolean
+      canceled?: boolean
+      executablePath?: string
+      validation?: { valid: boolean; browserName?: string; version?: string; error?: string }
+      error?: string
+    }>
+    validateExecutable: (executablePath: string) => Promise<{
+      valid: boolean
+      browserName?: string
+      version?: string
+      error?: string
+    }>
+  }
   // 网站分析器
   siteAnalyzer: {
     /**
@@ -308,6 +324,11 @@ const electronAPI: ElectronAPI = {
   customTool: {
     execute: (code: string, args: Record<string, unknown>, timeout?: number) =>
       ipcRenderer.invoke('custom-tool:execute', code, args, timeout)
+  },
+  browserConfig: {
+    selectExecutable: () => ipcRenderer.invoke('browserConfig:selectExecutable'),
+    validateExecutable: (executablePath: string) =>
+      ipcRenderer.invoke('browserConfig:validateExecutable', executablePath)
   },
   siteAnalyzer: {
     start: (config: Record<string, unknown>) =>

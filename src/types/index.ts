@@ -258,4 +258,6 @@ export interface UIPreferences {
   shortcuts: ShortcutConfig
   /** 被禁用的内置工具 ID 列表（仅 BUILT_IN_TOOLS，不影响 AGENT_BUILTIN_TOOLS 和 WORKSPACE_TOOLS） */
   disabledBuiltinToolIds: string[]
+  /** 网页分析使用的 Chrome / Edge 可执行文件路径 */
+  browserExecutablePath: string
 }

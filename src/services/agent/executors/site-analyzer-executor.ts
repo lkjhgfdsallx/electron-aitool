@@ -8,6 +8,7 @@
  */
 
 import { siteAnalyzerService } from '../../site-analyzer-service'
+import { useSettingsStore } from '../../../stores/settings-store'
 import type { ToolExecutor, AgentSessionContext, ToolSessionContext } from '../tool-executor'
 import type { ToolExecuteResult } from '../../../types'
 
@@ -61,11 +62,17 @@ export class SiteAnalyzerToolExecutor implements ToolExecutor {
       return { success: false, data: '', error: 'site_analyzer_start 工具需要 target_url 参数' }
     }
 
+    const browserExecutablePath = useSettingsStore.getState().browserExecutablePath.trim()
+    if (!browserExecutablePath) {
+      return { success: false, data: '', error: '未配置网页分析浏览器。请前往“设置 > 工具 > 网页分析浏览器”选择 Chrome 或 Microsoft Edge 后重试。' }
+    }
+
     // 构建配置
     const taskId = `sa-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
     const loginType = String(args.login_type ?? 'manual') as 'manual' | 'password' | 'cookie'
 
     const config: Record<string, unknown> = {
+      browserExecutablePath,
       targetUrl,
       loginType,
       loginCredential: {},

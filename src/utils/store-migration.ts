@@ -93,7 +93,7 @@ export function ensureObject<T extends Record<string, unknown>>(
  */
 export const STORE_VERSIONS = {
   /** settings-store (ui-preferences) */
-  SETTINGS: 2, // v2: 新增 disabledBuiltinToolIds
+  SETTINGS: 3, // v3: 新增 browserExecutablePath
   /** global-config-store (global-config) */
   GLOBAL_CONFIG: 1,
   /** ai-provider-store (ai-providers) */

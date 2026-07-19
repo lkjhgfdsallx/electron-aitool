@@ -41,7 +41,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
     setMemoryInjectionPaused,
     loadConversationMessages,
   } = useConversationStore()
-  const { showTimestamp, showTokenUsage, showAvatar, messageAlignment } = useSettingsStore()
+  const { showTimestamp, showTokenUsage, showAvatar, messageAlignment, browserExecutablePath } = useSettingsStore()
   const { getAgent } = useAgentStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
 
@@ -126,6 +126,11 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
     (formData: SiteAnalyzerFormData) => {
       // 无 AI 源时不发起分析，直接引导配置
       if (!ensureProviderOrOpenSettings()) return
+      if (!browserExecutablePath.trim()) {
+        window.alert('请先在“设置 > 工具 > 网页分析浏览器”中选择 Chrome 或 Microsoft Edge。')
+        onOpenSettings?.('tools')
+        return
+      }
 
       const loginMethodKey = {
         manual: 'special.loginManual',
@@ -172,7 +177,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       const content = lines.join('\n')
       sendMessage(content)
     },
-    [sendMessage, ensureProviderOrOpenSettings, t]
+    [sendMessage, ensureProviderOrOpenSettings, browserExecutablePath, onOpenSettings, t]
   )
 
   const handleSend = useCallback(

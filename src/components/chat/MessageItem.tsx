@@ -92,6 +92,8 @@ export const MessageItem = memo(function MessageItem({
   const [showReport, setShowReport] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [loadedReportHtml, setLoadedReportHtml] = useState<string | null>(null)
+  const [isLoadingReport, setIsLoadingReport] = useState(false)
+  const [reportLoadError, setReportLoadError] = useState<string | null>(null)
 
   const role = roleConfig[message.role]
   const RoleIcon = role.icon
@@ -114,10 +116,21 @@ export const MessageItem = memo(function MessageItem({
 
   // 打开报告弹窗（从 IndexedDB 加载）
   const handleOpenReport = useCallback(async () => {
-    const html = await reportStore.getReport(message.id)
-    if (html) {
+    setIsLoadingReport(true)
+    setReportLoadError(null)
+    try {
+      const html = await reportStore.getReport(message.id)
+      if (!html) {
+        setReportLoadError('报告尚未保存完成或已被清除，请重新执行网站分析。')
+        return
+      }
       setLoadedReportHtml(html)
       setShowReport(true)
+    } catch (error) {
+      console.error('[SiteAnalyzer] 加载交互式分析报告失败:', error)
+      setReportLoadError('无法加载交互式分析报告，请重试。')
+    } finally {
+      setIsLoadingReport(false)
     }
   }, [message.id])
 
@@ -379,12 +392,14 @@ export const MessageItem = memo(function MessageItem({
           {!message.isStreaming && message.hasReport && (
             <div className="mt-3">
               <button
-                onClick={handleOpenReport}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-accent-500 to-purple-600 hover:from-accent-600 hover:to-purple-700 rounded-lg shadow-sm transition-all hover:shadow-md"
+                onClick={() => void handleOpenReport()}
+                disabled={isLoadingReport}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-accent-500 to-purple-600 hover:from-accent-600 hover:to-purple-700 rounded-lg shadow-sm transition-all hover:shadow-md disabled:cursor-wait disabled:opacity-70"
               >
                 <Eye size={16} />
-                {t('chat.viewInteractiveReport')}
+                {isLoadingReport ? '正在加载报告…' : t('chat.viewInteractiveReport')}
               </button>
+              {reportLoadError && <p className="mt-2 text-xs text-red-500">{reportLoadError}</p>}
             </div>
           )}
   

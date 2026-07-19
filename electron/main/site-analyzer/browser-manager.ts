@@ -3,7 +3,9 @@
  * 使用 Playwright 管理 Chromium 浏览器实例
  */
 
+import { app } from 'electron'
 import { chromium, type Browser, type BrowserContext, type Page, type Cookie } from 'playwright'
+import { join } from 'node:path'
 import type { SiteAnalyzerConfig, ProxyConfig, AntiBotConfig } from './types'
 
 export class BrowserManager {
@@ -145,7 +147,12 @@ export class BrowserManager {
     // 保存配置以便重连时使用
     this._launchConfig = config
 
+    if (!config.browserExecutablePath?.trim()) {
+      throw new Error('未配置网页分析浏览器，请前往“设置 > 工具”选择 Chrome 或 Microsoft Edge')
+    }
+
     const launchOptions: Record<string, unknown> = {
+      executablePath: config.browserExecutablePath,
       headless: false, // 非无头模式，方便手动登录
       args: [
         // 反自动化检测
@@ -181,7 +188,23 @@ export class BrowserManager {
       }
     }
 
-    this.browser = await chromium.launch(launchOptions)
+    // 使用应用专属的持久化 Profile：首次手动登录后，Cookie / localStorage 会在后续分析中复用。
+    // 不直接使用用户日常浏览器的默认 Profile，避免 Chrome/Edge 的 Profile 锁冲突和数据损坏风险。
+    const userDataDir = join(app.getPath('userData'), 'site-analyzer-browser-profile')
+    const contextOptions: Record<string, unknown> = {
+      viewport: { width: 1920, height: 1080 },
+      ignoreHTTPSErrors: true
+    }
+    if (config.antiBot?.userAgent) {
+      contextOptions.userAgent = config.antiBot.userAgent
+    }
+    Object.assign(launchOptions, contextOptions)
+
+    this.context = await chromium.launchPersistentContext(userDataDir, launchOptions)
+    this.browser = this.context.browser()
+    if (!this.browser) {
+      throw new Error('无法获取网页分析浏览器实例')
+    }
 
     // 监听浏览器断开连接事件
     this.browser.on('disconnected', () => {
@@ -197,19 +220,6 @@ export class BrowserManager {
         this.onBrowserDisconnected()
       }
     })
-
-    // 创建上下文
-    const contextOptions: Record<string, unknown> = {
-      viewport: { width: 1920, height: 1080 },
-      ignoreHTTPSErrors: true
-    }
-
-    // 自定义 User-Agent
-    if (config.antiBot?.userAgent) {
-      contextOptions.userAgent = config.antiBot.userAgent
-    }
-
-    this.context = await this.browser.newContext(contextOptions)
 
     // 注入反检测脚本
     await this.context.addInitScript(() => {

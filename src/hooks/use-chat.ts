@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
+import { siteAnalyzerService } from '../services/site-analyzer-service'
 import { runAgent } from '../services/agent-engine'
 import type { WorkspaceContext, CreateAgentInput, SubAgentActivityEvent, FileActionApprovalRequest, FileActionApprovalResult, ResumeOptions } from '../services/agent-engine'
 import { agentEventBus } from '../services/agent/event-bus'
@@ -970,10 +971,14 @@ export function useChat(options: UseChatOptions = {}) {
                 signal?.addEventListener('abort', onAbort, { once: true })
               })
             },
-            onReportReady: (reportHtml) => {
-              // 网站分析报告生成完成，立即标记并后台存储到 IndexedDB
-              updateMessage(assistantMsg.id, { hasReport: true })
-              reportStore.saveReport(assistantMsg.id, reportHtml).catch(console.error)
+            onReportReady: async (reportHtml) => {
+              // 先落盘再显示查看入口，避免用户在 IndexedDB 写入未完成时点击后无响应。
+              try {
+                await reportStore.saveReport(assistantMsg.id, reportHtml)
+                updateMessage(assistantMsg.id, { hasReport: true })
+              } catch (error) {
+                console.error('[SiteAnalyzer] 保存交互式分析报告失败:', error)
+              }
             },
             onSiteAnalyzerProgress: (progress) => {
               // 实时更新网站分析进度到消息状态
@@ -1573,6 +1578,10 @@ export function useChat(options: UseChatOptions = {}) {
    */
   const stopGeneration = useCallback(() => {
     abortControllerRef.current?.abort()
+    // 网站分析是主进程中的独立长任务，AbortController 无法终止它，需显式取消当前所有活跃任务。
+    void siteAnalyzerService.getActiveTasks().then((taskIds) => {
+      taskIds.forEach((taskId) => void siteAnalyzerService.cancelAnalysis(taskId))
+    })
     isStreamingRef.current = false
     // 清理所有等待中的 humanInput resolver，让 Agent 循环能立即退出
     humanInputResolversRef.current.clear()
@@ -1737,9 +1746,14 @@ export function useChat(options: UseChatOptions = {}) {
                 signal?.addEventListener('abort', onAbort, { once: true })
               })
             },
-            onReportReady: (reportHtml) => {
-              updateMessage(assistantMsg.id, { hasReport: true })
-              reportStore.saveReport(assistantMsg.id, reportHtml).catch(console.error)
+            onReportReady: async (reportHtml) => {
+              // 先落盘再显示查看入口，避免用户在 IndexedDB 写入未完成时点击后无响应。
+              try {
+                await reportStore.saveReport(assistantMsg.id, reportHtml)
+                updateMessage(assistantMsg.id, { hasReport: true })
+              } catch (error) {
+                console.error('[SiteAnalyzer] 保存交互式分析报告失败:', error)
+              }
             },
             onSiteAnalyzerProgress: (progress) => {
               if (progress.type === 'started') {
@@ -2156,9 +2170,14 @@ export function useChat(options: UseChatOptions = {}) {
                 signal?.addEventListener('abort', onAbort, { once: true })
               })
             },
-            onReportReady: (reportHtml) => {
-              updateMessage(assistantMsg.id, { hasReport: true })
-              reportStore.saveReport(assistantMsg.id, reportHtml).catch(console.error)
+            onReportReady: async (reportHtml) => {
+              // 先落盘再显示查看入口，避免用户在 IndexedDB 写入未完成时点击后无响应。
+              try {
+                await reportStore.saveReport(assistantMsg.id, reportHtml)
+                updateMessage(assistantMsg.id, { hasReport: true })
+              } catch (error) {
+                console.error('[SiteAnalyzer] 保存交互式分析报告失败:', error)
+              }
             },
             onSiteAnalyzerProgress: (progress) => {
               if (progress.type === 'started') {
@@ -2472,9 +2491,14 @@ export function useChat(options: UseChatOptions = {}) {
                   signal?.addEventListener('abort', onAbort, { once: true })
                 })
               },
-              onReportReady: (reportHtml) => {
-                updateMessage(messageId, { hasReport: true })
-                reportStore.saveReport(messageId, reportHtml).catch(console.error)
+              onReportReady: async (reportHtml) => {
+                // 先落盘再显示查看入口，避免用户在 IndexedDB 写入未完成时点击后无响应。
+                try {
+                  await reportStore.saveReport(messageId, reportHtml)
+                  updateMessage(messageId, { hasReport: true })
+                } catch (error) {
+                  console.error('[SiteAnalyzer] 保存交互式分析报告失败:', error)
+                }
               },
               onSiteAnalyzerProgress: (progress) => {
                 if (progress.type === 'started') {

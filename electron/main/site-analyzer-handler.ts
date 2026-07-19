@@ -5,6 +5,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron'
 import { runSiteAnalyzer, cancelSiteAnalyzer, getActiveTasks } from './site-analyzer'
+import { validateBrowserExecutable } from './browser-config-handler'
 import type { SiteAnalyzerConfig, SiteAnalyzerProgress } from './site-analyzer/types'
 
 /**
@@ -17,6 +18,11 @@ export function setupSiteAnalyzerHandlers(): void {
     if (!win) return { success: false, error: '无法获取窗口' }
 
     try {
+      const browserValidation = await validateBrowserExecutable(config.browserExecutablePath ?? '')
+      if (!browserValidation.valid) {
+        return { success: false, error: `网页分析浏览器不可用：${browserValidation.error}` }
+      }
+
       // 运行分析，通过webContents发送进度事件
       const result = await runSiteAnalyzer(config, (progress: SiteAnalyzerProgress) => {
         // 实时发送进度到渲染进程

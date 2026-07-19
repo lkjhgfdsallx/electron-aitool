@@ -9,6 +9,7 @@ import { generateTitleFromContent } from './title-generator'
 import { extractPdfText } from './pdf-extractor'
 import { extractFileText } from './file-extractor'
 import { setupSiteAnalyzerHandlers } from './site-analyzer-handler'
+import { setupBrowserConfigHandlers } from './browser-config-handler'
 import { setupCustomToolHandlers } from './custom-tool-handler'
 import { searchWeb, fetchWebpage } from './web-search'
 import { setupWorkspaceVCSHandlers } from './workspace-vcs-handler'
@@ -67,6 +68,7 @@ app.whenReady().then(() => {
 
   // 设置网站分析器
   setupSiteAnalyzerHandlers()
+  setupBrowserConfigHandlers()
 
   // 设置自定义工具沙箱执行
   setupCustomToolHandlers()

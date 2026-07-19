@@ -3,7 +3,7 @@
  * 协调浏览器管理、爬取、请求捕获、AI分析和报告生成
  */
 
-import type { Page } from 'playwright-core'
+import type { Page } from 'playwright'
 import { BrowserManager } from './browser-manager'
 import { RequestCapture } from './request-capture'
 import { Crawler } from './crawler'
@@ -453,19 +453,43 @@ async function handleLogin(
         const page = await browserManager.getPage()
         await browserManager.navigateTo(page, targetUrl)
 
-        onProgress({
-          taskId: config.taskId,
-          type: 'logging_in',
-          message: '浏览器已打开，请手动完成登录。登录完成后将自动继续...'
-        })
+        // 专用分析 Profile 中已有登录态时，直接开始分析，不再无意义地等待两分钟。
+        const initialState = await checkAppState(page)
+        const alreadyLoggedIn = initialState.hasAppContent &&
+          !initialState.hasPasswordField &&
+          !initialState.hasBlockingLoginOverlay
 
-        await waitForManualLogin(page, 120000, taskState)
+        if (!alreadyLoggedIn) {
+          onProgress({
+            taskId: config.taskId,
+            type: 'logging_in',
+            message: '正在等待您操作：请切换到已打开的“网页分析”浏览器窗口，完成登录、验证码或服务协议确认。本次最多等待 2 分钟；登录成功后将自动继续，您也可以在聊天中点击“停止”取消。首次登录成功后会保存在专用分析浏览器中。'
+          })
+          const loginResult = await waitForManualLogin(page, 120000, taskState, (remainingSeconds) => {
+            onProgress({
+              taskId: config.taskId,
+              type: 'logging_in',
+              message: `仍在等待您在“网页分析”浏览器窗口完成登录或验证码（剩余约 ${remainingSeconds} 秒）。完成后会自动继续；如不再需要，请点击“停止”。`
+            })
+          })
+          if (loginResult === 'timeout') {
+            throw new Error('未检测到登录完成。请在网页分析浏览器中完成登录后重新开始分析。')
+          }
+        } else {
+          onProgress({
+            taskId: config.taskId,
+            type: 'login_success',
+            message: '已复用网页分析浏览器中的登录状态，继续分析...'
+          })
+        }
+
+        if (isCancelled(taskState)) return page
         await handlePostLoginIntermediatePages(page, config, taskState, onProgress)
 
         onProgress({
           taskId: config.taskId,
           type: 'login_success',
-          message: `检测到登录完成，当前页面: ${page.url()}，继续分析...`
+          message: `登录步骤完成，当前页面: ${page.url()}，继续分析...`
         })
 
         return page
@@ -475,8 +499,9 @@ async function handleLogin(
     return null
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '登录失败'
-    onProgress({ taskId: config.taskId, type: 'login_failed', message: `登录失败: ${errorMsg}`, error: errorMsg })
-    return null
+    onProgress({ taskId: config.taskId, type: 'login_failed', message: `登录失败，已停止分析: ${errorMsg}`, error: errorMsg })
+    // 登录未完成时不能继续爬取，否则会把匿名页或登录页误当成目标网站内容。
+    throw error
   }
 }
 
@@ -747,12 +772,12 @@ async function tryClickConsentInModal(page: Page): Promise<boolean> {
         if (!(await btn.isVisible().catch(() => false))) continue
 
         // 跳过包含子按钮的容器元素
-        const isLeaf = await btn.evaluate((el, sel) => {
+        const isLeaf = await btn.evaluate((el: Element, sel: string) => {
           return el.querySelectorAll(sel).length === 0
         }, CLICKABLE_BUTTON_SELECTOR).catch(() => true)
         if (!isLeaf) continue
 
-        const btnText = await btn.evaluate((el) => (el.textContent || '').trim()).catch(() => '')
+        const btnText = await btn.evaluate((el: Element) => (el.textContent || '').trim()).catch(() => '')
         if (!btnText || btnText.length > 15) continue
 
         // 排除同时包含取消和确认关键词的容器文本
@@ -914,7 +939,7 @@ async function tryCheckConsentCheckbox(page: Page): Promise<boolean> {
     for (const checkbox of checkboxes) {
       if (!(await checkbox.isVisible().catch(() => false))) continue
 
-      const parentText = await checkbox.evaluate((el) => {
+      const parentText = await checkbox.evaluate((el: Element) => {
         const label = el.closest('label')
         const parent = el.closest('[class*="agree"], [class*="consent"], [class*="protocol"], [class*="check"]')
         return (label?.textContent || parent?.textContent || '').toLowerCase()
@@ -1145,7 +1170,7 @@ async function handlePostLoginIntermediatePages(
     }
 
     // 如果有下拉选择框（机构选择等），提示用户
-    const hasSelectDropdown = await page.$('select:not([style*="display: none"])').then(el => !!el).catch(() => false)
+    const hasSelectDropdown = await page.$('select:not([style*="display: none"])').then((el) => !!el).catch(() => false)
     if (hasSelectDropdown) {
       onProgress({
         taskId: config.taskId,
@@ -1172,22 +1197,29 @@ async function handlePostLoginIntermediatePages(
  * 等待手动登录完成
  * 支持URL变化和密码框消失两种检测方式，支持任务取消
  */
-async function waitForManualLogin(page: Page, timeout: number, taskState?: TaskState): Promise<void> {
+async function waitForManualLogin(
+  page: Page,
+  timeout: number,
+  taskState?: TaskState,
+  onWaitingProgress?: (remainingSeconds: number) => void
+): Promise<'url_changed' | 'password_gone' | 'navigated' | 'timeout' | 'cancelled' | 'page_error'> {
   const initialUrl = page.url()
   const hasPasswordInitially = await page.isVisible('input[type="password"]').catch(() => false)
 
   // console.log(`[SiteAnalyzer] waitForManualLogin: 开始等待, timeout=${timeout}ms, hasPassword=${hasPasswordInitially}`)
+  const startedAt = Date.now()
 
-  return new Promise<void>((resolve) => {
+  return new Promise<'url_changed' | 'password_gone' | 'navigated' | 'timeout' | 'cancelled' | 'page_error'>((resolve) => {
     let resolved = false
-    const safeResolve = (reason: string) => {
+    const safeResolve = (reason: 'url_changed' | 'password_gone' | 'navigated' | 'timeout' | 'cancelled' | 'page_error') => {
       if (!resolved) {
         resolved = true
         // console.log(`[SiteAnalyzer] waitForManualLogin: 解除等待, reason=${reason}`)
         clearInterval(checkInterval)
         clearInterval(cancelCheckInterval)
+        clearInterval(progressInterval)
         clearTimeout(timer)
-        resolve()
+        resolve(reason)
       }
     }
 
@@ -1196,6 +1228,13 @@ async function waitForManualLogin(page: Page, timeout: number, taskState?: TaskS
     const cancelCheckInterval = setInterval(() => {
       if (isCancelled(taskState)) safeResolve('cancelled')
     }, 2000)
+
+    // 每 30 秒反馈一次，避免用户误以为任务卡死；首次提示已在调用处立即发送。
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startedAt
+      const remainingSeconds = Math.max(0, Math.ceil((timeout - elapsed) / 1000))
+      onWaitingProgress?.(remainingSeconds)
+    }, 30000)
 
     const checkInterval = setInterval(async () => {
       try {
@@ -1228,6 +1267,8 @@ export function cancelSiteAnalyzer(taskId: string): boolean {
   if (!task) return false
   task.cancelled = true
   if (task.crawler) task.crawler.cancel()
+  // 立即关闭受控浏览器，中断可能正在进行的导航、网络空闲等待或页面操作。
+  void task.browserManager.close()
   return true
 }
 

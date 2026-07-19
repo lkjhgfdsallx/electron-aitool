@@ -5,6 +5,8 @@
 
 /** 分析配置 */
 export interface SiteAnalyzerConfig {
+  /** 网页分析使用的 Chrome / Edge 可执行文件路径 */
+  browserExecutablePath: string
   targetUrl: string
   loginType: 'password' | 'cookie' | 'manual'
   loginCredential: {
@@ -223,6 +225,14 @@ class SiteAnalyzerService {
     return result.success
   }
 
+  /** 获取主进程中正在执行的分析任务。 */
+  async getActiveTasks(): Promise<string[]> {
+    const check = this.checkAvailability()
+    if (!check.available) return []
+    const result = await window.electronAPI!.siteAnalyzer!.getActiveTasks()
+    return result.success && Array.isArray(result.data) ? result.data : []
+  }
+
   /**
    * 注册进度监听器
    */
@@ -250,6 +260,7 @@ class SiteAnalyzerService {
 
     // 默认配置
     const config: SiteAnalyzerConfig = {
+      browserExecutablePath: '',
       targetUrl,
       loginType: 'manual', // 默认手动登录
       loginCredential: {},

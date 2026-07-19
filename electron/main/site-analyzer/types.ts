@@ -75,6 +75,8 @@ export interface AntiBotConfig {
 
 /** 完整分析配置 */
 export interface SiteAnalyzerConfig {
+  /** 网页分析使用的 Chrome / Edge 可执行文件路径 */
+  browserExecutablePath: string
   /** 目标网址 */
   targetUrl: string
   /** 登录方式 */

@@ -37,7 +37,9 @@ const DEFAULT_PREFERENCES: UIPreferences = {
   notificationSound: 'default',
   shortcuts: { ...DEFAULT_SHORTCUT_CONFIG },
   /** 被禁用的内置工具 ID 列表（仅 BUILT_IN_TOOLS，运行时过滤） */
-  disabledBuiltinToolIds: [] as string[]
+  disabledBuiltinToolIds: [] as string[],
+  /** 网页分析使用的 Chrome / Edge 可执行文件路径 */
+  browserExecutablePath: ''
 }
 
 interface SettingsStore extends UIPreferences {
@@ -74,6 +76,7 @@ interface SettingsStore extends UIPreferences {
   resetPreferences: () => void
   /** 切换某个内置工具的启用状态 */
   toggleBuiltinTool: (toolId: string) => void
+  setBrowserExecutablePath: (path: string) => void
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -160,6 +163,8 @@ export const useSettingsStore = create<SettingsStore>()(
               : [...ids, toolId]
           }
         }),
+
+      setBrowserExecutablePath: (browserExecutablePath) => set({ browserExecutablePath }),
     }),
     {
       name: 'ui-preferences',
@@ -176,6 +181,10 @@ export const useSettingsStore = create<SettingsStore>()(
         // v1 → v2: 新增 disabledBuiltinToolIds
         if (version < 2) {
           state.disabledBuiltinToolIds = []
+        }
+        // v2 → v3: 新增网页分析浏览器路径
+        if (version < 3) {
+          state.browserExecutablePath = ''
         }
         return state
       },
