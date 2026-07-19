@@ -1,0 +1,20 @@
+# Let pnpm build pure-JS tooling only. Native package installation is handled
+# explicitly by the root postinstall script so the Electron download can use a
+# deterministic, project-owned TLS configuration.
+allowBuilds:
+  canvas: set this to true or false
+  electron: set this to true or false
+  esbuild: true
+  protobufjs: true
+  sharp: set this to true or false
+
+# pdfjs-dist uses canvas only as an optional Node.js fallback. The Electron renderer
+# uses Chromium's Canvas implementation, so neither canvas nor sharp is required.
+ignoredBuiltDependencies:
+  - canvas
+  - electron
+  - sharp
+
+# Report intentionally ignored native lifecycle scripts without failing pnpm i.
+# The root postinstall script installs Electron's checksum-verified binary itself.
+strictDepBuilds: false
