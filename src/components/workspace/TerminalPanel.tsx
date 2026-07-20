@@ -146,20 +146,24 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
   // 终端日志颜色映射
   const getLogColor = (log: TerminalLog): string => {
     switch (log.type) {
-      case 'command': return 'text-teal-400 font-medium'
-      case 'stderr': return 'text-red-400'
-      case 'system': return log.content.startsWith('✓') ? 'text-green-400' : log.content.startsWith('✗') ? 'text-red-400' : 'text-gray-400'
-      default: return 'text-gray-300 dark:text-gray-400'
+      case 'command': return 'text-teal-700 dark:text-teal-300 font-medium'
+      case 'stderr': return 'text-red-600 dark:text-red-400'
+      case 'system': return log.content.startsWith('✓')
+        ? 'text-green-700 dark:text-green-400'
+        : log.content.startsWith('✗')
+          ? 'text-red-600 dark:text-red-400'
+          : 'text-gray-500 dark:text-gray-400'
+      default: return 'text-gray-700 dark:text-gray-300'
     }
   }
 
   return (
-    <div className="flex flex-col h-full bg-surface-950 dark:bg-surface-900">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-white text-gray-700 dark:bg-surface-900 dark:text-gray-300">
       {/* 终端头部 */}
-      <div className="flex items-center justify-between px-3 h-8 border-b border-surface-800 dark:border-surface-700/40 flex-shrink-0 dark:bg-surface-800/50">
+      <div className="flex items-center justify-between px-3 h-8 border-b border-surface-200 dark:border-surface-700/60 flex-shrink-0 bg-surface-50 dark:bg-surface-800/50">
         <div className="flex items-center gap-2">
-          <Terminal size={12} className="text-gray-400" />
-          <span className="text-[11px] font-medium text-gray-400">{t('workspace.terminal')}</span>
+          <Terminal size={12} className="text-gray-500 dark:text-gray-400" />
+          <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300">{t('workspace.terminal')}</span>
           {isExecuting && (
             <span className="flex items-center gap-1 text-[10px] text-teal-400">
               <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
@@ -172,14 +176,15 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
           {terminalHistory.length > 0 && (
             <button
               onClick={() => clearTerminalHistory(workspace.id)}
-              className="p-1 rounded hover:bg-surface-800 text-gray-500 hover:text-gray-300 transition-colors"
+              className="p-1 rounded text-gray-400 hover:bg-surface-200 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-surface-700 dark:hover:text-gray-200 transition-colors"
               title={t('workspace.clearTerminal')}
+              aria-label={t('workspace.clearTerminal')}
             >
               <Trash2 size={11} />
             </button>
           )}
           {/* 命令执行状态指示 */}
-          <span className="flex items-center gap-1 text-[10px] text-gray-500">
+          <span className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400">
             <span className={`w-1.5 h-1.5 rounded-full ${
               workspace.commandExecutionEnabled ? 'bg-green-500' : 'bg-gray-500'
             }`} />
@@ -201,14 +206,14 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
       )}
 
       {/* B4: 终端输出区域 */}
-      <div ref={terminalRef} className="flex-1 overflow-y-auto p-3 font-mono text-xs select-text">
+      <div ref={terminalRef} className="flex-1 min-h-0 overflow-y-auto p-3 font-mono text-xs select-text">
         {terminalHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <Terminal size={28} className="text-gray-600 dark:text-gray-500 mb-2" />
+            <Terminal size={28} className="text-gray-300 dark:text-gray-600 mb-2" />
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
               {t('workspace.terminalEmptyTitle')}
             </p>
-            <p className="text-[10px] text-gray-600 dark:text-gray-500 mt-1">
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
               {t('workspace.terminalEmptyHint')}
             </p>
           </div>
@@ -229,7 +234,7 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
 
       {/* 命令输入栏 */}
       {workspace.commandExecutionEnabled && (
-        <div className="flex-shrink-0 border-t border-surface-800 dark:border-surface-700/40 px-3 py-2">
+        <div className="flex-shrink-0 border-t border-surface-200 dark:border-surface-700/60 bg-surface-50/70 dark:bg-surface-800/30 px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="text-teal-500 text-xs font-mono flex-shrink-0">$</span>
             <input
@@ -244,13 +249,14 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
               }}
               placeholder={t('workspace.commandPlaceholder')}
               disabled={isExecuting}
-              className="flex-1 bg-transparent text-xs text-gray-300 placeholder-gray-600 outline-none font-mono"
+              className="flex-1 min-w-0 bg-transparent text-xs text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 outline-none font-mono"
             />
             {isExecuting ? (
               <button
                 onClick={handleAbort}
-                className="p-1 rounded hover:bg-surface-800 text-red-400 hover:text-red-300 transition-colors"
+                className="p-1 rounded text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300 transition-colors"
                 title={t('workspace.abortCommand')}
+                aria-label={t('workspace.abortCommand')}
               >
                 <Square size={13} />
               </button>
@@ -258,8 +264,9 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
               <button
                 onClick={() => handleExecuteCommand()}
                 disabled={!commandInput.trim()}
-                className="p-1 rounded hover:bg-surface-800 text-gray-500 hover:text-teal-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="p-1 rounded text-gray-400 hover:bg-teal-50 hover:text-teal-600 dark:text-gray-500 dark:hover:bg-teal-900/20 dark:hover:text-teal-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 title={t('workspace.executeCommand')}
+                aria-label={t('workspace.executeCommand')}
               >
                 <Send size={13} />
               </button>
@@ -284,10 +291,10 @@ interface InlineApprovalCardProps {
 
 function InlineApprovalCard({ request, showDetail, onToggleDetail, onApprove, onDeny, t }: InlineApprovalCardProps) {
   const riskColors: Record<string, { bg: string; border: string; text: string; badge: string }> = {
-    safe: { bg: 'bg-green-900/20', border: 'border-green-700/30', text: 'text-green-300', badge: 'bg-green-800/40 text-green-400' },
-    medium: { bg: 'bg-amber-900/20', border: 'border-amber-700/30', text: 'text-amber-300', badge: 'bg-amber-800/40 text-amber-400' },
-    high: { bg: 'bg-orange-900/20', border: 'border-orange-700/30', text: 'text-orange-300', badge: 'bg-orange-800/40 text-orange-400' },
-    critical: { bg: 'bg-red-900/20', border: 'border-red-700/30', text: 'text-red-300', badge: 'bg-red-800/40 text-red-400' },
+    safe: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-700/30', text: 'text-green-700 dark:text-green-300', badge: 'bg-green-100 text-green-700 dark:bg-green-800/40 dark:text-green-400' },
+    medium: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-700/30', text: 'text-amber-700 dark:text-amber-300', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-800/40 dark:text-amber-400' },
+    high: { bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-700/30', text: 'text-orange-700 dark:text-orange-300', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-800/40 dark:text-orange-400' },
+    critical: { bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-700/30', text: 'text-red-700 dark:text-red-300', badge: 'bg-red-100 text-red-700 dark:bg-red-800/40 dark:text-red-400' },
   }
 
   const colors = riskColors[request.riskLevel] || riskColors.medium
@@ -305,7 +312,7 @@ function InlineApprovalCard({ request, showDetail, onToggleDetail, onApprove, on
         </div>
         <button
           onClick={onToggleDetail}
-          className="p-0.5 rounded hover:bg-white/5 text-gray-500 transition-colors"
+          className="p-0.5 rounded text-gray-400 hover:bg-black/5 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-white/5 dark:hover:text-gray-300 transition-colors"
         >
           {showDetail ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
@@ -313,7 +320,7 @@ function InlineApprovalCard({ request, showDetail, onToggleDetail, onApprove, on
 
       {/* 命令内容 */}
       <div className="px-3 pb-2">
-        <code className={`block text-[11px] ${colors.text} break-all font-mono bg-black/20 rounded px-2 py-1.5`}>
+        <code className={`block text-[11px] ${colors.text} break-all font-mono bg-white/80 dark:bg-black/20 rounded px-2 py-1.5`}>
           $ {request.command}
         </code>
       </div>
@@ -322,42 +329,42 @@ function InlineApprovalCard({ request, showDetail, onToggleDetail, onApprove, on
       {showDetail && (
         <div className="px-3 pb-2 space-y-1">
           {request.matchedRule && (
-            <p className="text-[10px] text-gray-400">{t('workspace.rule')}: {request.matchedRule}</p>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400">{t('workspace.rule')}: {request.matchedRule}</p>
           )}
           {request.agentName && (
-            <p className="text-[10px] text-gray-400">{t('workspace.from')}: {request.agentName}</p>
+            <p className="text-[10px] text-gray-500 dark:text-gray-400">{t('workspace.from')}: {request.agentName}</p>
           )}
-          <p className="text-[10px] text-gray-500">{t('workspace.directory')}: {request.workingDir}</p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">{t('workspace.directory')}: {request.workingDir}</p>
         </div>
       )}
 
       {/* 操作按钮 */}
-      <div className="flex items-center gap-1.5 px-3 py-2 border-t border-white/5">
+      <div className="flex items-center gap-1.5 px-3 py-2 border-t border-black/5 dark:border-white/5">
         <button
           onClick={() => onApprove(false)}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[11px] font-medium bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[11px] font-medium bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-600/20 dark:text-green-400 dark:hover:bg-green-600/30 transition-colors"
         >
           <CheckCircle size={12} />
           {t('workspace.approve')}
         </button>
         <button
           onClick={() => onApprove(true)}
-          className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] text-green-500/70 hover:bg-green-600/10 transition-colors"
+          className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] text-green-600/80 hover:bg-green-100 dark:text-green-500/70 dark:hover:bg-green-600/10 transition-colors"
           title={t('workspace.alwaysApproveCommand')}
         >
           {t('workspace.alwaysApprove')}
         </button>
-        <div className="w-px h-4 bg-white/10" />
+        <div className="w-px h-4 bg-black/10 dark:bg-white/10" />
         <button
           onClick={() => onDeny(false)}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[11px] font-medium bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[11px] font-medium bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-600/20 dark:text-red-400 dark:hover:bg-red-600/30 transition-colors"
         >
           <XCircle size={12} />
           {t('workspace.deny')}
         </button>
         <button
           onClick={() => onDeny(true)}
-          className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] text-red-500/70 hover:bg-red-600/10 transition-colors"
+          className="flex items-center justify-center gap-1 px-2 py-1.5 rounded text-[10px] text-red-600/80 hover:bg-red-100 dark:text-red-500/70 dark:hover:bg-red-600/10 transition-colors"
           title={t('workspace.alwaysDenyCommand')}
         >
           {t('workspace.alwaysDeny')}

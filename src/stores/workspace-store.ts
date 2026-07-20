@@ -61,6 +61,11 @@ interface WorkspaceStore {
   isLoadingCheckpoints: boolean
   /** 文件监控是否活跃 */
   watcherActive: boolean
+  /**
+   * 预览编辑器是否有未保存修改。
+   * 为 true 时 auto-before-modify 不应触发自动存档。
+   */
+  hasUnsavedPreviewEdits: boolean
 
   // ---- 工作区 CRUD ----
   /** 创建新工作区 */
@@ -105,6 +110,8 @@ interface WorkspaceStore {
   // ---- 文件监控 ----
   /** 设置监控状态 */
   setWatcherActive: (active: boolean) => void
+  /** 设置预览编辑器未保存状态（抑制自动存档） */
+  setHasUnsavedPreviewEdits: (dirty: boolean) => void
 
   // ---- 命令审批 ----
   /** 发起命令审批请求 */
@@ -179,6 +186,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
       pendingFileActionApproval: null as FileActionApprovalRequest | null,
       isLoadingCheckpoints: false,
       watcherActive: false,
+      hasUnsavedPreviewEdits: false,
 
       // ---- 工作区 CRUD ----
 
@@ -305,6 +313,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           activeWorkspaceId: null,
           checkpointIndex: [],
           watcherActive: false,
+          hasUnsavedPreviewEdits: false,
           pendingCommandApproval: null,
         })
         // 清除可能残留的审批回调
@@ -334,6 +343,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           checkpointIndex: [],
           isLoadingCheckpoints: true,
           watcherActive: false,
+          hasUnsavedPreviewEdits: false,
           pendingCommandApproval: null,
         })
         // 清除可能残留的审批回调
@@ -355,6 +365,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             activeWorkspaceId: null,
             checkpointIndex: [],
             watcherActive: false,
+            hasUnsavedPreviewEdits: false,
             pendingCommandApproval: null,
           })
           if (pendingApprovalResolve) {
@@ -375,6 +386,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             checkpointIndex: [],
             isLoadingCheckpoints: true,
             watcherActive: false,
+            hasUnsavedPreviewEdits: false,
             pendingCommandApproval: null,
           })
           if (pendingApprovalResolve) {
@@ -406,6 +418,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           activeWorkspaceId: null,
           checkpointIndex: [],
           watcherActive: false,
+          hasUnsavedPreviewEdits: false,
           pendingCommandApproval: null,
         })
         if (pendingApprovalResolve) {
@@ -447,6 +460,10 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
 
       setWatcherActive: (active: boolean) => {
         set({ watcherActive: active })
+      },
+
+      setHasUnsavedPreviewEdits: (dirty: boolean) => {
+        set({ hasUnsavedPreviewEdits: dirty })
       },
 
       // ---- 命令审批 ----
@@ -533,7 +550,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         // 不持久化 openTabs（运行时状态，跟随 activeWorkspaceId）
         // 不持久化 checkpointIndex（从文件系统加载）
         // 不持久化 pendingCommandApproval（运行时状态）
-        // 不持久化 isLoadingCheckpoints 和 watcherActive（运行时状态）
+        // 不持久化 isLoadingCheckpoints、watcherActive、hasUnsavedPreviewEdits（运行时状态）
       }),
       migrate: (persistedState: unknown, version: number) => {
         const state = persistedState as Record<string, unknown>

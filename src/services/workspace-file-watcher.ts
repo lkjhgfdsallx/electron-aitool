@@ -107,9 +107,25 @@ export const workspaceFileWatcher = {
   },
 
   /**
+   * 取消尚未执行的自动存档（例如用户开始编辑且未保存时）
+   */
+  cancelPendingAutoCheckpoint(): void {
+    if (autoCheckpointTimer) {
+      clearTimeout(autoCheckpointTimer)
+      autoCheckpointTimer = null
+    }
+  },
+
+  /**
    * 防抖调度自动存档
    */
   _scheduleAutoCheckpoint(data: WatcherChangeData): void {
+    // 用户有未保存的预览编辑时不自动存档
+    if (useWorkspaceStore.getState().hasUnsavedPreviewEdits) {
+      this.cancelPendingAutoCheckpoint()
+      return
+    }
+
     // 清除之前的定时器
     if (autoCheckpointTimer) {
       clearTimeout(autoCheckpointTimer)
@@ -120,6 +136,9 @@ export const workspaceFileWatcher = {
       autoCheckpointTimer = null
 
       const store = useWorkspaceStore.getState()
+      // 防抖窗口内若用户开始编辑且未保存，跳过本次自动存档
+      if (store.hasUnsavedPreviewEdits) return
+
       const workspace = store.getActiveWorkspace()
       if (!workspace) return
 

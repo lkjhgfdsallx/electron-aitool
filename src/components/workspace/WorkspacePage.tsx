@@ -15,7 +15,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useConversationStore } from '../../stores/conversation-store'
-import { Settings, ChevronLeft, ChevronDown, ChevronUp, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users } from 'lucide-react'
+import { Settings, ChevronLeft, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users, Terminal } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { workspaceFileWatcher } from '../../services/workspace-file-watcher'
 import { formatRelativeTime } from '../../utils/format-time'
@@ -23,7 +23,7 @@ import { ResizeHandle } from '../shared/ResizeHandle'
 import { ProjectExplorer } from './ProjectExplorer'
 import { WorkspaceChatPanel } from './WorkspaceChatPanel'
 import { TerminalPanel } from './TerminalPanel'
-import { FilePreview } from './FilePreview'
+import { FilePreview, type FilePreviewHandle } from './FilePreview'
 import { WorkspaceCreateDialog } from './WorkspaceCreateDialog'
 import { WorkspaceSettingsPopover } from './WorkspaceSettingsPopover'
 import { ContextTimelinePanel } from './ContextTimelinePanel'
@@ -57,6 +57,24 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
   // B2: 文件预览状态
   const [previewFile, setPreviewFile] = useState<string | null>(null)
+  const [previewDirty, setPreviewDirty] = useState(false)
+  const [pendingPreviewAction, setPendingPreviewAction] = useState<(() => void) | null>(null)
+  const previewRef = useRef<FilePreviewHandle>(null)
+  const setHasUnsavedPreviewEdits = useWorkspaceStore((s) => s.setHasUnsavedPreviewEdits)
+
+  // 未保存编辑时：同步 store 并取消待执行的自动存档
+  useEffect(() => {
+    setHasUnsavedPreviewEdits(previewDirty)
+    if (previewDirty) {
+      workspaceFileWatcher.cancelPendingAutoCheckpoint()
+    }
+  }, [previewDirty, setHasUnsavedPreviewEdits])
+
+  // 离开工作区页面时清理未保存标记
+  useEffect(() => () => {
+    useWorkspaceStore.getState().setHasUnsavedPreviewEdits(false)
+    workspaceFileWatcher.cancelPendingAutoCheckpoint()
+  }, [])
 
   // B8: 文件变化跟踪
   const [changedFiles, setChangedFiles] = useState<Set<string>>(new Set())
@@ -187,10 +205,41 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     return () => document.removeEventListener('click', handleClose)
   }, [tabContextMenu])
 
+  // 在关闭或切换预览前保护未保存的编辑内容
+  const requestPreviewAction = useCallback((action: () => void) => {
+    if (previewDirty) {
+      setPendingPreviewAction(() => action)
+      return
+    }
+    action()
+  }, [previewDirty])
+
   // 文件选择处理
   const handleFileSelect = useCallback((filePath: string) => {
-    setPreviewFile(filePath)
-  }, [])
+    if (filePath === previewFile) return
+    requestPreviewAction(() => setPreviewFile(filePath))
+  }, [previewFile, requestPreviewAction])
+
+  const handleClosePreview = useCallback(() => {
+    requestPreviewAction(() => setPreviewFile(null))
+  }, [requestPreviewAction])
+
+  const cancelPendingPreviewAction = useCallback(() => setPendingPreviewAction(null), [])
+
+  const discardAndContinuePreviewAction = useCallback(() => {
+    previewRef.current?.discardChanges()
+    const action = pendingPreviewAction
+    setPendingPreviewAction(null)
+    action?.()
+  }, [pendingPreviewAction])
+
+  const saveAndContinuePreviewAction = useCallback(async () => {
+    const saved = await previewRef.current?.save()
+    if (!saved) return
+    const action = pendingPreviewAction
+    setPendingPreviewAction(null)
+    action?.()
+  }, [pendingPreviewAction])
 
   // C5: 导出工作区
   const handleExport = useCallback(async () => {
@@ -597,7 +646,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             </svg>
           </button>
 
-          {/* 切换底栏 */}
+          {/* 切换终端面板 */}
           <button
             onClick={() => setBottomPanelCollapsed(!bottomPanelCollapsed)}
             className={`p-1.5 rounded-lg transition-all ${
@@ -606,8 +655,10 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
             }`}
             title={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
+            aria-label={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
+            aria-pressed={!bottomPanelCollapsed}
           >
-            {bottomPanelCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            <Terminal size={16} aria-hidden="true" />
           </button>
 
           {/* C6: 上下文时间线 */}
@@ -670,9 +721,9 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
       )}
 
       {/* 三栏内容区 */}
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* 上半部分：左栏 + 中栏 */}
-        <div className="flex-1 flex min-h-0">
+        <div className="flex-1 flex min-h-0 overflow-hidden">
           {/* 左栏：项目浏览器 */}
           {!leftPanelCollapsed && (
             <div
@@ -701,25 +752,14 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           )}
 
           {/* 中栏：AI 领导控制台 或 文件预览 */}
-          <div className="flex-1 flex flex-col min-w-0 relative">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
             {previewFile ? (
-              <div className="flex flex-col h-full">
-                {/* 文件预览标签栏 */}
-                <div className="flex items-center h-8 px-2 border-b border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-900/50 flex-shrink-0">
-                  <span className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate px-2">
-                    {previewFile.split(/[/\\]/).pop()}
-                  </span>
-                  <button
-                    onClick={() => setPreviewFile(null)}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                    title={t('workspace.closePreview')}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
+              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                 <FilePreview
+                  ref={previewRef}
                   filePath={previewFile}
-                  onClose={() => setPreviewFile(null)}
+                  onClose={handleClosePreview}
+                  onDirtyChange={setPreviewDirty}
                 />
               </div>
             ) : (
@@ -746,13 +786,27 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         {/* 底栏：终端 & 审批 */}
         {!bottomPanelCollapsed && (
           <div
-            className="flex-shrink-0 border-t-2 border-surface-300 dark:border-surface-600"
+            className="flex-shrink-0 min-h-0 overflow-hidden border-t-2 border-surface-300 dark:border-surface-600"
             style={{ height: bottomPanelHeight }}
           >
             <TerminalPanel workspace={activeWorkspace} />
           </div>
         )}
       </div>
+
+      {pendingPreviewAction && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true" aria-labelledby="unsaved-file-title">
+          <div className="w-full max-w-sm rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 shadow-xl p-5">
+            <h2 id="unsaved-file-title" className="text-sm font-semibold text-gray-800 dark:text-gray-100">保存对文件的修改？</h2>
+            <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">当前文件含有未保存的修改。请在关闭或切换前选择如何处理。</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={cancelPendingPreviewAction} className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">取消</button>
+              <button onClick={discardAndContinuePreviewAction} className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">放弃修改</button>
+              <button onClick={saveAndContinuePreviewAction} className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-teal-500 hover:bg-teal-600 transition-colors">保存并继续</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 创建工作区对话框 */}
       <WorkspaceCreateDialog

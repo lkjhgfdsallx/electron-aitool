@@ -1,52 +1,60 @@
 /**
- * 文件预览组件 - 只读文件内容查看
- *
- * 功能：
- * - 通过 IPC readFile 读取文件内容
- * - 显示文件路径、大小、语言标识
- * - 代码行号显示
- * - 大文件截断提示
- * - 关闭按钮
+ * 工作区文件编辑器：基于 Monaco 提供文本文件预览、编辑和保存能力。
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { X, FileText, Copy, Check, AlertTriangle } from 'lucide-react'
-import hljs from 'highlight.js'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import Editor, { type Monaco } from '@monaco-editor/react'
+import type * as MonacoEditor from 'monaco-editor'
+import { X, FileText, Copy, Check, AlertTriangle, Save, Loader2 } from 'lucide-react'
 import { workspaceFsService } from '../../services/workspace-fs-service'
 import { useAppTranslation } from '../../i18n/hooks'
+import { useSettingsStore } from '../../stores/settings-store'
 
-// ---- Props ----
-
-interface FilePreviewProps {
-  /** 文件绝对路径 */
-  filePath: string
-  /** 关闭预览 */
-  onClose: () => void
+export interface FilePreviewHandle {
+  save: () => Promise<boolean>
+  discardChanges: () => void
 }
 
-// ---- 组件 ----
+interface FilePreviewProps {
+  filePath: string
+  onClose: () => void
+  onDirtyChange?: (isDirty: boolean) => void
+}
 
-export function FilePreview({ filePath, onClose }: FilePreviewProps) {
+export const FilePreview = forwardRef<FilePreviewHandle, FilePreviewProps>(function FilePreview(
+  { filePath, onClose, onDirtyChange },
+  ref
+) {
   const { t } = useAppTranslation()
-  const [content, setContent] = useState<string>('')
+  const theme = useSettingsStore((s) => s.theme)
+  const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs'
+  const [content, setContent] = useState('')
+  const [savedContent, setSavedContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [truncated, setTruncated] = useState(false)
   const [totalSize, setTotalSize] = useState(0)
-  const [copied, setCopied] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fileName = filePath.split(/[/\\]/).pop() || filePath
   const ext = fileName.includes('.') ? `.${fileName.split('.').pop()}` : ''
   const language = workspaceFsService.getLanguage(ext)
   const isText = workspaceFsService.isTextFile(ext)
+  const isDirty = isText && !truncated && content !== savedContent
+  const editorLanguage = language === 'text' ? 'plaintext' : language
 
-  // 加载文件内容
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
+    setSaveError(null)
     setContent('')
+    setSavedContent('')
+    setTruncated(false)
+    setTotalSize(0)
 
     if (!isText) {
       setLoading(false)
@@ -54,12 +62,12 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
       return
     }
 
-    workspaceFsService
-      .readFile(filePath)
+    workspaceFsService.readFile(filePath)
       .then((result) => {
         if (cancelled) return
         if (result.success && result.content !== undefined) {
           setContent(result.content)
+          setSavedContent(result.content)
           setTruncated(result.truncated || false)
           setTotalSize(result.totalSize || 0)
         } else {
@@ -73,129 +81,116 @@ export function FilePreview({ filePath, onClose }: FilePreviewProps) {
         if (!cancelled) setLoading(false)
       })
 
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [filePath, isText, t])
 
-  // 复制内容
-  const handleCopy = async () => {
+  useEffect(() => {
+    onDirtyChange?.(isDirty)
+  }, [isDirty, onDirtyChange])
+
+  useEffect(() => () => {
+    onDirtyChange?.(false)
+  }, [onDirtyChange])
+
+  useEffect(() => () => {
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+  }, [])
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    if (!isDirty || saving) return !isDirty
+    setSaving(true)
+    setSaveError(null)
     try {
-      await navigator.clipboard.writeText(content)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // fallback
+      await workspaceFsService.writeFile(filePath, content)
+      setSavedContent(content)
+      setTotalSize(new Blob([content]).size)
+      setSaved(true)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => setSaved(false), 1800)
+      return true
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err))
+      return false
+    } finally {
+      setSaving(false)
     }
+  }, [content, filePath, isDirty, saving])
+
+  useImperativeHandle(ref, () => ({
+    save: handleSave,
+    discardChanges: () => {
+      setContent(savedContent)
+      setSaveError(null)
+    },
+  }), [handleSave, savedContent])
+
+  const handleCopy = async () => {
+    try { await navigator.clipboard.writeText(content) } catch { return }
   }
 
-  // 行号
-  const lines = content.split('\n')
-  const lineCount = lines.length
+  const handleEditorMount = useCallback((editor: MonacoEditor.editor.IStandaloneCodeEditor, monaco: Monaco) => {
+    editor.addAction({
+      id: 'workspace-save-file',
+      label: '保存文件',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: async () => { await handleSave() },
+    })
+  }, [handleSave])
 
-  // 代码高亮
-  const highlightedHtml = useMemo(() => {
-    if (!content) return ''
-    const lang = language !== 'text' && hljs.getLanguage(language) ? language : undefined
-    try {
-      return lang
-        ? hljs.highlight(content, { language: lang }).value
-        : hljs.highlightAuto(content).value
-    } catch {
-      return content
-    }
-  }, [content, language])
+  const editorOptions = useMemo<MonacoEditor.editor.IStandaloneEditorConstructionOptions>(() => ({
+    minimap: { enabled: false },
+    fontSize: 13,
+    lineHeight: 21,
+    fontFamily: 'JetBrains Mono, Consolas, monospace',
+    wordWrap: 'on',
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    padding: { top: 12, bottom: 12 },
+    readOnly: truncated,
+    renderWhitespace: 'selection',
+  }), [truncated])
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-surface-900">
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-3 h-9 border-b border-surface-200 dark:border-surface-700/60 flex-shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <FileText size={14} className="text-gray-400 flex-shrink-0" />
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-            {fileName}
-          </span>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-            {language}
-          </span>
-          {totalSize > 0 && (
-            <span className="text-[10px] text-gray-300 dark:text-gray-600 flex-shrink-0">
-              {workspaceFsService.formatSize(totalSize)}
-            </span>
-          )}
-          {truncated && (
-            <span className="flex items-center gap-0.5 text-[10px] text-amber-500 flex-shrink-0">
-              <AlertTriangle size={10} />
-              {t('workspace.truncated')}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={handleCopy}
-            className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            title={t('workspace.copyContent')}
-          >
-            {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+      <div className="flex items-center gap-2 h-10 px-3 border-b border-surface-200 dark:border-surface-700/60 flex-shrink-0 min-w-0">
+        <FileText size={15} className="text-gray-400 flex-shrink-0" aria-hidden="true" />
+        <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate flex-shrink-0 max-w-[30%]" title={fileName}>{fileName}</span>
+        <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate min-w-0" title={filePath}>{filePath}</span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">{totalSize > 0 ? workspaceFsService.formatSize(totalSize) : ''}</span>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase flex-shrink-0">{language}</span>
+        {isDirty && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 flex-shrink-0">● 未保存</span>}
+        {truncated && <span className="flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400 flex-shrink-0"><AlertTriangle size={11} />{t('workspace.truncated')}</span>}
+        <div className="flex items-center gap-1 ml-auto flex-shrink-0">
+          {saved && <span role="status" className="flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400"><Check size={12} />已保存</span>}
+          <button onClick={handleCopy} className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title={t('workspace.copyContent')} aria-label={t('workspace.copyContent')}><Copy size={14} /></button>
+          <button onClick={handleSave} disabled={!isDirty || saving} className="p-1.5 rounded text-gray-400 hover:bg-teal-50 hover:text-teal-600 dark:hover:bg-teal-900/20 dark:hover:text-teal-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" title="保存 (Ctrl+S)" aria-label="保存文件">
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
           </button>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            title={t('workspace.closePreview')}
-          >
-            <X size={13} />
-          </button>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors" title={t('workspace.closePreview')} aria-label={t('workspace.closePreview')}><X size={14} /></button>
         </div>
       </div>
 
-      {/* 文件路径面包屑 */}
-      <div className="px-3 py-1 border-b border-surface-100 dark:border-surface-800 text-[10px] text-gray-400 dark:text-gray-500 truncate flex-shrink-0">
-        {filePath}
-      </div>
+      {saveError && <div role="alert" className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-900/50"><span className="truncate">保存失败：{saveError}</span><button onClick={handleSave} className="font-medium underline flex-shrink-0">重试</button></div>}
 
-      {/* 内容 */}
-      <div ref={containerRef} className="flex-1 overflow-auto">
+      <div className="flex-1 min-h-0">
         {loading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <div className="w-4 h-4 border-2 border-teal-400/30 border-t-teal-500 rounded-full animate-spin" />
-              {t('common.loading')}
-            </div>
-          </div>
+          <div className="flex items-center justify-center h-full text-xs text-gray-400"><Loader2 size={16} className="animate-spin mr-2" />{t('common.loading')}</div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
-            <AlertTriangle size={24} className="text-amber-400 mb-2" />
-            <p className="text-xs text-gray-500 dark:text-gray-400">{error}</p>
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{fileName}</p>
-          </div>
+          <div className="flex flex-col items-center justify-center h-full text-center px-4"><AlertTriangle size={24} className="text-amber-400 mb-2" /><p className="text-xs text-gray-500 dark:text-gray-400">{error}</p><p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{fileName}</p></div>
         ) : (
-          <div className="flex font-mono text-[12px] leading-[1.6]">
-            {/* 行号列 */}
-            <div className="flex-shrink-0 text-right pr-3 pl-3 py-2 select-none border-r border-surface-100 dark:border-surface-800">
-              {lines.map((_, i) => (
-                <div key={i} className="text-gray-300 dark:text-gray-600">
-                  {i + 1}
-                </div>
-              ))}
-            </div>
-            {/* 内容列（带语法高亮） */}
-            <pre className="flex-1 py-2 px-3 overflow-x-auto whitespace-pre">
-              <code
-                className="hljs"
-                dangerouslySetInnerHTML={{ __html: highlightedHtml || content }}
-              />
-            </pre>
-          </div>
+          <Editor
+            key={filePath}
+            path={filePath}
+            language={editorLanguage}
+            value={content}
+            onChange={(value) => setContent(value ?? '')}
+            onMount={handleEditorMount}
+            theme={monacoTheme}
+            options={editorOptions}
+            loading={<div className="flex items-center justify-center h-full text-xs text-gray-400">编辑器加载中…</div>}
+          />
         )}
       </div>
-
-      {/* 底部状态栏 */}
-      {!loading && !error && (
-        <div className="flex items-center justify-between px-3 py-1 border-t border-surface-100 dark:border-surface-800 text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0">
-          <span>{lineCount} 行</span>
-          <span>{language}</span>
-        </div>
-      )}
     </div>
   )
-}
+})
