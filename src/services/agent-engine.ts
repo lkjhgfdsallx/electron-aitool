@@ -34,9 +34,11 @@ import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { knowledgeBaseService } from './knowledge-base-service'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from './built-in-tools'
+import { useAIProviderStore } from '../stores/ai-provider-store'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
 import { applyWebSearchPolicy, shouldBypassAgentToolWhitelist } from '../utils/web-tools'
 import { useSkillStore } from '../stores/skill-store'
+import { getAccessibleSkills } from './skill-access-policy'
 import { toolExecutorRegistry, agentEventBus } from './agent'
 import type { AgentSessionContext, ToolExecutorSessionBundle } from './agent'
 import { contextManager } from './agent/context-manager'
@@ -140,7 +142,10 @@ export interface CreateAgentInput {
   systemPrompt: string
   avatar?: string
   enabledToolIds?: string[]
-  /** 绑定的 Skills ID 列表 */
+  /**
+   * 兼容旧数据的 Skills ID 列表。
+   * 新模型不再按此字段授权；是否可用 Skills 取决于是否启用 list_skills / use_skill。
+   */
   enabledSkillIds?: string[]
   /** 是否启用 */
   enabled?: boolean
@@ -524,18 +529,15 @@ function buildAgentSystemPrompt(
     }
   }
 
-  // 添加可用 Skills 信息（按 Agent 绑定的 enabledSkillIds 过滤）
-  // 工具调用指引仅在 list_skills / use_skill 实际启用时注入
-  // 注意：此处为同步拼装；调用方应在 runAgent 前 ensureSkillsLoaded，避免读到空内存态
-  if (agent.enabledSkillIds && agent.enabledSkillIds.length > 0) {
-    const allSkills = useSkillStore.getState().getAllEnabledSkills()
-    const boundSkills = allSkills.filter(
-      (s) => agent.enabledSkillIds!.includes(s.dirPath) || agent.enabledSkillIds!.includes(s.id)
-    )
-    if (boundSkills.length > 0) {
+  // 添加可用 Skills 信息。
+  // 简化规则：Agent 只要启用了 list_skills / use_skill，即可使用全部已启用 Skills。
+  // 注意：此处为同步拼装；调用方应在 runAgent 前 ensureSkillsLoaded，避免读到空内存态。
+  if (hasTool('list_skills') || hasTool('use_skill')) {
+    const accessibleSkills = getAccessibleSkills(useSkillStore.getState().skills)
+    if (accessibleSkills.length > 0) {
       prompt += `\n\n## 可用专业技能（Skills）\n`
       prompt += `你有以下专业技能可供使用，这些技能为你提供了特定领域的专家知识：\n`
-      for (const skill of boundSkills) {
+      for (const skill of accessibleSkills) {
         prompt += `\n- **${skill.name}**：${skill.description}\n`
       }
       const skillUsageLines: string[] = []
@@ -962,18 +964,8 @@ async function agentLoopBody(
   // 构建系统提示词基础（每轮会根据工作流状态重新拼接，故用 let）
   let systemPrompt = buildAgentSystemPrompt(agent, agentTools, contextString, workspaceContext)
 
-  // Agent 循环
+  // Agent 循环（请求频率限制由 AI 源 requestConfig.minRequestIntervalSeconds 在 aiService 中统一执行）
   for (let i = 0; i < loopLimit; i++) {
-    // 如果不是第一步，添加延迟避免 API 请求过快（Too many requests）
-    if (i > 0) {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, 1500)
-        if (signal.aborted) { clearTimeout(timer); reject(new Error('aborted')); return }
-        const onAbort = () => { clearTimeout(timer); reject(new Error('aborted')) }
-        signal.addEventListener('abort', onAbort, { once: true })
-      })
-    }
-
     // 检查中止信号
     if (signal.aborted) {
       const stopStep: AgentStep = {
@@ -1017,11 +1009,12 @@ async function agentLoopBody(
     // 准备工具定义
     const toolDefs = toolService.toToolDefinitions(effectiveTools)
 
-    // 调用 LLM
+    // 调用 LLM（透传 AI 源 requestConfig，含超时/重试/请求频率限制）
     let fullContent = ''
     let reasoningContent = ''
     let nativeToolCalls: Array<{ id: string; name: string; arguments: string }> = []
     let streamFinishReason: string | undefined
+    const requestConfig = useAIProviderStore.getState().getRequestConfig(agent.modelConfig?.providerId)
 
     try {
       await aiService.streamChat(
@@ -1057,7 +1050,8 @@ async function agentLoopBody(
           onError: (error) => {
             throw new Error(error)
           }
-        }
+        },
+        requestConfig
       )
     } catch (error) {
       if (signal.aborted) {

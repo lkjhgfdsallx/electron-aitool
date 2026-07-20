@@ -68,22 +68,24 @@ export function KnowledgeBaseSettings() {
   const [showRebuildConfirm, setShowRebuildConfirm] = useState(false)
   const { confirm, Dialog } = useConfirmDialog()
 
-  // 订阅引擎状态变化
+  // 订阅引擎状态变化；挂载时同步一次最新状态，避免拿到过期快照
   useEffect(() => {
+    setEngineStatus(embeddingService.getStatus())
     const unsubscribe = embeddingService.onStatusChange(setEngineStatus)
     return unsubscribe
   }, [])
 
   // 组件挂载时，如果已配置非 tfidf 提供者且模型尚未就绪，自动初始化（从 IndexedDB 缓存恢复）
   useEffect(() => {
+    const status = embeddingService.getStatus()
     if (
       embeddingConfig.type !== 'tfidf' &&
-      !engineStatus.modelReady &&
-      !engineStatus.modelLoading
+      !status.modelReady &&
+      !status.modelLoading
     ) {
-      embeddingService.init(embeddingConfig)
+      void embeddingService.init(embeddingConfig)
     }
-    // 仅在挂载时执行一次
+    // 仅在挂载时执行一次；init 内部会按配置复用已加载 Worker
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

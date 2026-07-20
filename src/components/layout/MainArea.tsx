@@ -9,12 +9,14 @@ import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 interface MainAreaProps {
   viewMode: ViewMode
   settingsSection: SettingsSection
-  onOpenSettings: (section?: SettingsSection) => void
+  /** 打开设置时可选：直接进入指定 Agent / AI 源编辑态 */
+  settingsEditId?: string
+  onOpenSettings: (section?: SettingsSection, editId?: string) => void
   onCloseSettings: () => void
   onOpenWorkspace: () => void
 }
 
-export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSettings, onOpenWorkspace }: MainAreaProps) {
+export function MainArea({ viewMode, settingsSection, settingsEditId, onOpenSettings, onCloseSettings, onOpenWorkspace }: MainAreaProps) {
   const renderContent = () => {
     switch (viewMode) {
       case 'knowledge-base':
@@ -28,6 +30,7 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
         return (
           <SettingsPage
             defaultSection={settingsSection}
+            initialEditId={settingsEditId}
             onBack={onCloseSettings}
             onOpenWorkspace={onOpenWorkspace}
           />
@@ -45,11 +48,11 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
           <>
             <TopBar
               viewMode={viewMode}
-              onOpenSettings={() => onOpenSettings()}
+              onOpenSettings={(section, editId) => onOpenSettings(section, editId)}
               onBackToChat={onCloseSettings}
             />
             <ChatWindow
-              onOpenAgentManager={() => onOpenSettings('agents')}
+              onOpenAgentManager={(agentId) => onOpenSettings('agents', agentId)}
               onOpenPromptManager={() => onOpenSettings('prompts')}
               onOpenSettings={onOpenSettings}
             />
@@ -67,12 +70,12 @@ export function MainArea({ viewMode, settingsSection, onOpenSettings, onCloseSet
           <>
             <TopBar
               viewMode={viewMode}
-              onOpenSettings={() => onOpenSettings()}
+              onOpenSettings={(section, editId) => onOpenSettings(section, editId)}
               onBackToChat={onCloseSettings}
             />
             <div className="flex-1 flex min-h-0">
               <ChatWindow
-                onOpenAgentManager={() => onOpenSettings('agents')}
+                onOpenAgentManager={(agentId) => onOpenSettings('agents', agentId)}
                 onOpenPromptManager={() => onOpenSettings('prompts')}
                 onOpenSettings={onOpenSettings}
               />

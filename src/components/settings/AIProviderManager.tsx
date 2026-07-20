@@ -71,7 +71,12 @@ const STATUS_TEXT: Record<ConnectionStatus, string> = {
   error: '错误'
 }
 
-export function AIProviderManager() {
+export interface AIProviderManagerProps {
+  /** 初始打开编辑的 AI 源 ID，用于从对话页直接跳转到编辑页 */
+  initialEditingProviderId?: string
+}
+
+export function AIProviderManager({ initialEditingProviderId }: AIProviderManagerProps = {}) {
   const { t } = useAppTranslation()
   const {
     providers,
@@ -85,6 +90,8 @@ export function AIProviderManager() {
     updateModel
   } = useAIProviderStore()
   const { confirm, Dialog } = useConfirmDialog()
+  /** 初始编辑 ID 只消费一次，避免关闭编辑器后被 effect 再次打开 */
+  const appliedInitialEditIdRef = useRef<string | undefined>(undefined)
 
   // 预设 Provider 模板（使用翻译）
   const PROVIDER_PRESETS = useMemo(() => [
@@ -275,6 +282,17 @@ export function AIProviderManager() {
     setFetchError(null)
     setFetchSuccess(null)
   }
+
+  // 从对话页跳转时，直接打开指定 AI 源的编辑页（同一 ID 只自动打开一次）
+  useEffect(() => {
+    if (!initialEditingProviderId || isCreating) return
+    if (appliedInitialEditIdRef.current === initialEditingProviderId) return
+    const provider = providers.find((p) => p.id === initialEditingProviderId)
+    if (provider) {
+      appliedInitialEditIdRef.current = initialEditingProviderId
+      handleEdit(provider)
+    }
+  }, [initialEditingProviderId, providers, isCreating])
 
   const handleSave = () => {
     if (!form.name.trim() || !form.baseUrl.trim()) return
@@ -730,6 +748,29 @@ export function AIProviderManager() {
                     placeholder="0"
                     className="w-full px-3 py-1.5 text-xs bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-lg focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all font-mono"
                   />
+                </div>
+
+                {/* API 请求频率限制 */}
+                <div>
+                  <label className="block text-[11px] text-muted mb-1">{t('settings.minRequestIntervalSeconds')}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="3600"
+                    step="1"
+                    value={requestConfig.minRequestIntervalSeconds ?? 0}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      const parsed = raw === '' ? 0 : parseInt(raw, 10)
+                      setRequestConfig({
+                        ...requestConfig,
+                        minRequestIntervalSeconds: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+                      })
+                    }}
+                    placeholder="0"
+                    className="w-full px-3 py-1.5 text-xs bg-surface-50 dark:bg-surface-900 border border-surface-200/80 dark:border-surface-700/60 rounded-lg focus:ring-2 focus:ring-accent-500/30 focus:border-accent-400 transition-all font-mono"
+                  />
+                  <p className="text-[10px] text-muted mt-1">{t('settings.minRequestIntervalSecondsHint')}</p>
                 </div>
 
                 {/* 自定义 Headers */}

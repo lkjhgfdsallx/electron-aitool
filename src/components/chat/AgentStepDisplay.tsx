@@ -18,6 +18,8 @@ import type { AgentStep } from '../../types'
 import type { AgentPlan } from '../../types/agent-plan'
 import { useAppTranslation } from '@/i18n/hooks'
 import { AgentTodoPanel } from './AgentTodoPanel'
+import { SkillCallDisplay } from './SkillCallDisplay'
+import { isUseSkillCall } from '../../utils/skill-call'
 
 /** 用户选择超时时间（毫秒） */
 const HUMAN_INPUT_TIMEOUT_MS = 60_000
@@ -317,6 +319,29 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
           const isAwaitingHumanInput = step.type === 'human_input' && !step.humanResponse
           const isSubAgent = !!step.sourceAgentId
           const agentGroupCollapsed = isSubAgent && collapsedAgentGroups.has(step.sourceAgentId!)
+          const isSkillAction = step.type === 'action' && isUseSkillCall(step.toolCall?.name)
+          const pairedObservation = isSkillAction && processSteps[index + 1]?.type === 'observation'
+            ? processSteps[index + 1]
+            : undefined
+
+          if (isSkillAction) {
+            return (
+              <div key={step.id} className="relative mx-2 my-1.5">
+                <SkillCallDisplay
+                  arguments={step.toolCall!.arguments}
+                  result={pairedObservation?.toolResult?.data}
+                  status={pairedObservation?.toolResult
+                    ? (pairedObservation.toolResult.success ? 'completed' : 'error')
+                    : (isRunning ? 'running' : 'completed')}
+                  error={pairedObservation?.toolResult?.error}
+                />
+              </div>
+            )
+          }
+
+          if (step.type === 'observation' && isUseSkillCall(processSteps[index - 1]?.toolCall?.name)) {
+            return null
+          }
 
           return (
             <div key={step.id} className="relative">

@@ -583,17 +583,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           const embedding = await embedText(request.text)
           post({ type: 'result', id: request.id, embedding })
         } catch (err) {
-          const errObj = err as { message?: string }
+          // 仅返回空结果给对应请求，不要发全局 error：
+          // 全局 error 会在主线程把 modelReady 打回 false，导致“过一段时间又要重新加载”。
+          console.warn('[Worker] 向量生成失败:', err)
           post({
             type: 'result',
             id: request.id,
             embedding: []
           })
-          postError(
-            '向量生成失败',
-            errObj.message || String(err),
-            true
-          )
         }
         break
       }
@@ -607,17 +604,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           }
           post({ type: 'batchResult', id: request.id, embeddings })
         } catch (err) {
-          const errObj = err as { message?: string }
+          // 同上：推理失败只影响当前请求，不降级引擎就绪状态
+          console.warn('[Worker] 批量向量生成失败:', err)
           post({
             type: 'batchResult',
             id: request.id,
             embeddings: []
           })
-          postError(
-            '批量向量生成失败',
-            errObj.message || String(err),
-            true
-          )
         }
         break
       }

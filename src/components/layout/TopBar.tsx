@@ -12,11 +12,11 @@ import { ModelSelector } from '../chat/ModelSelector'
 import { BrandLogo } from '../brand'
 import { useAppTranslation } from '@/i18n/hooks'
 import type { ThemeMode } from '../../types'
-import type { ViewMode } from '../settings/SettingsNavRail'
+import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 
 interface TopBarProps {
   viewMode: ViewMode
-  onOpenSettings: () => void
+  onOpenSettings: (section?: SettingsSection, editId?: string) => void
   onBackToChat: () => void
 }
 
@@ -81,7 +81,10 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
       <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         {/* AI 源切换器 - 仅在对话模式显示 */}
         {viewMode === 'chat' && (
-          <ModelSelector conversationId={currentConversationId || undefined} onOpenSettings={onOpenSettings} />
+          <ModelSelector
+            conversationId={currentConversationId || undefined}
+            onOpenSettings={(providerId) => onOpenSettings('ai-providers', providerId)}
+          />
         )}
 
         {/* 主题切换 */}
@@ -96,7 +99,7 @@ export function TopBar({ viewMode, onOpenSettings, onBackToChat }: TopBarProps) 
 
         {/* 全局设置 */}
         <button
-          onClick={viewMode === 'settings' ? onBackToChat : onOpenSettings}
+          onClick={viewMode === 'settings' ? onBackToChat : () => onOpenSettings()}
           className={`p-2 rounded-lg transition-all ${
             viewMode === 'settings'
               ? 'bg-accent-50 dark:bg-accent-900/20 text-accent-600 dark:text-accent-400'

@@ -1,5 +1,50 @@
 import type { Message, ResolvedAIConfig, ToolDefinition, ProviderRequestConfig } from '../types'
 
+/**
+ * 按 baseUrl 记录上次请求完成时间，用于 Provider 级 API 请求频率限制。
+ * key = 规范化后的 baseUrl
+ */
+const lastRequestAtByBaseUrl = new Map<string, number>()
+
+/**
+ * 在发起请求前按 minRequestIntervalSeconds 等待，支持 AbortSignal 中断。
+ * 0 / 未配置 = 不限制。
+ */
+async function waitForRequestInterval(
+  baseUrl: string,
+  minRequestIntervalSeconds: number | undefined,
+  signal: AbortSignal
+): Promise<void> {
+  const intervalMs = Math.max(0, (minRequestIntervalSeconds ?? 0) * 1000)
+  if (intervalMs <= 0) return
+
+  const key = baseUrl.replace(/\/+$/, '')
+  const lastAt = lastRequestAtByBaseUrl.get(key) ?? 0
+  const elapsed = Date.now() - lastAt
+  const waitMs = intervalMs - elapsed
+  if (waitMs <= 0) return
+
+  await new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('The operation was aborted.', 'AbortError'))
+      return
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, waitMs)
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(new DOMException('The operation was aborted.', 'AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+function markRequestCompleted(baseUrl: string): void {
+  lastRequestAtByBaseUrl.set(baseUrl.replace(/\/+$/, ''), Date.now())
+}
+
 export interface StreamCallbacks {
   onToken: (token: string) => void
   onReasoningToken?: (token: string) => void
@@ -177,6 +222,17 @@ export const aiService = {
       Object.assign(headers, requestConfig.customHeaders)
     }
 
+    // Provider 级请求频率限制：两次请求之间的最短间隔
+    try {
+      await waitForRequestInterval(baseUrl, requestConfig?.minRequestIntervalSeconds, signal)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        callbacks.onDone('abort')
+        return
+      }
+      throw error
+    }
+
     // 单次请求（带重试）
     let lastError: string = ''
     const maxRetries = requestConfig?.maxRetries || 0
@@ -191,6 +247,7 @@ export const aiService = {
           requestConfig?.timeout,
           callbacks
         )
+        markRequestCompleted(baseUrl)
         return // 请求成功，_doStreamRequest 内部已调用 onDone
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {

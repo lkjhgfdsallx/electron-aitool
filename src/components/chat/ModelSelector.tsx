@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Globe, Check, Settings, Home, Wifi, Loader2 } from 'lucide-react'
+import { ChevronDown, Globe, Check, Settings, Home, Wifi, Loader2, Pencil } from 'lucide-react'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useGlobalConfigStore } from '../../stores/global-config-store'
@@ -19,7 +19,12 @@ const STATUS_DOT_COLORS: Record<ConnectionStatus, string> = {
 
 interface ModelSelectorProps {
   conversationId?: string
-  onOpenSettings?: () => void
+  /**
+   * 打开 AI 源设置。
+   * - 无参数：打开 AI 源列表
+   * - 传入 providerId：直接进入对应 AI 源编辑页
+   */
+  onOpenSettings?: (providerId?: string) => void
 }
 
 export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorProps) {
@@ -112,10 +117,16 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
     checkConnection(providerId)
   }
 
+  const handleEditProvider = (e: React.MouseEvent, providerId: string) => {
+    e.stopPropagation()
+    setIsOpen(false)
+    onOpenSettings?.(providerId)
+  }
+
   if (providers.length === 0) {
     return (
       <button
-        onClick={onOpenSettings}
+        onClick={() => onOpenSettings?.()}
         aria-label={t('chat.configureAiProvider')}
         className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-dashed border-surface-300 dark:border-surface-600 text-muted hover:border-accent-300 dark:hover:border-accent-600 transition-all"
       >
@@ -144,7 +155,7 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
             <div
               key={provider.id}
               onClick={() => handleSelectProvider(provider.id)}
-              className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer ${
+              className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer group ${
                 isActive
                   ? 'bg-accent-50 dark:bg-accent-950/30 border-l-2 border-accent-500'
                   : 'hover:bg-accent-50/50 dark:hover:bg-accent-950/20 border-l-2 border-transparent'
@@ -189,6 +200,18 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
                 )}
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
+                {/* 直接编辑 AI 源 */}
+                {onOpenSettings && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleEditProvider(e, provider.id)}
+                    aria-label={t('chat.editAiProvider')}
+                    title={t('chat.editAiProvider')}
+                    className="p-1 rounded text-muted opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-accent-500 hover:bg-accent-100/60 dark:hover:bg-accent-900/30 transition-all"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                )}
                 {/* 测试连接按钮 */}
                 <button
                   onClick={(e) => handleTestConnection(e, provider.id)}

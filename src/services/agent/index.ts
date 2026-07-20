@@ -37,6 +37,7 @@ import { SiteAnalyzerToolExecutor } from './executors/site-analyzer-executor'
 import { WorkspaceToolExecutor } from './executors/workspace-executor'
 import { MathToolExecutor } from './executors/math-executor'
 import { GenericToolExecutor } from './executors/generic-executor'
+import { SkillToolExecutor } from './executors/skill-executor'
 import { PlannerToolExecutor } from './planner'
 
 // ---- 导出 ----
@@ -57,6 +58,7 @@ export {
   WorkspaceToolExecutor,
   MathToolExecutor,
   GenericToolExecutor,
+  SkillToolExecutor,
   PlannerToolExecutor,
 }
 
@@ -76,6 +78,7 @@ export function registerAllExecutors(): void {
   toolExecutorRegistry.register(new SiteAnalyzerToolExecutor())
   toolExecutorRegistry.register(new WorkspaceToolExecutor())
   toolExecutorRegistry.register(new MathToolExecutor())
+  toolExecutorRegistry.register(new SkillToolExecutor())
   // 结构化任务规划执行器（create_plan / update_task / get_plan）
   toolExecutorRegistry.register(new PlannerToolExecutor())
 

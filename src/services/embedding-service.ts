@@ -20,6 +20,8 @@ import type {
   EmbeddingProviderConfig,
   EmbeddingEngineStatus,
   LocalModelProviderConfig,
+  OllamaProviderConfig,
+  OpenAIApiProviderConfig,
   PreDownloadedFile,
   WorkerRequest,
   WorkerResponse
@@ -318,6 +320,12 @@ function tfidfEmbedBatch(texts: string[]): number[][] {
 type StatusListener = (status: EmbeddingEngineStatus) => void
 
 let worker: Worker | null = null
+/** 当前 Worker 对应的配置快照（用于判断是否可复用） */
+let activeConfig: EmbeddingProviderConfig | null = null
+/** 进行中的初始化 Promise，避免并发 init 重复创建 Worker */
+let initPromise: Promise<void> | null = null
+/** 初始化代数：切换配置/强制 reinit 时递增，使过期的异步 init 自动作废 */
+let initGeneration = 0
 let requestIdCounter = 0
 const pendingRequests = new Map<
   string,
@@ -352,6 +360,35 @@ function generateRequestId(): string {
   return `req_${++requestIdCounter}_${Date.now()}`
 }
 
+/** 比较两个 embedding 配置是否等价（决定是否可复用已加载的 Worker） */
+function isSameEmbeddingConfig(
+  a: EmbeddingProviderConfig | null,
+  b: EmbeddingProviderConfig | null
+): boolean {
+  if (!a || !b) return false
+  if (a.type !== b.type) return false
+  switch (a.type) {
+    case 'tfidf':
+      return true
+    case 'local-model': {
+      const bb = b as LocalModelProviderConfig
+      return a.modelId === bb.modelId
+        && (a.mirrorUrl || '') === (bb.mirrorUrl || '')
+        && (a.modelFileName || '') === (bb.modelFileName || '')
+    }
+    case 'ollama': {
+      const bb = b as OllamaProviderConfig
+      return a.baseUrl === bb.baseUrl && a.model === bb.model
+    }
+    case 'openai-api': {
+      const bb = b as OpenAIApiProviderConfig
+      return a.baseUrl === bb.baseUrl && a.model === bb.model && a.apiKey === bb.apiKey
+    }
+    default:
+      return false
+  }
+}
+
 function sendToWorker(request: WorkerRequest): Promise<number[] | number[][]> {
   return new Promise((resolve, reject) => {
     if (!worker) {
@@ -377,12 +414,15 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>): void {
 
   switch (response.type) {
     case 'progress':
-      updateStatus({
-        modelLoading: true,
-        loadProgress: response.percent,
-        loadPhase: response.phase as EmbeddingEngineStatus['loadPhase'],
-        loadPhaseDetail: response.detail
-      })
+      // 仅在尚未就绪时更新加载进度，避免初始化后的冗余进度把 UI 打回 loading
+      if (!engineStatus.modelReady) {
+        updateStatus({
+          modelLoading: true,
+          loadProgress: response.percent,
+          loadPhase: response.phase as EmbeddingEngineStatus['loadPhase'],
+          loadPhaseDetail: response.detail
+        })
+      }
       break
 
     case 'ready':
@@ -427,7 +467,21 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>): void {
       break
     }
 
-    case 'error':
+    case 'error': {
+      // 关键修复：模型已就绪后的推理/迁移失败，不应把 modelReady 打回 false。
+      // 否则用户过一段时间再进设置页会误判“需要重新加载”，并销毁仍可用的 Worker。
+      if (engineStatus.modelReady && worker) {
+        console.warn('[EmbeddingService] 语义推理错误（模型仍保持就绪）:', response.message)
+        // 仅拒绝当前批次请求，不降级引擎就绪状态
+        for (const [id, pending] of pendingRequests) {
+          clearTimeout(pending.timer)
+          pending.reject(new Error(response.message))
+          pendingRequests.delete(id)
+        }
+        break
+      }
+
+      // 初始化阶段失败：真正标记为未就绪
       updateStatus({
         mode: 'tfidf',
         modelLoading: false,
@@ -437,13 +491,13 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>): void {
         errorDetail: response.detail,
         errorRecoverable: response.recoverable
       })
-      // 拒绝所有待处理的请求
       for (const [id, pending] of pendingRequests) {
         clearTimeout(pending.timer)
         pending.reject(new Error(response.message))
         pendingRequests.delete(id)
       }
       break
+    }
   }
 }
 
@@ -453,15 +507,21 @@ export const embeddingService = {
   /**
    * 初始化语义引擎（通过 Web Worker）
    * 如果 config 为 null 或 providerType 为 'tfidf'，则不启动 Worker
+   *
+   * 复用策略：
+   * 1. Worker 已就绪且配置相同 → 直接返回（不重复加载）
+   * 2. 正在初始化且配置相同 → 复用同一个 initPromise
+   * 3. 配置变化 → 销毁旧 Worker 后重新初始化
    */
   async init(config: EmbeddingProviderConfig | null): Promise<void> {
-    // 如果已有 Worker 且配置未变，跳过
-    if (worker && config && engineStatus.modelReady) {
-      return
-    }
-
     // 如果没有配置或配置为 tfidf，保持纯 TF-IDF 模式
     if (!config || config.type === 'tfidf') {
+      if (worker || engineStatus.modelReady || engineStatus.modelLoading || initPromise) {
+        initGeneration++
+        this.disposeWorker()
+        activeConfig = null
+        initPromise = null
+      }
       updateStatus({
         mode: 'tfidf',
         providerType: 'tfidf',
@@ -473,103 +533,179 @@ export const embeddingService = {
       return
     }
 
-    // 销毁旧 Worker
+    // 已就绪且配置相同：直接复用，避免“过一段时间又重新加载”
+    if (worker && engineStatus.modelReady && isSameEmbeddingConfig(activeConfig, config)) {
+      return
+    }
+
+    // 正在初始化且配置相同：等待已有流程完成
+    if (initPromise && isSameEmbeddingConfig(activeConfig, config)) {
+      return initPromise
+    }
+
+    // 配置变化或尚未就绪：销毁旧 Worker 后重新初始化
+    initGeneration++
+    const generation = initGeneration
     this.disposeWorker()
+    activeConfig = config
 
-    updateStatus({
-      providerType: config.type,
-      modelLoading: true,
-      modelReady: false,
-      loadProgress: 0,
-      loadPhase: 'idle',
-      errorMessage: undefined,
-      errorDetail: undefined,
-      errorRecoverable: undefined
-    })
+    const isStale = () => generation !== initGeneration
 
-    try {
-      // ---- 对 local-model 提供者：通过 Electron 主进程代理预下载模型文件 ----
-      // Web Worker 内的 fetch 受浏览器 CORS 限制，无法从 hf-mirror.com 等镜像站下载。
-      // 而 Electron 主进程使用 Node.js https 模块，与 curl 一样不受 CORS 限制。
-      let preDownloadedFiles: PreDownloadedFile[] | null = null
-      if (config.type === 'local-model') {
-        const lmConfig = config as LocalModelProviderConfig
-        const mirror = lmConfig.mirrorUrl || 'https://huggingface.co'
-        const baseUrl = `${mirror.replace(/\/+$/, '')}/${lmConfig.modelId}/resolve/main`
+    const runInit = async (): Promise<void> => {
+      if (isStale()) return
 
-        // ---- 优先从 IndexedDB 持久化缓存读取 ----
-        updateStatus({ loadPhase: 'downloading', loadProgress: 2, loadPhaseDetail: '正在检查本地缓存...' })
-        preDownloadedFiles = await getCachedModelFiles(lmConfig.modelId)
+      updateStatus({
+        providerType: config.type,
+        modelLoading: true,
+        modelReady: false,
+        loadProgress: 0,
+        loadPhase: 'idle',
+        errorMessage: undefined,
+        errorDetail: undefined,
+        errorRecoverable: undefined
+      })
 
-        if (preDownloadedFiles) {
-          // 缓存命中，跳过网络下载
-          updateStatus({ loadProgress: 80, loadPhaseDetail: `从本地缓存加载 ${preDownloadedFiles.length} 个模型文件（无需下载）` })
-        } else {
-          // 缓存未命中，通过网络下载
-          const hasElectronModelAPI = typeof window !== 'undefined'
-            && !!window.electronAPI?.model?.downloadFiles
+      try {
+        // ---- 对 local-model 提供者：通过 Electron 主进程代理预下载模型文件 ----
+        // Web Worker 内的 fetch 受浏览器 CORS 限制，无法从 hf-mirror.com 等镜像站下载。
+        // 而 Electron 主进程使用 Node.js https 模块，与 curl 一样不受 CORS 限制。
+        let preDownloadedFiles: PreDownloadedFile[] | null = null
+        if (config.type === 'local-model') {
+          const lmConfig = config as LocalModelProviderConfig
+          const mirror = lmConfig.mirrorUrl || 'https://huggingface.co'
+          const baseUrl = `${mirror.replace(/\/+$/, '')}/${lmConfig.modelId}/resolve/main`
 
-          if (hasElectronModelAPI) {
-            updateStatus({ loadPhase: 'downloading', loadProgress: 5, loadPhaseDetail: '首次使用，正在下载模型文件...' })
+          // ---- 优先从 IndexedDB 持久化缓存读取 ----
+          updateStatus({ loadPhase: 'downloading', loadProgress: 2, loadPhaseDetail: '正在检查本地缓存...' })
+          preDownloadedFiles = await getCachedModelFiles(lmConfig.modelId)
+          if (isStale()) return
 
-            try {
-              const urls = MODEL_FILES.map(f => `${baseUrl}/${f}`)
-              const results = await window.electronAPI.model.downloadFiles(urls) as Array<{ url: string; data: number[] }>
+          if (preDownloadedFiles) {
+            // 缓存命中，跳过网络下载
+            updateStatus({ loadProgress: 80, loadPhaseDetail: `从本地缓存加载 ${preDownloadedFiles.length} 个模型文件（无需下载）` })
+          } else {
+            // 缓存未命中，通过网络下载
+            const hasElectronModelAPI = typeof window !== 'undefined'
+              && !!window.electronAPI?.model?.downloadFiles
 
-              // 将 URL 映射回文件名
-              preDownloadedFiles = results.map(r => {
-                const fileName = r.url.replace(`${baseUrl}/`, '')
-                return { fileName, data: r.data }
-              })
+            if (hasElectronModelAPI) {
+              updateStatus({ loadPhase: 'downloading', loadProgress: 5, loadPhaseDetail: '首次使用，正在下载模型文件...' })
 
-              updateStatus({ loadProgress: 80, loadPhaseDetail: `已下载 ${preDownloadedFiles.length} 个模型文件` })
+              try {
+                const urls = MODEL_FILES.map(f => `${baseUrl}/${f}`)
+                const results = await window.electronAPI.model.downloadFiles(urls) as Array<{ url: string; data: number[] }>
+                if (isStale()) return
 
-              // ---- 下载成功后写入 IndexedDB 持久化缓存 ----
-              await saveModelFilesToCache(lmConfig.modelId, preDownloadedFiles)
-            } catch (dlErr) {
-              // 下载失败不阻塞，Worker 会自行尝试浏览器 fetch 回退
-              console.warn('[EmbeddingService] Electron 代理下载失败，Worker 将尝试浏览器 fetch:', dlErr)
-              preDownloadedFiles = null
+                // 将 URL 映射回文件名
+                preDownloadedFiles = results.map(r => {
+                  const fileName = r.url.replace(`${baseUrl}/`, '')
+                  return { fileName, data: r.data }
+                })
+
+                updateStatus({ loadProgress: 80, loadPhaseDetail: `已下载 ${preDownloadedFiles.length} 个模型文件` })
+
+                // ---- 下载成功后写入 IndexedDB 持久化缓存 ----
+                await saveModelFilesToCache(lmConfig.modelId, preDownloadedFiles)
+              } catch (dlErr) {
+                // 下载失败不阻塞，Worker 会自行尝试浏览器 fetch 回退
+                console.warn('[EmbeddingService] Electron 代理下载失败，Worker 将尝试浏览器 fetch:', dlErr)
+                preDownloadedFiles = null
+              }
             }
           }
         }
-      }
 
-      // 创建 Worker
-      worker = new Worker(
-        new URL('../workers/embedding-worker.ts', import.meta.url),
-        { type: 'module' }
-      )
+        if (isStale()) return
 
-      worker.onmessage = handleWorkerMessage
-      worker.onerror = (error) => {
+        // 创建 Worker
+        const createdWorker = new Worker(
+          new URL('../workers/embedding-worker.ts', import.meta.url),
+          { type: 'module' }
+        )
+        worker = createdWorker
+
+        // 等待 Worker ready / error，确保 init 返回时状态已稳定
+        const readyPromise = new Promise<void>((resolve, reject) => {
+          const onMessage = (event: MessageEvent<WorkerResponse>) => {
+            const response = event.data
+            if (response.type === 'ready') {
+              createdWorker.removeEventListener('message', onMessage)
+              createdWorker.removeEventListener('error', onError)
+              resolve()
+            } else if (response.type === 'error') {
+              // 初始化失败才 reject；运行时错误不在这里处理
+              createdWorker.removeEventListener('message', onMessage)
+              createdWorker.removeEventListener('error', onError)
+              reject(new Error(response.message))
+            }
+          }
+          const onError = (error: ErrorEvent) => {
+            createdWorker.removeEventListener('message', onMessage)
+            createdWorker.removeEventListener('error', onError)
+            reject(new Error(error.message || 'Worker 线程异常'))
+          }
+          createdWorker.addEventListener('message', onMessage)
+          createdWorker.addEventListener('error', onError)
+        })
+
+        createdWorker.onmessage = handleWorkerMessage
+        createdWorker.onerror = (error) => {
+          // 仅在未就绪时降级；就绪后的 Worker 异常才视为致命
+          if (!engineStatus.modelReady) {
+            updateStatus({
+              mode: 'tfidf',
+              modelLoading: false,
+              modelReady: false,
+              loadPhase: 'error',
+              errorMessage: 'Worker 线程异常',
+              errorDetail: `Worker 错误: ${error.message}\n文件: ${error.filename}\n行号: ${error.lineno}`,
+              errorRecoverable: true
+            })
+          } else {
+            console.warn('[EmbeddingService] Worker 运行时异常（模型状态保持）:', error.message)
+          }
+        }
+
+        // 如果有预下载文件，先发送给 Worker，再发送初始化命令
+        if (preDownloadedFiles && preDownloadedFiles.length > 0) {
+          createdWorker.postMessage({ type: 'files', files: preDownloadedFiles } as WorkerRequest)
+        }
+        createdWorker.postMessage({ type: 'init', config } as WorkerRequest)
+
+        await readyPromise
+        if (isStale()) {
+          // 被更新的 init 取代：清理本次创建的 Worker
+          createdWorker.terminate()
+          if (worker === createdWorker) worker = null
+        }
+      } catch (err) {
+        if (isStale()) return
+        // 初始化失败时清理 Worker，避免半初始化状态被误复用
+        if (worker) {
+          worker.terminate()
+          worker = null
+        }
         updateStatus({
           mode: 'tfidf',
           modelLoading: false,
           modelReady: false,
           loadPhase: 'error',
-          errorMessage: 'Worker 线程异常',
-          errorDetail: `Worker 错误: ${error.message}\n文件: ${error.filename}\n行号: ${error.lineno}`,
+          errorMessage: err instanceof Error ? err.message : '无法创建 Worker',
+          errorDetail: err instanceof Error ? `${err.message}\n${err.stack}` : String(err),
           errorRecoverable: true
         })
       }
-
-      // 如果有预下载文件，先发送给 Worker，再发送初始化命令
-      if (preDownloadedFiles && preDownloadedFiles.length > 0) {
-        worker.postMessage({ type: 'files', files: preDownloadedFiles } as WorkerRequest)
-      }
-      worker.postMessage({ type: 'init', config } as WorkerRequest)
-    } catch (err) {
-      updateStatus({
-        mode: 'tfidf',
-        modelLoading: false,
-        modelReady: false,
-        loadPhase: 'error',
-        errorMessage: '无法创建 Worker',
-        errorDetail: err instanceof Error ? `${err.message}\n${err.stack}` : String(err),
-        errorRecoverable: true
-      })
     }
+
+    const currentPromise = runInit().finally(() => {
+      // 仅清理属于当前 generation 的 promise 引用
+      if (initPromise === currentPromise) {
+        initPromise = null
+      }
+    })
+    initPromise = currentPromise
+
+    return currentPromise
   },
 
   /**
@@ -709,7 +845,10 @@ export const embeddingService = {
    * 重新初始化语义引擎（用于重试或切换提供者）
    */
   async reinit(config: EmbeddingProviderConfig): Promise<void> {
+    initGeneration++
     this.disposeWorker()
+    activeConfig = null
+    initPromise = null
     await this.init(config)
   },
 
@@ -734,6 +873,8 @@ export const embeddingService = {
    */
   dispose(): void {
     this.disposeWorker()
+    activeConfig = null
+    initPromise = null
     documentFrequency.clear()
     totalDocuments = 0
     statusListeners.clear()

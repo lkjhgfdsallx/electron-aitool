@@ -12,7 +12,7 @@ export type SkillLocation = 'global' | 'project'
  *
  * Skills 是专家知识包，存储在 IndexedDB 中：
  * - 包含指令内容（Markdown 格式）和可选的资源文件
- * - 通过 Agent 的 enabledSkillIds 绑定到具体 Agent
+ * - 只要 Skill 处于启用状态，拥有 list_skills / use_skill 工具的 Agent 即可使用
  */
 export interface Skill {
   /** 唯一标识 */

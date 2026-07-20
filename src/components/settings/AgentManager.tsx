@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   X,
   Plus,
@@ -30,7 +30,6 @@ import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { DEFAULT_AGENT_ID, WEBSITE_ANALYZER_AGENT_ID, WORKSPACE_LEADER_AGENT_ID, TASK_DECOMPOSITION_EXECUTOR_AGENT_ID } from '../../constants/default-agents'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
-import { useSkillStore } from '../../stores/skill-store'
 import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../services/built-in-tools'
 import { useAIProviderStore } from '../../stores/ai-provider-store'
 import { SYSTEM_AGENT_TAGS } from '../../types'
@@ -85,7 +84,6 @@ function createEmptyAgentInput(isWorkspaceMode: boolean): AgentProfileCreateInpu
     termination: { maxSteps: 100, timeoutSeconds: 0, autoStopOnGoal: true },
     modelConfig: {},
     knowledgeBaseIds: [],
-    enabledSkillIds: [],
     enabled: true,
     promptSections: [],
     maxParallelSubtasks: 3,
@@ -185,20 +183,17 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
 
   const { providers } = useAIProviderStore()
   const { collections, loadCollections } = useKnowledgeCollectionStore()
-  const { skills, ensureSkillsLoaded } = useSkillStore()
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
 
   useEffect(() => {
     loadCollections()
   }, [loadCollections])
 
-  useEffect(() => {
-    void ensureSkillsLoaded()
-  }, [ensureSkillsLoaded])
-
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null)
   const [agentForm, setAgentForm] = useState<AgentProfileCreateInput>(() => createEmptyAgentInput(isWorkspaceMode))
   const [isCreating, setIsCreating] = useState(false)
+  /** 初始编辑 ID 只消费一次，避免关闭编辑器后被 effect 再次打开 */
+  const appliedInitialEditIdRef = useRef<string | undefined>(undefined)
 
   // ==================== Agent 操作 ====================
 
@@ -233,10 +228,15 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
     setIsCreating(true)
   }
 
+  // 从外部跳转时直接打开指定 Agent 编辑页（同一 ID 只自动打开一次）
   useEffect(() => {
     if (!initialEditingAgentId || isCreating) return
+    if (appliedInitialEditIdRef.current === initialEditingAgentId) return
     const agent = agents.find((a) => a.id === initialEditingAgentId)
-    if (agent) handleEditAgent(agent)
+    if (agent) {
+      appliedInitialEditIdRef.current = initialEditingAgentId
+      handleEditAgent(agent)
+    }
   }, [initialEditingAgentId, agents, isCreating])
 
   const handleCloseEditor = () => {
@@ -535,52 +535,6 @@ export function AgentManager({ isWorkspaceMode = false, folderPath, initialEditi
                         {col.description && (
                           <p className="text-xs text-muted">{col.description}</p>
                         )}
-                      </div>
-                    </label>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {/* 绑定 Skills */}
-          <div className="bg-white dark:bg-surface-800/60 rounded-xl border border-surface-200/80 dark:border-surface-700/60 p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 flex items-center gap-2">
-              <Zap size={14} /> {t('agent.bindSkills')}
-            </h3>
-            <p className="text-xs text-muted">
-              {t('agent.bindSkillsHint')}
-            </p>
-            <div className="space-y-2">
-              {skills.length === 0 ? (
-                <p className="text-xs text-muted py-2">{t('agent.noSkillsAvailable')}</p>
-              ) : (
-                skills.filter((s) => s.enabled).map((skill) => {
-                  const isSelected = (agentForm.enabledSkillIds ?? []).includes(skill.dirPath)
-                  return (
-                    <label
-                      key={skill.dirPath}
-                      className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
-                        isSelected
-                          ? 'border-accent-300 dark:border-accent-700 bg-accent-50/50 dark:bg-accent-900/20'
-                          : 'border-surface-200/80 dark:border-surface-700/60 hover:bg-surface-50 dark:hover:bg-surface-800'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setAgentForm({ ...agentForm, enabledSkillIds: [...(agentForm.enabledSkillIds ?? []), skill.dirPath] })
-                          } else {
-                            setAgentForm({ ...agentForm, enabledSkillIds: (agentForm.enabledSkillIds ?? []).filter((id) => id !== skill.dirPath) })
-                          }
-                        }}
-                        className="rounded accent-500"
-                      />
-                      <div>
-                        <span className="text-sm font-mono font-medium">{skill.name}</span>
-                        <p className="text-xs text-muted line-clamp-1">{skill.description}</p>
                       </div>
                     </label>
                   )

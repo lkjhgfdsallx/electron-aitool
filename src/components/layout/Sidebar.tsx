@@ -9,7 +9,7 @@ import type { ViewMode, SettingsSection } from '../settings/SettingsNavRail'
 
 interface SidebarProps {
   viewMode: ViewMode
-  onOpenSettings?: (section?: SettingsSection) => void
+  onOpenSettings?: (section?: SettingsSection, editId?: string) => void
   onOpenKnowledgeBase?: () => void
   onOpenWorkspace?: () => void
   onBackToChat?: () => void

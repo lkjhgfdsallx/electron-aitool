@@ -23,8 +23,9 @@ type MessageAlignment = 'left-right' | 'all-left' | 'all-right' | 'full-width'
 
 interface ChatWindowProps {
   onOpenPromptManager?: () => void
-  onOpenAgentManager?: () => void
-  onOpenSettings?: (section?: SettingsSection) => void
+  /** 打开 Agent 管理；可选传入 agentId 直接进入对应编辑页 */
+  onOpenAgentManager?: (agentId?: string) => void
+  onOpenSettings?: (section?: SettingsSection, editId?: string) => void
 }
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSettings }: ChatWindowProps) {
@@ -304,6 +305,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
         selectedAgentId={currentConversation?.agentId}
         onSelect={handleAgentSelect}
         onOpenAgentManager={onOpenAgentManager}
+        onEditAgent={onOpenAgentManager}
       />
       {currentAgent && (
         <div className="flex items-center gap-2 text-xs">

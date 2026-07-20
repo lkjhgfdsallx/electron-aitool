@@ -98,7 +98,7 @@ export const STORE_VERSIONS = {
   GLOBAL_CONFIG: 1,
   /** ai-provider-store (ai-providers) */
   AI_PROVIDERS: 1,
-  /** agent-store (agents) - v5: 任务拆解执行师补齐 create_plan 规划工具 */
+  /** agent-store (agents) - v5: 任务分解执行器工作流同步 */
   AGENTS: 5,
   /** conversation-store (conversations) - 已有 v2 迁移 */
   CONVERSATIONS: 2,

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { ChevronDown, Zap, Settings2, Search, Check, FolderOpen, Sparkles, User } from 'lucide-react'
+import { ChevronDown, Zap, Settings2, Search, Check, FolderOpen, Sparkles, User, Pencil } from 'lucide-react'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { SYSTEM_AGENT_TAGS } from '../../types'
@@ -15,10 +15,13 @@ import { useAppTranslation } from '@/i18n/hooks'
 interface AgentSelectorProps {
   selectedAgentId?: string
   onSelect: (agentId: string | undefined) => void
-  onOpenAgentManager?: () => void
+  /** 打开 Agent 管理列表；可选 agentId 直接进入对应编辑页 */
+  onOpenAgentManager?: (agentId?: string) => void
+  /** 直接编辑指定 Agent（与 onOpenAgentManager(agentId) 等价，语义更清晰） */
+  onEditAgent?: (agentId: string) => void
 }
 
-export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }: AgentSelectorProps) {
+export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager, onEditAgent }: AgentSelectorProps) {
   const { t } = useAppTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -106,6 +109,17 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
     }
   }, [isOpen])
 
+  const handleEditAgent = (e: React.MouseEvent, agentId: string) => {
+    e.stopPropagation()
+    setIsOpen(false)
+    setSearchTerm('')
+    if (onEditAgent) {
+      onEditAgent(agentId)
+    } else {
+      onOpenAgentManager?.(agentId)
+    }
+  }
+
   /** 渲染单个 Agent 选项 */
   const renderAgentItem = (agent: AgentProfile) => (
     <div
@@ -115,7 +129,7 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
         setIsOpen(false)
         setSearchTerm('')
       }}
-      className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer ${
+      className={`flex items-center gap-3 px-3 py-2.5 transition-all cursor-pointer group ${
         selectedAgentId === agent.id
           ? 'bg-accent-50 dark:bg-accent-950/30 border-l-2 border-accent-500'
           : 'hover:bg-accent-50/50 dark:hover:bg-accent-950/20 border-l-2 border-transparent'
@@ -135,9 +149,22 @@ export function AgentSelector({ selectedAgentId, onSelect, onOpenAgentManager }:
           <div className="text-xs text-muted truncate">{agent.description}</div>
         )}
       </div>
-      {selectedAgentId === agent.id && (
-        <Check size={14} className="text-accent-500 flex-shrink-0" />
-      )}
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        {(onEditAgent || onOpenAgentManager) && (
+          <button
+            type="button"
+            onClick={(e) => handleEditAgent(e, agent.id)}
+            aria-label={t('chat.editAgent')}
+            title={t('chat.editAgent')}
+            className="p-1 rounded text-muted opacity-0 group-hover:opacity-100 focus:opacity-100 hover:text-accent-500 hover:bg-accent-100/60 dark:hover:bg-accent-900/30 transition-all"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
+        {selectedAgentId === agent.id && (
+          <Check size={14} className="text-accent-500 flex-shrink-0" />
+        )}
+      </div>
     </div>
   )
 

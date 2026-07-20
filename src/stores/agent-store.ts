@@ -77,7 +77,7 @@ const DEFAULT_AGENT_PROFILE: Omit<AgentProfile, 'id' | 'name' | 'description' | 
     autoStopOnGoal: true
   },
   modelConfig: {},
-  enabled: true
+  enabled: true,
 }
 
 /** 创建默认的需求分析 Agent */

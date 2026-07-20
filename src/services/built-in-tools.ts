@@ -1035,12 +1035,12 @@ export const WORKSPACE_TOOLS: Tool[] = [
         enabled_tool_ids: {
           type: 'array',
           items: { type: 'string' },
-          description: '该 Agent 可使用的工具 ID 列表，必须使用工具 ID（例如 builtin:knowledge_search、workspace:read_file、workspace:write_file、workspace:list_files、workspace:execute_command）。如果提供该字段，将精确使用该列表；如不提供则使用默认工作区工具。'
+          description: '该 Agent 可使用的工具 ID 列表，必须使用工具 ID（例如 builtin:knowledge_search、workspace:read_file、workspace:write_file、workspace:list_files、workspace:execute_command、builtin:list_skills、builtin:use_skill）。如果提供该字段，将精确使用该列表；如不提供则使用默认工作区工具。若新 Agent 可能需要专业技能，请务必同时加入 builtin:list_skills 与 builtin:use_skill；启用后即可使用全部已启用 Skills，无需单独绑定 Skill。'
         },
         enabled_skill_ids: {
           type: 'array',
           items: { type: 'string' },
-          description: '可选。绑定的 Skills ID 列表，应使用设置页中 Skill 的 dirPath/id。与用户在 Agent 设置中勾选 Skills 等价。'
+          description: '可选，兼容旧数据。新模型不再要求绑定 Skill；只要 enabled_tool_ids 包含 builtin:list_skills / builtin:use_skill，Agent 即可使用全部已启用 Skills。'
         },
         enabled: {
           type: 'boolean',

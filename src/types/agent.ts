@@ -97,7 +97,10 @@ export interface AgentProfile {
   modelConfig: AgentModelConfig
   /** 绑定的知识库集合 ID 列表（为空则搜索全部） */
   knowledgeBaseIds?: string[]
-  /** 绑定的 Skills ID 列表（为空则不注入任何 Skills） */
+  /**
+   * 兼容旧数据的 Skills ID 列表。
+   * 新模型不再按此字段授权；Agent 只要启用 list_skills / use_skill 即可使用全部已启用 Skills。
+   */
   enabledSkillIds?: string[]
   /** 标签列表（`workspace` 为系统保留标签，标识工作区独立 Agent） */
   tags?: string[]

@@ -34,6 +34,11 @@ export interface ProviderRequestConfig {
   timeout?: number
   /** 失败重试次数，默认 0 */
   maxRetries?: number
+  /**
+   * API 请求频率限制：两次请求之间的最短间隔（秒）。
+   * 0 或不设置表示不限制（默认）。用于避免触发服务商 rate limit。
+   */
+  minRequestIntervalSeconds?: number
   /** 自定义 HTTP 头（某些代理/网关需要） */
   customHeaders?: Record<string, string>
 }

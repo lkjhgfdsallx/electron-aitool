@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import type { ToolCall } from '../../types'
 import { useAppTranslation } from '@/i18n/hooks'
+import { SkillCallDisplay } from './SkillCallDisplay'
+import { isUseSkillCall } from '../../utils/skill-call'
 
 interface ToolCallDisplayProps {
   toolCalls: ToolCall[]
@@ -44,6 +46,18 @@ export function ToolCallDisplay({ toolCalls }: ToolCallDisplayProps) {
         const isExpanded = expandedCalls.has(tc.id)
         const status = statusConfig[tc.status]
         const StatusIcon = status.icon
+
+        if (isUseSkillCall(tc.name)) {
+          return (
+            <SkillCallDisplay
+              key={tc.id}
+              arguments={tc.arguments}
+              result={tc.result}
+              status={tc.status === 'pending' || tc.status === 'running' ? 'running' : tc.status === 'error' ? 'error' : 'completed'}
+              error={tc.status === 'error' ? tc.result : undefined}
+            />
+          )
+        }
 
         return (
           <div

@@ -26,6 +26,8 @@ initI18n()
 export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('chat')
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('ai-providers')
+  /** 打开设置页时可选：直接进入指定 Agent / AI 源的编辑态 */
+  const [settingsEditId, setSettingsEditId] = useState<string | undefined>()
   const deactivateWorkspace = useWorkspaceStore((s) => s.deactivateWorkspace)
 
   // 应用启动时初始化 MCP 工具同步（监听配置变更，自动刷新工具列表）
@@ -62,12 +64,15 @@ export default function App() {
   // 快捷键桥接：将 store 中的快捷键配置注册到 Electron globalShortcut
   const openSettingsCb = useCallback(() => {
     setSettingsSection('ai-providers')
+    setSettingsEditId(undefined)
     setViewMode('settings')
   }, [])
   useShortcuts({ openSettings: openSettingsCb })
 
-  const openSettings = (section: SettingsSection = 'ai-providers') => {
+  /** 打开设置页；可选传入 editId 以直接进入对应 Agent / AI 源编辑页 */
+  const openSettings = (section: SettingsSection = 'ai-providers', editId?: string) => {
     setSettingsSection(section)
+    setSettingsEditId(editId)
     setViewMode('settings')
   }
 
@@ -86,6 +91,7 @@ export default function App() {
       // deactivateWorkspace 内部会自动将 currentConversationId 切换到非工作区对话
       deactivateWorkspace()
     }
+    setSettingsEditId(undefined)
     setViewMode('chat')
   }
 
@@ -114,6 +120,7 @@ export default function App() {
       <MainArea
         viewMode={viewMode}
         settingsSection={settingsSection}
+        settingsEditId={settingsEditId}
         onOpenSettings={openSettings}
         onCloseSettings={closeSettings}
         onOpenWorkspace={openWorkspace}

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { SettingsNavRail, type SettingsSection } from './SettingsNavRail'
 import { AIProviderManager } from './AIProviderManager'
 import { AgentManager } from './AgentManager'
@@ -15,12 +15,19 @@ import { WorkspaceSettings } from './WorkspaceSettings'
 
 interface SettingsPageProps {
   defaultSection?: SettingsSection
+  /** 初始打开时直接进入编辑的 Agent / AI 源 ID */
+  initialEditId?: string
   onBack: () => void
   onOpenWorkspace: () => void
 }
 
-export function SettingsPage({ defaultSection = 'ai-providers', onBack, onOpenWorkspace }: SettingsPageProps) {
+export function SettingsPage({ defaultSection = 'ai-providers', initialEditId, onBack, onOpenWorkspace }: SettingsPageProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(defaultSection)
+
+  // 外部再次 openSettings 时同步分区（例如从对话页直达不同编辑目标）
+  useEffect(() => {
+    setActiveSection(defaultSection)
+  }, [defaultSection, initialEditId])
 
   const handleNavigateToSection = (section: string) => {
     setActiveSection(section as SettingsSection)
@@ -34,9 +41,18 @@ export function SettingsPage({ defaultSection = 'ai-providers', onBack, onOpenWo
   const renderContent = () => {
     switch (activeSection) {
       case 'ai-providers':
-        return <AIProviderManager />
+        return (
+          <AIProviderManager
+            initialEditingProviderId={defaultSection === 'ai-providers' ? initialEditId : undefined}
+          />
+        )
       case 'agents':
-        return <AgentManager onOpenConversation={(convId) => { onBack() }} />
+        return (
+          <AgentManager
+            initialEditingAgentId={defaultSection === 'agents' ? initialEditId : undefined}
+            onOpenConversation={(_convId) => { onBack() }}
+          />
+        )
       case 'prompts':
         return <PromptManager />
       case 'skills':
