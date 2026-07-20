@@ -380,6 +380,31 @@ button:active:not(:disabled) {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 等待用户选择：仅强调图标附近的呼吸光圈，保持选项文字和卡片稳定可读。 */
+@keyframes human-input-aura {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+.animate-human-input-aura {
+  animation: human-input-aura 2.4s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-human-input-aura {
+    animation: none;
+    transform: scale(1.2);
+    opacity: 0.7;
+  }
+}
+
 /* ==================== 工具类 ==================== */
 
 @layer utilities {

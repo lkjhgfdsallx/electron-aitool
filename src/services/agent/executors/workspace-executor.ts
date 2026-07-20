@@ -791,8 +791,13 @@ export class WorkspaceToolExecutor implements ToolExecutor {
     if (!systemPrompt) return { success: false, data: '', error: '需要 system_prompt 参数' }
     const avatar = args.avatar ? String(args.avatar) : undefined
 
-    // 工具ID规范化：支持工具名称（如 knowledge_search、workspace_read_file）和工具ID（如 builtin:knowledge_search、workspace:read_file）
-    const ALL_AGENT_TOOLS = [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS]
+    // 工具 ID 规范化：优先使用运行时注入的可授权目录（包含已启用的自定义工具），
+    // 无目录时降级为内置目录以保持旧调用路径兼容。
+    const ALL_AGENT_TOOLS = (wsCtx.agentToolCatalog?.length
+      ? wsCtx.agentToolCatalog
+      : [...BUILT_IN_TOOLS, ...AGENT_BUILTIN_TOOLS, ...WORKSPACE_TOOLS]
+    ).filter((tool) => tool.enabled)
+    const allowedToolIds = new Set(ALL_AGENT_TOOLS.map((tool) => tool.id))
     const nameToIdMap = new Map<string, string>()
     for (const tool of ALL_AGENT_TOOLS) {
       nameToIdMap.set(tool.name, tool.id)
@@ -800,19 +805,23 @@ export class WorkspaceToolExecutor implements ToolExecutor {
       nameToIdMap.set(tool.name.replace(/_/g, '-'), tool.id)
     }
 
-    const normalizeToolId = (raw: string): string => {
-      // 如果已经是ID格式（包含:），直接返回
-      if (raw.includes(':')) return raw
-      // 查找名称映射
-      const mapped = nameToIdMap.get(raw)
-      if (mapped) return mapped
-      // 兜底：尝试加 builtin: 前缀
-      if (!raw.includes(':')) return `builtin:${raw}`
-      return raw
+    const normalizeToolId = (raw: string): string | undefined => {
+      // 已知 ID 或工具名才允许被授权；不接受猜测的前缀/名称。
+      if (allowedToolIds.has(raw)) return raw
+      return nameToIdMap.get(raw) ?? nameToIdMap.get(raw.replace(/-/g, '_'))
     }
 
     const rawToolIds = Array.isArray(args.enabled_tool_ids) ? args.enabled_tool_ids.map(String) : undefined
-    const enabledToolIds = rawToolIds?.map(normalizeToolId)
+    const normalizedToolIds = rawToolIds?.map(normalizeToolId)
+    const invalidToolIds = rawToolIds?.filter((toolId, index) => !normalizedToolIds?.[index]) ?? []
+    if (invalidToolIds.length > 0) {
+      return {
+        success: false,
+        data: '',
+        error: `以下工具不在当前可授权目录中或已被禁用：${invalidToolIds.join('、')}`,
+      }
+    }
+    const enabledToolIds = normalizedToolIds?.filter((toolId): toolId is string => Boolean(toolId))
 
     // 与用户手动创建 Agent 的可配置能力保持一致：工具、知识库、Skills、策略、模型、审批、工作流等均透传。
     const planningStrategy = typeof args.planning_strategy === 'string' ? (args.planning_strategy as CreateAgentInput['planningStrategy']) : undefined

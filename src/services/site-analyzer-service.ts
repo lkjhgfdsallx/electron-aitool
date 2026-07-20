@@ -193,7 +193,9 @@ class SiteAnalyzerService {
           listener(p)
         })
       })
-    } else {
+    } else if (process.env.NODE_ENV !== 'test') {
+      // Jest/jsdom 不提供 Electron preload API；服务方法仍会在实际调用时
+      // 返回不可用结果，避免模块导入阶段产生无意义的测试控制台警告。
       console.warn('[SiteAnalyzer] 初始化时 ElectronAPI 不可用:', check.reason)
     }
   }

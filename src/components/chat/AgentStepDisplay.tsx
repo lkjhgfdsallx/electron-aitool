@@ -314,6 +314,7 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
           const isExpanded = expandedSteps.has(step.id)
           const isLast = index === processSteps.length - 1
           const isCurrentStep = isRunning && isLast
+          const isAwaitingHumanInput = step.type === 'human_input' && !step.humanResponse
           const isSubAgent = !!step.sourceAgentId
           const agentGroupCollapsed = isSubAgent && collapsedAgentGroups.has(step.sourceAgentId!)
 
@@ -365,15 +366,21 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
                     <div className={`absolute top-8 bottom-0 w-0.5 ${isSubAgent ? 'left-[23px] bg-indigo-200 dark:bg-indigo-800' : 'left-[15px] bg-surface-200 dark:bg-surface-700'}`} />
                   )}
 
-                  <div className={`rounded-lg border overflow-hidden my-1.5 ${isSubAgent ? 'ml-6 mr-2 border-indigo-200/60 dark:border-indigo-800/40 bg-indigo-50/30 dark:bg-indigo-950/10' : 'mx-2 border-surface-200/60 dark:border-surface-700/40'} ${isCurrentStep ? 'animate-pulse ring-1 ring-accent-300 dark:ring-accent-600' : ''}`}>
+                  <div className={`rounded-lg border overflow-hidden my-1.5 ${isSubAgent ? 'ml-6 mr-2 border-indigo-200/60 dark:border-indigo-800/40 bg-indigo-50/30 dark:bg-indigo-950/10' : 'mx-2 border-surface-200/60 dark:border-surface-700/40'} ${isCurrentStep && !isAwaitingHumanInput ? 'animate-pulse ring-1 ring-accent-300 dark:ring-accent-600' : ''}`}>
                     <button
                       onClick={() => toggleStep(step.id)}
                       className="flex items-center gap-3 w-full px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
                       aria-expanded={isExpanded}
                       aria-label={t(config.labelKey)}
                     >
-                      <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${isSubAgent ? 'bg-indigo-100 dark:bg-indigo-900/40' : config.bgColor}`}>
-                        <StepIcon size={12} className={isSubAgent ? 'text-indigo-500' : config.color} />
+                      <div className={`relative w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${isSubAgent ? 'bg-indigo-100 dark:bg-indigo-900/40' : config.bgColor}`}>
+                        {isAwaitingHumanInput && (
+                          <span
+                            aria-hidden="true"
+                            className="pointer-events-none absolute inset-0 rounded-md border-2 border-blue-400/80 dark:border-blue-300/70 animate-human-input-aura"
+                          />
+                        )}
+                        <StepIcon size={12} className={`relative z-10 ${isSubAgent ? 'text-indigo-500' : config.color}`} />
                       </div>
                       <span className={`text-xs font-medium ${isSubAgent ? 'text-indigo-600 dark:text-indigo-400' : config.color}`}>
                         {t(config.labelKey)}

@@ -178,6 +178,11 @@ export interface WorkspaceContext {
   workspaceId: string
   /** 团队 Agent 列表（仅包含 ID、名称、描述、工具能力等摘要信息） */
   teamAgents: Array<{ id: string; name: string; description: string; avatar: string; enabledToolIds?: string[] }>
+  /**
+   * 可授权给新建团队成员的工具目录。
+   * 仅作为 Leader 创建 Agent 时的能力参考，绝不加入 Leader 自身的可调用工具集合。
+   */
+  agentToolCatalog?: Tool[]
   /** 由上层注入的子任务分派函数（调用后会真正运行目标 Agent 并返回其最终输出） */
   dispatchSubTask?: (agentId: string, taskDescription: string, contextSummary?: string) => Promise<string>
   /**并行子任务分派函数（一次分派多个子任务，并行执行，结果按入参顺序返回） */
@@ -381,6 +386,17 @@ function buildAgentSystemPrompt(
           ? '，然后通过 `workspace_dispatch_parallel` 将任务分派给它'
           : ''
       prompt += `\n如果现有团队成员无法胜任某项任务，你可以使用 \`workspace_create_agent\` 工具创建新的工作区专属 Agent（仅存储在当前工作区，不会污染全局 Agent 列表）${dispatchHint}。\n`
+    }
+
+    // 工具目录只提供给 Leader 做成员授权决策；不影响其自身 effectiveTools / function calling 能力。
+    if (isLeader && workspaceContext.agentToolCatalog && hasTool('workspace_create_agent')) {
+      const catalog = workspaceContext.agentToolCatalog.filter((tool) => tool.enabled)
+      if (catalog.length > 0) {
+        prompt += `\n### 可授权给新团队成员的工具目录\n以下工具**仅可在创建团队成员时**写入 \`enabled_tool_ids\`；它们不是你自身可调用的工具。请按最小权限原则，只授予完成该成员职责所需的工具 ID。\n`
+        for (const tool of catalog) {
+          prompt += `\n- ID: \`${tool.id}\`；名称：\`${tool.name}\`；用途：${tool.description}\n`
+        }
+      }
     }
 
     if (isLeader) {

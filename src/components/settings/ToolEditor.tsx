@@ -134,25 +134,7 @@ export function ToolEditor() {
     }
   }
 
-  if (view === 'detail' && selectedTool) {
-    return (
-      <ToolDetailView
-        tool={selectedTool}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onBack={handleBack}
-        onSave={(updates) => {
-          if (!selectedTool.isBuiltIn) {
-            updateTool(selectedTool.id, updates)
-            setSelectedTool({ ...selectedTool, ...updates })
-          }
-        }}
-        t={t}
-      />
-    )
-  }
-
-  // 区域配置
+  // 区域配置（必须在任何 early return 之前调用 hooks，保证 hooks 数量稳定）
   const regionConfig = useMemo(() => [
     {
       key: 'general' as const,
@@ -200,6 +182,27 @@ export function ToolEditor() {
       tools: regions.custom,
     },
   ], [t, regions, customTools.length])
+
+  if (view === 'detail' && selectedTool) {
+    return (
+      <>
+        <ToolDetailView
+          tool={selectedTool}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onBack={handleBack}
+          onSave={(updates) => {
+            if (!selectedTool.isBuiltIn) {
+              updateTool(selectedTool.id, updates)
+              setSelectedTool({ ...selectedTool, ...updates })
+            }
+          }}
+          t={t}
+        />
+        <Dialog />
+      </>
+    )
+  }
 
   return (
     <div className="space-y-6">

@@ -349,7 +349,7 @@ describe('buildWorkspaceContext', () => {
       })
     })
 
-    it('应暴露 dispatchSubTask / dispatchTasks / createAgent / onFileActionApproval', async () => {
+    it('应暴露分派、创建、审批回调以及仅供授权的完整工具目录', async () => {
       const wsCtxPromise = captureWsContext()
       const { result } = renderHook(() => useChat())
 
@@ -362,6 +362,11 @@ describe('buildWorkspaceContext', () => {
       expect(typeof wsCtx!.dispatchTasks).toBe('function')
       expect(typeof wsCtx!.createAgent).toBe('function')
       expect(typeof wsCtx!.onFileActionApproval).toBe('function')
+      expect(wsCtx!.agentToolCatalog).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'workspace:read_file' }),
+        expect.objectContaining({ id: 'workspace:write_file' }),
+        expect.objectContaining({ id: 'tool-calc' }),
+      ]))
     })
 
     it('应继承工作区 autoApproval 配置', async () => {

@@ -213,6 +213,16 @@ export function useChat(options: UseChatOptions = {}) {
       .filter((a): a is NonNullable<typeof a> => !!a)
       .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖', enabledToolIds: a.enabledToolIds }))
 
+    // 新成员实际可运行的完整工具目录。仅供 Leader 选择授权，不会注入 Leader 的 function calling 工具。
+    // 必须与 dispatchSubTask 中子 Agent 的候选工具保持一致，避免授权一个无法执行的工具。
+    const agentToolCatalog: Tool[] = [
+      ...filterDisabledBuiltinTools(BUILT_IN_TOOLS),
+      ...AGENT_BUILTIN_TOOLS,
+      ...WORKSPACE_TOOLS,
+      ...useMCPToolStore.getState().mcpTools,
+      ...useCustomToolStore.getState().customTools.filter((t) => t.enabled),
+    ].filter((tool) => tool.enabled)
+
     // 构建子任务分派回调（真正运行子 Agent 并返回结构化结果 JSON）
     // Boomerang: 接收 contextSummary（主 Agent 提供的上下文摘要），作为子 Agent 的背景信息
     const dispatchSubTask = async (
@@ -237,6 +247,7 @@ export function useChat(options: UseChatOptions = {}) {
         ...filterDisabledBuiltinTools(BUILT_IN_TOOLS),
         ...AGENT_BUILTIN_TOOLS,
         ...WORKSPACE_TOOLS,
+        ...useMCPToolStore.getState().mcpTools,
         ...useCustomToolStore.getState().customTools.filter((t) => t.enabled),
       ]
       const targetTools = allTools.filter(
@@ -494,6 +505,7 @@ export function useChat(options: UseChatOptions = {}) {
       folderPath: ws.folderPath,
       workspaceId: ws.id,
       teamAgents,
+      agentToolCatalog,
       dispatchSubTask,
       dispatchTasks,
       createAgent,
