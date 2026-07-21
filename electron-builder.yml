@@ -5,7 +5,18 @@ directories:
   output: dist
 files:
   - out/**/*
+  # canvas / sharp 仅为可选原生依赖（pdfjs-dist / transformers.js），
+  # Electron 渲染进程使用 Chromium Canvas / ONNX WASM，无需打包这些 native 模块。
+  - '!**/node_modules/canvas/**'
+  - '!**/node_modules/sharp/**'
+# 跳过 native 模块 rebuild：canvas 在 Windows 需要 GTK/Cairo 工具链，
+# 且项目已在 pnpm-workspace 中忽略其构建脚本；启用 rebuild 会导致 build:win 失败。
+npmRebuild: false
 asar: true
+# playwright 会 spawn 内部 driver / 读取包内资源，需从 asar 解包到 app.asar.unpacked
+asarUnpack:
+  - '**/node_modules/playwright/**'
+  - '**/node_modules/playwright-core/**'
 win:
   target:
     - target: nsis
