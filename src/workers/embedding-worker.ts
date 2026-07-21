@@ -224,13 +224,16 @@ async function initLocalModel(config: LocalModelProviderConfig): Promise<LocalMo
   let fileCache: Map<string, ArrayBuffer>
 
   if (preDownloadedFiles && preDownloadedFiles.length > 0) {
-    // ---- 路径 A：使用主线程通过 Electron 主进程代理预下载的文件 ----
-    // 这些文件由 Node.js https 模块下载（无 CORS 限制），已通过 postMessage 传入 Worker。
+    // ---- 路径 A：使用主线程预下载/缓存文件（ArrayBuffer，可能经 transfer 零拷贝传入）----
     postProgress('downloading', 10, '正在从预下载缓存构建模型文件映射...')
     fileCache = new Map<string, ArrayBuffer>()
     for (const file of preDownloadedFiles) {
       const cacheKey = `${remotePrefix}/${file.fileName}`
-      const buffer = new Uint8Array(file.data).buffer
+      // 新协议：data 为 ArrayBuffer；兼容旧 number[]（若有）
+      const buffer =
+        file.data instanceof ArrayBuffer
+          ? file.data
+          : new Uint8Array(file.data as unknown as number[]).buffer
       fileCache.set(cacheKey, buffer)
       console.log(`[Worker] 从预下载缓存加载: ${file.fileName} (${buffer.byteLength} bytes)`)
     }

@@ -194,8 +194,12 @@ export interface EmbeddingEngineStatus {
 /** 主线程 -> Worker */
 export interface PreDownloadedFile {
   fileName: string
-  /** 文件内容（ArrayBuffer 转 number[]，用于 IPC/Worker 传输） */
-  data: number[]
+  /**
+   * 文件二进制内容。
+   * 优先 ArrayBuffer + postMessage transfer，减少 number[] 深拷贝；
+   * 读取旧 IndexedDB 缓存时可能短暂为 number[]，由 toArrayBuffer 兼容转换。
+   */
+  data: ArrayBuffer
 }
 
 export type WorkerRequest =

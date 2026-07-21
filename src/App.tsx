@@ -9,6 +9,7 @@ import { initMCPSync } from './stores/mcp-tool-store'
 import { useWorkspaceStore } from './stores/workspace-store'
 import { useConversationStore } from './stores/conversation-store'
 import { useSkillStore } from './stores/skill-store'
+import { bootstrapEmbeddingEngine } from './services/embedding-bootstrap'
 import { useShortcuts } from './hooks/use-shortcuts'
 import type { ViewMode, SettingsSection } from './components/settings/SettingsNavRail'
 
@@ -43,6 +44,11 @@ export default function App() {
   // ⚡ 应用启动时从 IndexedDB 预加载 Skills，避免 list_skills 在未打开设置页时返回空列表
   useEffect(() => {
     void useSkillStore.getState().ensureSkillsLoaded()
+  }, [])
+
+  // ⚡ settings rehydrate 后自动预热 embedding Worker（从 IndexedDB 缓存装入，无需进设置页）
+  useEffect(() => {
+    return bootstrapEmbeddingEngine()
   }, [])
 
   // 安全保障：当不在工作区模式时，确保 currentConversationId 不指向工作区对话

@@ -75,19 +75,44 @@ export function KnowledgeBaseSettings() {
     return unsubscribe
   }, [])
 
-  // 组件挂载时，如果已配置非 tfidf 提供者且模型尚未就绪，自动初始化（从 IndexedDB 缓存恢复）
+  // 等待 settings rehydrate 后自动 init，避免读到默认 tfidf 而跳过装载
   useEffect(() => {
-    const status = embeddingService.getStatus()
-    if (
-      embeddingConfig.type !== 'tfidf' &&
-      !status.modelReady &&
-      !status.modelLoading
-    ) {
-      void embeddingService.init(embeddingConfig)
+    let cancelled = false
+
+    const tryInit = (config: typeof embeddingConfig) => {
+      if (cancelled) return
+      if (config.type === 'tfidf') return
+      const status = embeddingService.getStatus()
+      if (status.modelReady || status.modelLoading) return
+      // 设置页允许网络下载（用户已进入配置区；缓存命中则不会下载）
+      void embeddingService.init(config, { allowNetworkDownload: true })
     }
-    // 仅在挂载时执行一次；init 内部会按配置复用已加载 Worker
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    const persistApi = useSettingsStore.persist
+    if (persistApi.hasHydrated()) {
+      tryInit(useSettingsStore.getState().embeddingConfig)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const unsub = persistApi.onFinishHydration(() => {
+      tryInit(useSettingsStore.getState().embeddingConfig)
+    })
+    return () => {
+      cancelled = true
+      unsub()
+    }
   }, [])
+
+  // 配置在页内切换后（非首次水合）也尝试对齐引擎
+  useEffect(() => {
+    if (!useSettingsStore.persist.hasHydrated()) return
+    if (embeddingConfig.type === 'tfidf') return
+    const status = embeddingService.getStatus()
+    if (status.modelReady || status.modelLoading) return
+    void embeddingService.init(embeddingConfig, { allowNetworkDownload: true })
+  }, [embeddingConfig])
 
   // 监听模型就绪，自动启动渐进迁移
   useEffect(() => {
@@ -106,7 +131,7 @@ export function KnowledgeBaseSettings() {
 
   const handleLoadModel = useCallback(async () => {
     if (embeddingConfig.type !== 'tfidf') {
-      await embeddingService.init(embeddingConfig)
+      await embeddingService.init(embeddingConfig, { allowNetworkDownload: true })
     }
   }, [embeddingConfig])
 
@@ -618,7 +643,20 @@ function SemanticEngineStatusCard({
     borderColor = 'border-amber-200/80 dark:border-amber-800/40'
     icon = <Loader2 size={16} className="animate-spin text-amber-600 dark:text-amber-400" />
     title = t('knowledgeBase.modelLoading')
-    subtitle = status.loadPhaseDetail || `${status.loadProgress}%`
+    const detail = status.loadPhaseDetail || ''
+    const fromCache =
+      detail.includes('本地缓存') ||
+      detail.toLowerCase().includes('cache') ||
+      detail.includes('检查本地')
+    const downloading =
+      detail.includes('下载') || detail.toLowerCase().includes('download')
+    subtitle =
+      detail ||
+      (fromCache
+        ? t('knowledgeBase.loadingFromCache')
+        : downloading
+          ? t('knowledgeBase.downloadingModel')
+          : `${status.loadProgress}%`)
   } else if (status.loadPhase === 'error') {
     bgColor = 'bg-red-50/50 dark:bg-red-950/20'
     borderColor = 'border-red-200/80 dark:border-red-800/40'
@@ -700,6 +738,7 @@ function LocalModelConfig({ config, onChange, t }: {
         <input type="checkbox" id="autoDownload" checked={config.autoDownload} onChange={(e) => onChange({ ...config, autoDownload: e.target.checked })} className="rounded border-surface-300 dark:border-surface-600 text-accent-500 focus:ring-accent-500/50" />
         <label htmlFor="autoDownload" className="text-xs text-surface-700 dark:text-surface-300">{t('knowledgeBase.autoDownload')}</label>
       </div>
+      <p className="text-xs text-muted">{t('knowledgeBase.autoRestoreHint')}</p>
     </div>
   )
 }

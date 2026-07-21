@@ -110,8 +110,10 @@ function nodeFetch(url: string, maxRedirects = 5): Promise<Buffer> {
       return
     }
 
-    const mod = url.startsWith('https') ? https : http
-    const req = mod.get(url, { headers: { 'User-Agent': 'LocalForge/1.0' } }, (res) => {
+    // http.get / https.get 的重载签名互不兼容，不能把模块放进联合类型后再调用。
+    // 分别分支调用可保持类型安全；协议判断用 https: 前缀更准确。
+    const options = { headers: { 'User-Agent': 'LocalForge/1.0' } }
+    const onResponse = (res: http.IncomingMessage): void => {
       const status = res.statusCode ?? 0
 
       // 跟随重定向
@@ -132,7 +134,11 @@ function nodeFetch(url: string, maxRedirects = 5): Promise<Buffer> {
       res.on('data', (chunk: Buffer) => chunks.push(chunk))
       res.on('end', () => resolve(Buffer.concat(chunks)))
       res.on('error', reject)
-    })
+    }
+
+    const req = url.startsWith('https:')
+      ? https.get(url, options, onResponse)
+      : http.get(url, options, onResponse)
 
     req.on('error', reject)
     req.setTimeout(120_000, () => {
@@ -143,12 +149,13 @@ function nodeFetch(url: string, maxRedirects = 5): Promise<Buffer> {
 
 function setupIPCHandlers(): void {
   // 模型文件批量下载（Node.js 环境，无 CORS 限制）
+  // 返回 Uint8Array 二进制，避免 Array.from(buffer) 产生巨大 number[] 拷贝
   ipcMain.handle('model:downloadFiles', async (_event, urls: string[]) => {
-    const results: Array<{ url: string; data: number[] }> = []
+    const results: Array<{ url: string; data: Uint8Array }> = []
     for (const url of urls) {
       try {
         const buffer = await nodeFetch(url)
-        results.push({ url, data: Array.from(buffer) })
+        results.push({ url, data: new Uint8Array(buffer) })
       } catch (err) {
         console.error(`[model:downloadFiles] 下载失败 ${url}:`, err)
         throw new Error(`下载失败 ${url}: ${err instanceof Error ? err.message : String(err)}`)

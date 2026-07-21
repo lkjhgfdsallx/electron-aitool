@@ -99,9 +99,9 @@ export interface ElectronAPI {
     /**
      * 通过 Node.js 下载模型文件（无 CORS 限制）
      * @param urls 要下载的文件 URL 列表
-     * @returns 每个文件的字节数组
+     * @returns 每个文件的二进制内容（Uint8Array，经 IPC 结构化克隆）
      */
-    downloadFiles: (urls: string[]) => Promise<Array<{ url: string; data: number[] }>>
+    downloadFiles: (urls: string[]) => Promise<Array<{ url: string; data: Uint8Array }>>
   }
   // 自定义工具沙箱执行
   customTool: {

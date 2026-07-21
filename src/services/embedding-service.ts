@@ -55,14 +55,45 @@ const MODEL_CACHE_DB_NAME = 'ModelFileCache'
 const MODEL_CACHE_DB_VERSION = 1
 const MODEL_CACHE_STORE = 'modelFiles'
 
-/** 缓存记录结构 */
+/** 缓存记录结构（data 可能为历史 number[] 或 ArrayBuffer） */
 interface ModelCacheRecord {
   /** 缓存 key = modelId */
   id: string
   /** 模型所有文件 */
-  files: PreDownloadedFile[]
+  files: Array<{ fileName: string; data: ArrayBuffer | number[] | Uint8Array }>
   /** 缓存写入时间 */
   cachedAt: number
+}
+
+/**
+ * 将多种二进制表示统一为可 transfer 的 ArrayBuffer。
+ * 兼容：ArrayBuffer / Uint8Array / number[]（旧 IDB 缓存）
+ */
+export function toArrayBuffer(
+  data: ArrayBuffer | Uint8Array | number[] | ArrayLike<number>
+): ArrayBuffer {
+  if (data instanceof ArrayBuffer) {
+    return data
+  }
+  if (ArrayBuffer.isView(data)) {
+    const view = data as ArrayBufferView
+    // 拷贝为独立 ArrayBuffer，避免 SharedArrayBuffer 与子视图偏移问题
+    const copy = new Uint8Array(view.byteLength)
+    copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength))
+    return copy.buffer
+  }
+  const arr = data as ArrayLike<number>
+  const u8 = new Uint8Array(arr.length)
+  for (let i = 0; i < arr.length; i++) {
+    u8[i] = arr[i] as number
+  }
+  return u8.buffer
+}
+
+function fileByteLength(data: ArrayBuffer | number[] | Uint8Array): number {
+  if (data instanceof ArrayBuffer) return data.byteLength
+  if (ArrayBuffer.isView(data)) return data.byteLength
+  return (data as number[]).length
 }
 
 /** 打开模型缓存数据库 */
@@ -78,15 +109,22 @@ async function openModelCacheDB(): Promise<IDBPDatabase> {
 
 /**
  * 从 IndexedDB 读取已缓存的模型文件。
- * 如果缓存命中且文件数量匹配，返回 PreDownloadedFile[]；否则返回 null。
+ * 如果缓存命中且文件数量匹配，返回 PreDownloadedFile[]（ArrayBuffer）；否则返回 null。
+ * 旧缓存 number[] 会在读取时转换为 ArrayBuffer。
  */
 async function getCachedModelFiles(modelId: string): Promise<PreDownloadedFile[] | null> {
   try {
     const db = await openModelCacheDB()
     const record: ModelCacheRecord | undefined = await db.get(MODEL_CACHE_STORE, modelId)
     if (record && record.files && record.files.length >= MODEL_FILES.length) {
-      console.log(`[EmbeddingService] IndexedDB 缓存命中: ${modelId} (${record.files.length} 个文件, 缓存于 ${new Date(record.cachedAt).toLocaleString()})`)
-      return record.files
+      const files: PreDownloadedFile[] = record.files.map((f) => ({
+        fileName: f.fileName,
+        data: toArrayBuffer(f.data)
+      }))
+      console.log(
+        `[EmbeddingService] IndexedDB 缓存命中: ${modelId} (${files.length} 个文件, 缓存于 ${new Date(record.cachedAt).toLocaleString()})`
+      )
+      return files
     }
     return null
   } catch (err) {
@@ -97,18 +135,26 @@ async function getCachedModelFiles(modelId: string): Promise<PreDownloadedFile[]
 
 /**
  * 将下载的模型文件写入 IndexedDB 持久化缓存。
+ * 注意：写入应在 transfer 给 Worker 之前完成（transfer 会使 ArrayBuffer detach）。
  */
 async function saveModelFilesToCache(modelId: string, files: PreDownloadedFile[]): Promise<void> {
   try {
     const db = await openModelCacheDB()
+    // 写入独立拷贝，避免后续 transfer 影响已写入引用（IDB 通常已克隆，此处仍用 slice 更稳妥）
+    const filesForCache: PreDownloadedFile[] = files.map((f) => ({
+      fileName: f.fileName,
+      data: f.data.slice(0)
+    }))
     const record: ModelCacheRecord = {
       id: modelId,
-      files,
+      files: filesForCache,
       cachedAt: Date.now()
     }
     await db.put(MODEL_CACHE_STORE, record)
-    const totalSize = files.reduce((sum, f) => sum + f.data.length, 0)
-    console.log(`[EmbeddingService] 模型文件已缓存到 IndexedDB: ${modelId} (${files.length} 个文件, ${Math.round(totalSize / 1024 / 1024)}MB)`)
+    const totalSize = filesForCache.reduce((sum, f) => sum + f.data.byteLength, 0)
+    console.log(
+      `[EmbeddingService] 模型文件已缓存到 IndexedDB: ${modelId} (${filesForCache.length} 个文件, ${Math.round(totalSize / 1024 / 1024)}MB)`
+    )
   } catch (err) {
     // 缓存写入失败不影响主流程，仅打印警告
     console.warn('[EmbeddingService] 写入模型缓存失败（不影响使用）:', err)
@@ -140,7 +186,7 @@ export async function getModelFileCacheStats(): Promise<{ sizeBytes: number; rec
     let sizeBytes = 0
     for (const record of records) {
       for (const file of record.files) {
-        sizeBytes += file.data.length
+        sizeBytes += fileByteLength(file.data)
       }
     }
     return { sizeBytes, recordCount: records.length }
@@ -503,6 +549,16 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>): void {
 
 // ==================== 导出服务 ====================
 
+/** init 可选行为 */
+export interface EmbeddingInitOptions {
+  /**
+   * 缓存未命中时是否允许网络下载。
+   * - 默认 true（用户点击加载 / 设置页 init）
+   * - 启动预热可传 false：仅从缓存装入；无缓存且 autoDownload=false 时跳过
+   */
+  allowNetworkDownload?: boolean
+}
+
 export const embeddingService = {
   /**
    * 初始化语义引擎（通过 Web Worker）
@@ -513,7 +569,10 @@ export const embeddingService = {
    * 2. 正在初始化且配置相同 → 复用同一个 initPromise
    * 3. 配置变化 → 销毁旧 Worker 后重新初始化
    */
-  async init(config: EmbeddingProviderConfig | null): Promise<void> {
+  async init(
+    config: EmbeddingProviderConfig | null,
+    options?: EmbeddingInitOptions
+  ): Promise<void> {
     // 如果没有配置或配置为 tfidf，保持纯 TF-IDF 模式
     if (!config || config.type === 'tfidf') {
       if (worker || engineStatus.modelReady || engineStatus.modelLoading || initPromise) {
@@ -582,30 +641,57 @@ export const embeddingService = {
 
           if (preDownloadedFiles) {
             // 缓存命中，跳过网络下载
-            updateStatus({ loadProgress: 80, loadPhaseDetail: `从本地缓存加载 ${preDownloadedFiles.length} 个模型文件（无需下载）` })
+            updateStatus({
+              loadProgress: 80,
+              loadPhaseDetail: `从本地缓存加载 ${preDownloadedFiles.length} 个模型文件（无需下载）`
+            })
           } else {
-            // 缓存未命中，通过网络下载
+            // 缓存未命中：
+            // - options.allowNetworkDownload !== false（默认 true）：允许下载（用户加载 / 设置页）
+            // - 启动预热传 false：仅当 autoDownload=true 时才允许下载
+            // - 否则跳过下载，由设置页提示「加载模型」
+            const allowNetworkDownload =
+              options?.allowNetworkDownload !== false || lmConfig.autoDownload === true
+
             const hasElectronModelAPI = typeof window !== 'undefined'
               && !!window.electronAPI?.model?.downloadFiles
+
+            if (!allowNetworkDownload) {
+              updateStatus({
+                mode: 'tfidf',
+                modelLoading: false,
+                modelReady: false,
+                loadProgress: 0,
+                loadPhase: 'idle',
+                loadPhaseDetail: '本地缓存未命中；请点击「加载模型」下载，或开启启动时自动下载',
+                errorMessage: undefined,
+                errorDetail: undefined,
+                errorRecoverable: undefined
+              })
+              return
+            }
 
             if (hasElectronModelAPI) {
               updateStatus({ loadPhase: 'downloading', loadProgress: 5, loadPhaseDetail: '首次使用，正在下载模型文件...' })
 
               try {
-                const urls = MODEL_FILES.map(f => `${baseUrl}/${f}`)
-                const results = await window.electronAPI.model.downloadFiles(urls) as Array<{ url: string; data: number[] }>
+                const urls = MODEL_FILES.map((f) => `${baseUrl}/${f}`)
+                // IPC 返回 Uint8Array；toArrayBuffer 兼容 ArrayBuffer / number[] 旧数据
+                const results: Array<{ url: string; data: Uint8Array | ArrayBuffer | number[] }> =
+                  await window.electronAPI.model.downloadFiles(urls)
                 if (isStale()) return
 
-                // 将 URL 映射回文件名
-                preDownloadedFiles = results.map(r => {
+                // 将 URL 映射回文件名，并统一为 ArrayBuffer
+                const downloaded: PreDownloadedFile[] = results.map((r) => {
                   const fileName = r.url.replace(`${baseUrl}/`, '')
-                  return { fileName, data: r.data }
+                  return { fileName, data: toArrayBuffer(r.data) }
                 })
+                preDownloadedFiles = downloaded
 
-                updateStatus({ loadProgress: 80, loadPhaseDetail: `已下载 ${preDownloadedFiles.length} 个模型文件` })
+                updateStatus({ loadProgress: 80, loadPhaseDetail: `已下载 ${downloaded.length} 个模型文件` })
 
-                // ---- 下载成功后写入 IndexedDB 持久化缓存 ----
-                await saveModelFilesToCache(lmConfig.modelId, preDownloadedFiles)
+                // ---- 先写 IndexedDB，再 transfer 给 Worker（transfer 会 detach buffer）----
+                await saveModelFilesToCache(lmConfig.modelId, downloaded)
               } catch (dlErr) {
                 // 下载失败不阻塞，Worker 会自行尝试浏览器 fetch 回退
                 console.warn('[EmbeddingService] Electron 代理下载失败，Worker 将尝试浏览器 fetch:', dlErr)
@@ -666,9 +752,13 @@ export const embeddingService = {
           }
         }
 
-        // 如果有预下载文件，先发送给 Worker，再发送初始化命令
+        // 如果有预下载文件，transfer ArrayBuffer 给 Worker（零拷贝）
         if (preDownloadedFiles && preDownloadedFiles.length > 0) {
-          createdWorker.postMessage({ type: 'files', files: preDownloadedFiles } as WorkerRequest)
+          const transferList = preDownloadedFiles.map((f) => f.data)
+          createdWorker.postMessage(
+            { type: 'files', files: preDownloadedFiles } as WorkerRequest,
+            transferList
+          )
         }
         createdWorker.postMessage({ type: 'init', config } as WorkerRequest)
 
@@ -844,12 +934,15 @@ export const embeddingService = {
   /**
    * 重新初始化语义引擎（用于重试或切换提供者）
    */
-  async reinit(config: EmbeddingProviderConfig): Promise<void> {
+  async reinit(
+    config: EmbeddingProviderConfig,
+    options?: EmbeddingInitOptions
+  ): Promise<void> {
     initGeneration++
     this.disposeWorker()
     activeConfig = null
     initPromise = null
-    await this.init(config)
+    await this.init(config, { allowNetworkDownload: true, ...options })
   },
 
   /**
