@@ -23,6 +23,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/lkjhgfdsallx/electron-aitool/releases/latest"><strong>⬇ 下载安装包</strong></a>
+  ·
+  <a href="https://github.com/lkjhgfdsallx/electron-aitool/releases/tag/v1.0.0"><strong>v1.0.0 发布页</strong></a>
+  ·
+  <a href="https://github.com/lkjhgfdsallx/electron-aitool"><strong>源码仓库</strong></a>
+</p>
+
+<p align="center">
   <a href="#-项目启动"><strong>快速开始</strong></a>
   ·
   <a href="#-功能总览"><strong>功能</strong></a>
@@ -617,6 +625,21 @@ Memory · Requirement · HumanInput · SiteAnalyzer · Workspace · Math · Plan
 ---
 
 ## 🚀 项目启动
+
+### 安装（桌面安装包）
+
+预构建安装包发布在 GitHub Releases：
+
+- **最新版：** https://github.com/lkjhgfdsallx/electron-aitool/releases/latest
+- **v1.0.0：** https://github.com/lkjhgfdsallx/electron-aitool/releases/tag/v1.0.0
+
+| 平台 | 包类型（electron-builder） |
+|------|---------------------------|
+| Windows | NSIS 安装包（x64） |
+| macOS | DMG（x64 / arm64） |
+| Linux | AppImage（x64） |
+
+请在发布页按系统选择对应资产；也可按下方命令从源码构建。
 
 ### 环境要求
 

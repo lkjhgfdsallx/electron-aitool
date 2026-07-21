@@ -23,6 +23,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/lkjhgfdsallx/electron-aitool/releases/latest"><strong>⬇ Download</strong></a>
+  ·
+  <a href="https://github.com/lkjhgfdsallx/electron-aitool/releases/tag/v1.0.0"><strong>v1.0.0 Release</strong></a>
+  ·
+  <a href="https://github.com/lkjhgfdsallx/electron-aitool"><strong>Source</strong></a>
+</p>
+
+<p align="center">
   <a href="#-quick-start"><strong>Quick Start</strong></a>
   ·
   <a href="#-features"><strong>Features</strong></a>
@@ -655,6 +663,21 @@ Create Workspace (optional template)
 ---
 
 ## 🚀 Quick Start
+
+### Install (desktop builds)
+
+Prebuilt installers are published on GitHub Releases:
+
+- **Latest:** https://github.com/lkjhgfdsallx/electron-aitool/releases/latest
+- **v1.0.0:** https://github.com/lkjhgfdsallx/electron-aitool/releases/tag/v1.0.0
+
+| Platform | Package (via electron-builder) |
+|----------|--------------------------------|
+| Windows | NSIS installer (x64) |
+| macOS | DMG (x64 / arm64) |
+| Linux | AppImage (x64) |
+
+Pick the asset for your OS from the release page. You can also build from source with the commands below.
 
 ### Environment Requirements
 

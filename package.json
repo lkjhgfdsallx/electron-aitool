@@ -5,6 +5,26 @@
   "main": "./out/main/index.js",
   "author": "LocalForge",
   "license": "MIT",
+  "homepage": "https://github.com/lkjhgfdsallx/electron-aitool",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lkjhgfdsallx/electron-aitool.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lkjhgfdsallx/electron-aitool/issues"
+  },
+  "keywords": [
+    "electron",
+    "ai",
+    "local-first",
+    "privacy",
+    "agent",
+    "knowledge-base",
+    "mcp",
+    "desktop",
+    "chat",
+    "localforge"
+  ],
   "scripts": {
     "dev": "node dev.cjs",
     "build": "electron-vite build",
