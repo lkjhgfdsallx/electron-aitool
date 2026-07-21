@@ -811,18 +811,67 @@ interface WorkspaceSkillsPanelProps {
 
 function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) {
   const { t } = useAppTranslation()
-  const { createSkill, toggleSkill, deleteSkill } = useSkillStore()
-  const [expandedDir, setExpandedDir] = useState<string | null>(null)
+  const allSkills = useSkillStore((s) => s.skills)
+  const toggleSkill = useSkillStore((s) => s.toggleSkill)
+  const bindSkillToWorkspace = useSkillStore((s) => s.bindSkillToWorkspace)
+  const unbindSkillFromWorkspace = useSkillStore((s) => s.unbindSkillFromWorkspace)
 
-  const handleCreateSkill = useCallback(() => {
-    createSkill({
-      name: `project-skill-${Date.now().toString(36)}`,
-      description: t('workspace.newSkill'),
-      content: '',
-      location: 'project',
-      projectWorkspaceId: workspace.id,
-    })
-  }, [createSkill, workspace.id, t])
+  const [expandedDir, setExpandedDir] = useState<string | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
+  const [pickerPos, setPickerPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 })
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const headerAddButtonRef = useRef<HTMLButtonElement>(null)
+
+  // 可添加：全局 skill，或未绑定工作区的 project skill；排除已绑定到任意工作区的
+  const availableSkills = useMemo(
+    () => allSkills.filter((s) => {
+      if (s.location === 'global') return true
+      if (s.location === 'project' && !s.projectWorkspaceId) return true
+      return false
+    }),
+    [allSkills]
+  )
+
+  const openPickerAt = useCallback((el: HTMLElement) => {
+    const rect = el.getBoundingClientRect()
+    setPickerPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 200) })
+    setShowPicker(true)
+  }, [])
+
+  const togglePicker = useCallback((el?: HTMLElement | null) => {
+    if (showPicker) {
+      setShowPicker(false)
+      return
+    }
+    const target = el ?? buttonRef.current
+    if (target) openPickerAt(target)
+  }, [showPicker, openPickerAt])
+
+  useEffect(() => {
+    if (!showPicker) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      const inPicker = pickerRef.current?.contains(target)
+      const inMainButton = buttonRef.current?.contains(target)
+      const inHeaderButton = headerAddButtonRef.current?.contains(target)
+      if (!inPicker && !inMainButton && !inHeaderButton) {
+        setShowPicker(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showPicker])
+
+  const handleBindSkill = useCallback(async (dirPath: string) => {
+    await bindSkillToWorkspace(dirPath, workspace.id)
+    setShowPicker(false)
+  }, [bindSkillToWorkspace, workspace.id])
+
+  const handleUnbindSkill = useCallback(async (dirPath: string) => {
+    await unbindSkillFromWorkspace(dirPath)
+    if (expandedDir === dirPath) setExpandedDir(null)
+  }, [unbindSkillFromWorkspace, expandedDir])
 
   return (
     <div className="p-2 space-y-2">
@@ -831,9 +880,10 @@ function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) 
           {t('workspace.workspaceSkillsCount', { count: skills.length })}
         </span>
         <button
-          onClick={handleCreateSkill}
+          ref={headerAddButtonRef}
+          onClick={(e) => togglePicker(e.currentTarget)}
           className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-colors"
-          title={t('workspace.createNewSkill')}
+          title={t('workspace.addSkill')}
         >
           <Plus size={14} />
         </button>
@@ -876,16 +926,58 @@ function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) 
                   </p>
                   <div className="flex items-center gap-1 mt-1.5">
                     <button
-                      onClick={() => deleteSkill(skill.dirPath)}
+                      onClick={() => handleUnbindSkill(skill.dirPath)}
                       className="text-[10px] text-red-400 hover:text-red-500 transition-colors"
                     >
-                      {t('common.delete')}
+                      {t('workspace.removeSkillFromWorkspace')}
                     </button>
                   </div>
                 </div>
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 添加技能按钮（与团队 Agent 一致的虚线入口） */}
+      <button
+        ref={buttonRef}
+        onClick={(e) => togglePicker(e.currentTarget)}
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors border border-dashed border-teal-300/50 dark:border-teal-700/50"
+      >
+        <Plus size={12} />
+        {t('workspace.addSkill')}
+      </button>
+
+      {/* Skill 选择下拉（fixed 定位，避免被 overflow 裁剪） */}
+      {showPicker && (
+        <div
+          ref={pickerRef}
+          className="fixed z-[9999] bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg max-h-[220px] overflow-y-auto"
+          style={{ top: pickerPos.top, left: pickerPos.left, width: pickerPos.width }}
+        >
+          {availableSkills.length === 0 ? (
+            <div className="px-3 py-4 text-center">
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">{t('workspace.noAvailableSkills')}</p>
+              <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">{t('workspace.importSkillsInSettingsHint')}</p>
+            </div>
+          ) : (
+            availableSkills.map((skill) => (
+              <button
+                key={skill.dirPath}
+                onClick={() => handleBindSkill(skill.dirPath)}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-colors first:rounded-t-lg last:rounded-b-lg"
+              >
+                <Zap size={12} className={skill.enabled ? 'text-amber-500 flex-shrink-0' : 'text-gray-400 flex-shrink-0'} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate">{skill.name}</p>
+                  {skill.description && (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{skill.description}</p>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>

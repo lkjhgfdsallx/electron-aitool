@@ -228,13 +228,23 @@ interface SkillStore {
   deleteSkill: (dirPath: string) => Promise<boolean>
   /** 切换启用/禁用 */
   toggleSkill: (dirPath: string) => void
+  /**
+   * 将已有 Skill 绑定到指定工作区（location → project，写入 projectWorkspaceId）
+   * 用于工作区 Skills 面板从设置页已导入的技能中添加
+   */
+  bindSkillToWorkspace: (dirPath: string, workspaceId: string) => Promise<Skill | null>
+  /**
+   * 将 Skill 从工作区解绑（恢复 location → global，清空 projectWorkspaceId）
+   * 不删除技能内容，仅解除工作区归属
+   */
+  unbindSkillFromWorkspace: (dirPath: string) => Promise<Skill | null>
 
   // ---- 查询 ----
   /** 获取所有启用的技能（用于 AI 工具返回） */
   getAllEnabledSkills: () => Skill[]
   /** 获取全局技能 */
   getGlobalSkills: () => Skill[]
-  /** 获取项目技能 */
+  /** 获取项目技能；传入 workspaceId 时仅返回绑定到该工作区的技能 */
   getProjectSkills: (workspaceId?: string) => Skill[]
 
   // ---- 导入导出 ----
@@ -410,6 +420,73 @@ export const useSkillStore = create<SkillStore>()((set, get) => ({
     }))
   },
 
+  bindSkillToWorkspace: async (dirPath, workspaceId) => {
+    try {
+      const existing = get().skills.find((s) => s.dirPath === dirPath || s.id === dirPath)
+      if (!existing) {
+        console.error('[SkillStore] 绑定失败: 技能不存在')
+        return null
+      }
+
+      // 已绑定到当前工作区则直接返回
+      if (existing.location === 'project' && existing.projectWorkspaceId === workspaceId) {
+        return existing
+      }
+
+      // 已绑定到其他工作区时拒绝静默迁移
+      if (existing.location === 'project' && existing.projectWorkspaceId && existing.projectWorkspaceId !== workspaceId) {
+        console.error('[SkillStore] 绑定失败: 技能已绑定到其他工作区')
+        return null
+      }
+
+      const updated: Skill = {
+        ...existing,
+        location: 'project',
+        projectWorkspaceId: workspaceId,
+        updatedAt: Date.now(),
+      }
+
+      await dbService.saveSkill(updated)
+      set((state) => ({
+        skills: state.skills.map((s) => (s.id === existing.id ? updated : s)),
+      }))
+      return updated
+    } catch (e) {
+      console.error('[SkillStore] 绑定到工作区失败:', e)
+      return null
+    }
+  },
+
+  unbindSkillFromWorkspace: async (dirPath) => {
+    try {
+      const existing = get().skills.find((s) => s.dirPath === dirPath || s.id === dirPath)
+      if (!existing) {
+        console.error('[SkillStore] 解绑失败: 技能不存在')
+        return null
+      }
+
+      if (existing.location === 'global' && !existing.projectWorkspaceId) {
+        return existing
+      }
+
+      const updated: Skill = {
+        ...existing,
+        location: 'global',
+        projectWorkspaceId: undefined,
+        updatedAt: Date.now(),
+      }
+
+      await dbService.saveSkill(updated)
+      set((state) => ({
+        skills: state.skills.map((s) => (s.id === existing.id ? updated : s)),
+      }))
+      return updated
+    } catch (e) {
+      console.error('[SkillStore] 从工作区解绑失败:', e)
+      return null
+    }
+  },
+
   // ==================== 查询 ====================
 
   getAllEnabledSkills: () => {
@@ -420,8 +497,12 @@ export const useSkillStore = create<SkillStore>()((set, get) => ({
     return get().skills.filter((s) => s.location === 'global')
   },
 
-  getProjectSkills: () => {
-    return get().skills.filter((s) => s.location === 'project')
+  getProjectSkills: (workspaceId) => {
+    return get().skills.filter((s) => {
+      if (s.location !== 'project') return false
+      if (workspaceId) return s.projectWorkspaceId === workspaceId
+      return true
+    })
   },
 
   // ==================== 导入导出 ====================

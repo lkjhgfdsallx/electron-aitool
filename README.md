@@ -56,7 +56,7 @@ Vector search, file parsing, memory, and backups are all performed locally; when
 |:-----|:-----|:-----|
 | [Core Philosophy](#-core-philosophy) | [Smart Chat](#-smart-chat) | [Settings Guide](#️-settings-guide) |
 | [Features Overview](#-features) | [Agent](#-agent) | [Configuration Reference](#-configuration-reference) |
-| [Interface & Navigation](#️-interface--navigation) | [Tools](#-tools) · [Knowledge Base](#-knowledge-base) | [Usage Guide](#-usage-guide) |
+| [Screenshots](#-screenshots) · [Interface](#️-interface--navigation) | [Tools](#-tools) · [Knowledge Base](#-knowledge-base) | [Usage Guide](#-usage-guide) |
 | [Quick Start](#-quick-start) | [Workspace](#-workspace) · [Prompts & Skills](#-prompts--skills) | [Workflow Guide](#-workflow-guide) |
 | [Tech Stack](#️-tech-stack) | [Data & Privacy](#-data--privacy) | [License](#-license) |
 
@@ -99,6 +99,38 @@ Vector search, file parsing, memory, and backups are all performed locally; when
 | 📝 **Prompts / Skills** | Template variables, `{{kb:}}` / `{{tool:}}` injection, prompt chains, version history and diff, playground; Skills SKILL.md + resource package import/export |
 | 💾 **Data Management** | Full ZIP backup and restore, optional WebDAV cloud sync, conversation JSON/Markdown/HTML export, cache cleanup, privacy cleanup |
 | 🎨 **Interface** | Custom title bar, sidebar conversation list, themes and fonts, shortcuts, settings search and navigation rail |
+
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td align="center" colspan="2">
+      <a href="build/DialogueScreenshot.png">
+        <img src="build/DialogueScreenshot.png" alt="LocalForge Smart Chat" width="100%" />
+      </a>
+      <br />
+      <sub><b>Smart Chat</b> — multi-provider conversations, Agent mode, memory & knowledge base</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%" valign="top">
+      <a href="build/WorkspaceScreenshot.png">
+        <img src="build/WorkspaceScreenshot.png" alt="LocalForge Workspace" width="100%" />
+      </a>
+      <br />
+      <sub><b>Workspace</b> — project explorer, file preview & terminal</sub>
+    </td>
+    <td align="center" width="50%" valign="top">
+      <a href="build/SettingScreenshot.png">
+        <img src="build/SettingScreenshot.png" alt="LocalForge Settings" width="100%" />
+      </a>
+      <br />
+      <sub><b>Settings</b> — AI providers, tools & data management</sub>
+    </td>
+  </tr>
+</table>
 
 ---
 
