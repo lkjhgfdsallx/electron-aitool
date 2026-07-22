@@ -1434,7 +1434,9 @@ export async function runAgent(
   callbacks: AgentEngineCallbacks,
   workspaceContext?: WorkspaceContext,
   conversationId?: string,
-  resumeOptions?: ResumeOptions
+  resumeOptions?: ResumeOptions,
+  /** 当前 assistant 消息 ID（用于 AI Changes 采集） */
+  messageId?: string,
 ): Promise<void> {
   const runId = crypto.randomUUID()
   callbacks.onStatusChange('running')
@@ -1716,6 +1718,8 @@ export async function runAgent(
     resolvedConfig,
     signal,
     workspace: workspaceContext,
+    messageId,
+    workspaceId: workspaceContext?.workspaceId,
     callbacks,
     stepCounter,
     steps,

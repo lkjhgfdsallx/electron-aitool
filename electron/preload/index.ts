@@ -266,6 +266,51 @@ export interface ElectronAPI {
       /** 监听命令完成事件 */
       onComplete: (callback: (data: { commandId: string; exitCode: number | null; killed: boolean; timestamp: number }) => void) => () => void
     }
+    /** Git SCM（系统 git CLI） */
+    git: {
+      version: () => Promise<{ success: boolean; data?: { available: boolean; version?: string }; error?: string }>
+      isRepo: (cwd: string) => Promise<{ success: boolean; data?: { isRepo: boolean; gitAvailable: boolean; version?: string }; error?: string }>
+      getState: (cwd: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      status: (cwd: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      diff: (cwd: string, options?: { path?: string; staged?: boolean; maxChars?: number }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      stage: (cwd: string, paths: string[]) => Promise<{ success: boolean; error?: string }>
+      unstage: (cwd: string, paths: string[]) => Promise<{ success: boolean; error?: string }>
+      discard: (cwd: string, options: { paths: string[]; includeUntracked?: boolean }) => Promise<{ success: boolean; error?: string }>
+      commit: (cwd: string, options: { message: string; amend?: boolean; allowEmpty?: boolean; noVerify?: boolean }) => Promise<{ success: boolean; data?: { commit?: string }; error?: string }>
+      init: (cwd: string) => Promise<{ success: boolean; error?: string }>
+      branches: (cwd: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      checkout: (cwd: string, options: { target: string; create?: boolean; force?: boolean }) => Promise<{ success: boolean; error?: string }>
+      createBranch: (cwd: string, name: string, options?: { checkout?: boolean; startPoint?: string }) => Promise<{ success: boolean; error?: string }>
+      deleteBranch: (cwd: string, name: string, force?: boolean) => Promise<{ success: boolean; error?: string }>
+      merge: (cwd: string, branch: string) => Promise<{ success: boolean; error?: string }>
+      remotes: (cwd: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      addRemote: (cwd: string, name: string, url: string) => Promise<{ success: boolean; error?: string }>
+      removeRemote: (cwd: string, name: string) => Promise<{ success: boolean; error?: string }>
+      fetch: (cwd: string, remote?: string) => Promise<{ success: boolean; error?: string }>
+      pull: (cwd: string, options?: { remote?: string; branch?: string; rebase?: boolean }) => Promise<{ success: boolean; error?: string }>
+      push: (cwd: string, options?: { remote?: string; branch?: string; setUpstream?: boolean; tags?: boolean; force?: boolean }) => Promise<{ success: boolean; error?: string }>
+      clone: (options: { url: string; targetDir: string; branch?: string; depth?: number }) => Promise<{ success: boolean; error?: string }>
+      stash: {
+        list: (cwd: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+        push: (cwd: string, options?: { message?: string; includeUntracked?: boolean; paths?: string[] }) => Promise<{ success: boolean; error?: string }>
+        pop: (cwd: string, index?: number) => Promise<{ success: boolean; error?: string }>
+        apply: (cwd: string, index?: number) => Promise<{ success: boolean; error?: string }>
+        drop: (cwd: string, index?: number) => Promise<{ success: boolean; error?: string }>
+      }
+      tags: (cwd: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      createTag: (cwd: string, name: string, options?: { message?: string; ref?: string }) => Promise<{ success: boolean; error?: string }>
+      deleteTag: (cwd: string, name: string) => Promise<{ success: boolean; error?: string }>
+      log: (cwd: string, options?: { maxCount?: number; path?: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      checkIgnore: (cwd: string, paths: string[]) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      raw: (cwd: string, args: string[]) => Promise<{ success: boolean; data?: unknown; error?: string }>
+      onOutput: (callback: (data: {
+        timestamp: number
+        cwd?: string
+        command?: string
+        stream: 'stdout' | 'stderr' | 'system' | 'command'
+        text: string
+      }) => void) => () => void
+    }
     /** 选择文件夹对话框 */
     selectFolder: () => Promise<{ success: boolean; folderPath?: string; canceled?: boolean; error?: string }>
   }
@@ -453,6 +498,80 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.on('workspace:command:complete', handler)
         return () => {
           ipcRenderer.removeListener('workspace:command:complete', handler)
+        }
+      },
+    },
+    git: {
+      version: () => ipcRenderer.invoke('workspace:git:version'),
+      isRepo: (cwd: string) => ipcRenderer.invoke('workspace:git:isRepo', cwd),
+      getState: (cwd: string) => ipcRenderer.invoke('workspace:git:getState', cwd),
+      status: (cwd: string) => ipcRenderer.invoke('workspace:git:status', cwd),
+      diff: (cwd: string, options?: { path?: string; staged?: boolean; maxChars?: number }) =>
+        ipcRenderer.invoke('workspace:git:diff', cwd, options),
+      stage: (cwd: string, paths: string[]) => ipcRenderer.invoke('workspace:git:stage', cwd, paths),
+      unstage: (cwd: string, paths: string[]) => ipcRenderer.invoke('workspace:git:unstage', cwd, paths),
+      discard: (cwd: string, options: { paths: string[]; includeUntracked?: boolean }) =>
+        ipcRenderer.invoke('workspace:git:discard', cwd, options),
+      commit: (cwd: string, options: { message: string; amend?: boolean; allowEmpty?: boolean; noVerify?: boolean }) =>
+        ipcRenderer.invoke('workspace:git:commit', cwd, options),
+      init: (cwd: string) => ipcRenderer.invoke('workspace:git:init', cwd),
+      branches: (cwd: string) => ipcRenderer.invoke('workspace:git:branches', cwd),
+      checkout: (cwd: string, options: { target: string; create?: boolean; force?: boolean }) =>
+        ipcRenderer.invoke('workspace:git:checkout', cwd, options),
+      createBranch: (cwd: string, name: string, options?: { checkout?: boolean; startPoint?: string }) =>
+        ipcRenderer.invoke('workspace:git:createBranch', cwd, name, options),
+      deleteBranch: (cwd: string, name: string, force?: boolean) =>
+        ipcRenderer.invoke('workspace:git:deleteBranch', cwd, name, force),
+      merge: (cwd: string, branch: string) => ipcRenderer.invoke('workspace:git:merge', cwd, branch),
+      remotes: (cwd: string) => ipcRenderer.invoke('workspace:git:remotes', cwd),
+      addRemote: (cwd: string, name: string, url: string) =>
+        ipcRenderer.invoke('workspace:git:addRemote', cwd, name, url),
+      removeRemote: (cwd: string, name: string) =>
+        ipcRenderer.invoke('workspace:git:removeRemote', cwd, name),
+      fetch: (cwd: string, remote?: string) => ipcRenderer.invoke('workspace:git:fetch', cwd, remote),
+      pull: (cwd: string, options?: { remote?: string; branch?: string; rebase?: boolean }) =>
+        ipcRenderer.invoke('workspace:git:pull', cwd, options),
+      push: (cwd: string, options?: { remote?: string; branch?: string; setUpstream?: boolean; tags?: boolean; force?: boolean }) =>
+        ipcRenderer.invoke('workspace:git:push', cwd, options),
+      clone: (options: { url: string; targetDir: string; branch?: string; depth?: number }) =>
+        ipcRenderer.invoke('workspace:git:clone', options),
+      stash: {
+        list: (cwd: string) => ipcRenderer.invoke('workspace:git:stash:list', cwd),
+        push: (cwd: string, options?: { message?: string; includeUntracked?: boolean; paths?: string[] }) =>
+          ipcRenderer.invoke('workspace:git:stash:push', cwd, options),
+        pop: (cwd: string, index?: number) => ipcRenderer.invoke('workspace:git:stash:pop', cwd, index),
+        apply: (cwd: string, index?: number) => ipcRenderer.invoke('workspace:git:stash:apply', cwd, index),
+        drop: (cwd: string, index?: number) => ipcRenderer.invoke('workspace:git:stash:drop', cwd, index),
+      },
+      tags: (cwd: string) => ipcRenderer.invoke('workspace:git:tags', cwd),
+      createTag: (cwd: string, name: string, options?: { message?: string; ref?: string }) =>
+        ipcRenderer.invoke('workspace:git:createTag', cwd, name, options),
+      deleteTag: (cwd: string, name: string) => ipcRenderer.invoke('workspace:git:deleteTag', cwd, name),
+      log: (cwd: string, options?: { maxCount?: number; path?: string }) =>
+        ipcRenderer.invoke('workspace:git:log', cwd, options),
+      checkIgnore: (cwd: string, paths: string[]) =>
+        ipcRenderer.invoke('workspace:git:checkIgnore', cwd, paths),
+      raw: (cwd: string, args: string[]) => ipcRenderer.invoke('workspace:git:raw', cwd, args),
+      onOutput: (callback: (data: {
+        timestamp: number
+        cwd?: string
+        command?: string
+        stream: 'stdout' | 'stderr' | 'system' | 'command'
+        text: string
+      }) => void) => {
+        const handler = (
+          _event: unknown,
+          data: {
+            timestamp: number
+            cwd?: string
+            command?: string
+            stream: 'stdout' | 'stderr' | 'system' | 'command'
+            text: string
+          }
+        ) => callback(data)
+        ipcRenderer.on('workspace:git:output', handler)
+        return () => {
+          ipcRenderer.removeListener('workspace:git:output', handler)
         }
       },
     },

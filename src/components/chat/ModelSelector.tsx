@@ -25,9 +25,18 @@ interface ModelSelectorProps {
    * - 传入 providerId：直接进入对应 AI 源编辑页
    */
   onOpenSettings?: (providerId?: string) => void
+  /** 额外 class，用于在工作区等紧凑场景微调样式 */
+  className?: string
+  /** 触发按钮最大宽度，默认 200 */
+  maxWidthClassName?: string
 }
 
-export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorProps) {
+export function ModelSelector({
+  conversationId,
+  onOpenSettings,
+  className,
+  maxWidthClassName = 'max-w-[200px]',
+}: ModelSelectorProps) {
   const { t } = useAppTranslation()
   const [isOpen, setIsOpen] = useState(false)
   const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
@@ -128,7 +137,7 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
       <button
         onClick={() => onOpenSettings?.()}
         aria-label={t('chat.configureAiProvider')}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-dashed border-surface-300 dark:border-surface-600 text-muted hover:border-accent-300 dark:hover:border-accent-600 transition-all"
+        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-dashed border-surface-300 dark:border-surface-600 text-muted hover:border-accent-300 dark:hover:border-accent-600 transition-all ${className ?? ''}`}
       >
         <Globe size={12} />
         <span>{t('chat.configureAiProvider')}</span>
@@ -256,7 +265,7 @@ export function ModelSelector({ conversationId, onOpenSettings }: ModelSelectorP
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-label={t('chat.selectAiProvider')}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/60 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all shadow-sm max-w-[200px]"
+        className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-surface-200/80 dark:border-surface-700/60 bg-white dark:bg-surface-800/60 hover:border-accent-300 dark:hover:border-accent-600 hover:bg-accent-50/50 dark:hover:bg-accent-950/20 transition-all shadow-sm ${maxWidthClassName} ${className ?? ''}`}
       >
         {/* 连接状态指示 */}
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT_COLORS[currentProvider?.health?.status || 'unknown']}`} />

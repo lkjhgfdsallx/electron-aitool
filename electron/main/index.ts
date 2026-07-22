@@ -17,6 +17,7 @@ import { setupWorkspaceWatcherHandlers } from './workspace-watcher-handler'
 import { setupWorkspaceCommandHandlers } from './workspace-command-handler'
 import { setupWebDAVHandlers } from './webdav-handler'
 import { setupWorkspaceSearchHandlers } from './workspace-search-handler'
+import { setupWorkspaceGitHandlers } from './workspace-git-handler'
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -73,11 +74,12 @@ app.whenReady().then(() => {
   // 设置自定义工具沙箱执行
   setupCustomToolHandlers()
 
-  // 设置工作区（VCS + 文件监控 + 命令执行 + 代码库检索）
+  // 设置工作区（VCS + 文件监控 + 命令执行 + 代码库检索 + Git SCM）
   setupWorkspaceVCSHandlers()
   setupWorkspaceWatcherHandlers()
   setupWorkspaceCommandHandlers()
   setupWorkspaceSearchHandlers()
+  setupWorkspaceGitHandlers()
 
   // 设置 WebDAV 备份
   setupWebDAVHandlers()

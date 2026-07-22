@@ -1,25 +1,26 @@
 /**
  * 项目浏览器组件 - 左栏
  * - 文件标签页：FileTree 组件，支持点击预览
- * - 存档标签页：增强的 CheckpointTimeline，支持还原
+ * - Git SCM 标签页
  * - 团队标签页：AgentTeamPanel，显示真实 Agent 信息
+ * - Skills 标签页：工作区绑定技能
+ * - 全局「存档」tab 已移除；AI 修改见对话内 AI Changes，版本历史见 Git
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
-  FileText, Clock, Users, Plus, RotateCcw, ChevronRight, X,
-  Loader2, CheckCircle2, AlertCircle, Zap, ToggleLeft, ToggleRight,
-  FileText as FileTextIcon, ArrowLeft, Eye,
+  FileText, Users, Plus, X, Zap, ToggleLeft, ToggleRight, GitBranch,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useSkillStore } from '../../stores/skill-store'
-import { workspaceVCSService } from '../../services/workspace-vcs-service'
+import { useWorkspaceGitStore, selectGitChangeCount } from '../../stores/workspace-git-store'
 import { FileTree } from './FileTree'
+import { GitPanel } from './git'
 import { AgentManager } from '../settings/AgentManager'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
-import type { Workspace, CheckpointIndex, CheckpointDetail, CheckpointFileChange } from '../../types'
+import type { Workspace } from '../../types'
 import { useAppTranslation } from '../../i18n/hooks'
 
 interface ProjectExplorerProps {
@@ -32,17 +33,11 @@ interface ProjectExplorerProps {
   changedFiles?: Set<string>
 }
 
-type ExplorerTab = 'files' | 'checkpoints' | 'agents' | 'skills'
+type ExplorerTab = 'files' | 'git' | 'agents' | 'skills'
 
 export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changedFiles }: ProjectExplorerProps) {
   const { t } = useAppTranslation()
   const [activeTab, setActiveTab] = useState<ExplorerTab>('files')
-  const checkpointIndex = useWorkspaceStore((s) => s.checkpointIndex)
-  const addCheckpointIndex = useWorkspaceStore((s) => s.addCheckpointIndex)
-
-  const workspaceCheckpoints = checkpointIndex.filter(
-    (cp) => cp.workspaceId === workspace.id
-  )
 
   const allSkills = useSkillStore((s) => s.skills)
   const ensureSkillsLoaded = useSkillStore((s) => s.ensureSkillsLoaded)
@@ -50,6 +45,7 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
     () => allSkills.filter((s) => s.location === 'project' && s.projectWorkspaceId === workspace.id),
     [allSkills, workspace.id]
   )
+  const gitChangeCount = useWorkspaceGitStore(selectGitChangeCount)
 
   useEffect(() => {
     void ensureSkillsLoaded()
@@ -57,7 +53,7 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
 
   const tabs: { key: ExplorerTab; label: string; icon: typeof FileText; count?: number }[] = [
     { key: 'files', label: t('workspace.files'), icon: FileText },
-    { key: 'checkpoints', label: t('workspace.archive'), icon: Clock, count: workspaceCheckpoints.length },
+    { key: 'git', label: t('workspace.git', { defaultValue: 'Git' }), icon: GitBranch, count: gitChangeCount > 0 ? gitChangeCount : undefined },
     { key: 'agents', label: t('workspace.team'), icon: Users, count: workspace.teamAgentIds.length + (workspace.leaderAgentId ? 1 : 0) },
     { key: 'skills', label: t('workspace.skills'), icon: Zap, count: projectSkills.length },
   ]
@@ -113,25 +109,15 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
           </div>
         )}
 
-        {/* B3: 存档时间线 */}
-        {activeTab === 'checkpoints' && (
-          <CheckpointTimeline
+        {/* Git SCM */}
+        {activeTab === 'git' && (
+          <GitPanel
             workspace={workspace}
-            checkpoints={workspaceCheckpoints}
-            onRefresh={async () => {
-              try {
-                const checkpoints = await workspaceVCSService.listCheckpoints(workspace.folderPath)
-                // 刷新 store 中的索引
-                const store = useWorkspaceStore.getState()
-                for (const cp of checkpoints) {
-                  const exists = store.checkpointIndex.find((e) => e.id === cp.id)
-                  if (!exists) {
-                    addCheckpointIndex(cp as CheckpointIndex)
-                  }
-                }
-              } catch (err) {
-                console.warn('[ProjectExplorer] 刷新存档索引失败:', err)
-              }
+            onOpenFile={(relPath) => {
+              // relPath 相对仓库根；拼成绝对路径供预览
+              const sep = workspace.folderPath.includes('\\') ? '\\' : '/'
+              const abs = `${workspace.folderPath.replace(/[\\/]+$/, '')}${sep}${relPath.replace(/\//g, sep)}`
+              onFileSelect?.(abs)
             }}
           />
         )}
@@ -146,407 +132,6 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
           <WorkspaceSkillsPanel workspace={workspace} skills={projectSkills} />
         )}
       </div>
-    </div>
-  )
-}
-
-// ---- B3: 存档时间线子组件 ----
-
-interface CheckpointTimelineProps {
-  workspace: Workspace
-  checkpoints: CheckpointIndex[]
-  onRefresh: () => void
-}
-
-function CheckpointTimeline({ workspace, checkpoints, onRefresh }: CheckpointTimelineProps) {
-  const { t, currentLang } = useAppTranslation()
-  const [restoring, setRestoring] = useState<string | null>(null)
-  const [restoreError, setRestoreError] = useState<string | null>(null)
-  // 详情展开状态
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<CheckpointDetail | null>(null)
-  const [loadingDetail, setLoadingDetail] = useState(false)
-  // diff 展开状态
-  const [expandedDiff, setExpandedDiff] = useState<number | null>(null)
-
-  const handleRestore = useCallback(async (checkpointId: string) => {
-    setRestoring(checkpointId)
-    setRestoreError(null)
-    try {
-      const result = await workspaceVCSService.restoreToCheckpoint(
-        workspace.folderPath,
-        checkpointId,
-        workspace.id
-      )
-      if (!result.success) {
-        setRestoreError(result.error || t('workspace.restoreFailed'))
-      } else {
-        onRefresh()
-        setSelectedId(null)
-        setDetail(null)
-      }
-    } catch (err) {
-      setRestoreError(String(err))
-    } finally {
-      setRestoring(null)
-    }
-  }, [workspace.folderPath, workspace.id, onRefresh, t])
-
-  const toggleDiff = useCallback((index: number) => {
-    setExpandedDiff((prev) => prev === index ? null : index)
-  }, [])
-
-  const loadDetail = useCallback(async (checkpointId: string) => {
-    setLoadingDetail(true)
-    try {
-      // 直接调用 IPC，获取原始数据（后端返回 CheckpointMetadata 格式）
-      const rawResult: any = await (window as any).electronAPI.workspace.vcs.getCheckpointDetail(
-        workspace.folderPath,
-        checkpointId
-      )
-      if (rawResult.success && rawResult.detail) {
-        const metadata = rawResult.detail
-        // 转换为前端 CheckpointDetail 格式
-        const checkpointDetail: CheckpointDetail = {
-          id: metadata.id || checkpointId,
-          metadata: {
-            id: metadata.id || checkpointId,
-            workspaceId: metadata.workspaceId || workspace.id,
-            description: metadata.description || t('workspace.checkpointDetail'),
-            type: metadata.type || 'auto',
-            filesChanged: (metadata.fileChanges || []).length,
-            linesAdded: metadata.linesAdded || 0,
-            linesRemoved: metadata.linesRemoved || 0,
-            filePaths: (metadata.fileChanges || []).map((fc: any) => fc.filePath),
-            createdAt: metadata.createdAt || Date.now(),
-          },
-          fileChanges: (metadata.fileChanges || []).map((fc: any) => ({
-            filePath: fc.filePath,
-            changeType: fc.changeType || 'modified',
-            linesAdded: fc.linesAdded || 0,
-            linesRemoved: fc.linesRemoved ?? 0,
-            unifiedDiff: fc.unifiedDiff,
-          })),
-        }
-        setDetail(checkpointDetail)
-        setSelectedId(checkpointId)
-      }
-    } catch (err) {
-      console.warn('[CheckpointTimeline] 加载详情失败:', err)
-    } finally {
-      setLoadingDetail(false)
-    }
-  }, [workspace.folderPath, workspace.id, t])
-
-  const handleItemClick = useCallback((checkpointId: string) => {
-    if (selectedId === checkpointId) {
-      // 已选中则收起
-      setSelectedId(null)
-      setDetail(null)
-    } else {
-      // 加载详情
-      loadDetail(checkpointId)
-    }
-  }, [selectedId, loadDetail])
-
-  const handleBackToList = useCallback(() => {
-    setSelectedId(null)
-    setDetail(null)
-  }, [])
-
-  const sorted = [...checkpoints].sort((a, b) => b.createdAt - a.createdAt)
-
-  // 格式化时间
-  const formatTime = (timestamp: number): string => {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const isToday = date.toDateString() === now.toDateString()
-    const time = date.toLocaleTimeString(currentLang, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    if (isToday) return `${t('common.today')} ${time}`
-    const isYesterday = new Date(now.getTime() - 86400000).toDateString() === date.toDateString()
-    if (isYesterday) return `${t('common.yesterday')} ${time}`
-    // 显示完整的年月日时间
-    return date.toLocaleString(currentLang, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  }
-
-  // 格式化文件大小
-  const formatFilePath = (filePath: string): { dir: string; file: string } => {
-    const parts = filePath.split('/')
-    const file = parts.pop() || filePath
-    const dir = parts.join('/')
-    return { dir, file }
-  }
-
-  return (
-    <div className="p-3">
-      {/* 标题和刷新按钮 */}
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-          {selectedId ? t('workspace.checkpointDetail') : t('workspace.checkpointTimeline')}
-        </span>
-        <div className="flex items-center gap-1">
-          {selectedId && (
-            <button
-              onClick={handleBackToList}
-              className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              title={t('workspace.backToList')}
-            >
-              <ArrowLeft size={12} />
-            </button>
-          )}
-          <button
-            onClick={onRefresh}
-            className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            title={t('workspace.refreshCheckpointList')}
-          >
-            <RotateCcw size={12} />
-          </button>
-        </div>
-      </div>
-
-      {/* 错误提示 */}
-      {restoreError && (
-        <div className="mb-2 p-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-[11px] text-red-600 dark:text-red-400 flex items-center gap-1.5">
-          <AlertCircle size={12} />
-          <span className="flex-1">{restoreError}</span>
-          <button onClick={() => setRestoreError(null)} className="text-red-400 hover:text-red-600">×</button>
-        </div>
-      )}
-
-      {/* 详情视图 */}
-      {selectedId && detail ? (
-        <div className="border border-surface-200 dark:border-surface-700 rounded-lg p-3 mt-2">
-          {/* 详情标题 */}
-          <div className="mb-3">
-            <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
-              {detail.metadata.description}
-            </p>
-            <div className="flex items-center gap-2 mt-1.5">
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {new Date(detail.metadata.createdAt).toLocaleString(currentLang)}
-              </span>
-              <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
-              <span className="text-[10px] text-green-500">+{detail.metadata.linesAdded}</span>
-              {detail.metadata.linesRemoved > 0 && (
-                <>
-                  <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
-                  <span className="text-[10px] text-red-400">-{detail.metadata.linesRemoved}</span>
-                </>
-              )}
-              <span className="text-[10px] text-gray-300 dark:text-gray-600">|</span>
-              <span className="text-[10px] text-gray-500">{t('workspace.filesCount', { count: detail.fileChanges.length })}</span>
-            </div>
-          </div>
-
-          {/* 文件变更列表 */}
-          <div className="space-y-1.5">
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">
-              {t('workspace.fileChangesCount', { count: detail.fileChanges.length })}
-            </p>
-            {detail.fileChanges.map((fc, i) => {
-              const { dir, file } = formatFilePath(fc.filePath)
-              const changeTypeColor = fc.changeType === 'added' ? 'text-green-500' :
-                fc.changeType === 'deleted' ? 'text-red-400' : 'text-blue-500'
-              const changeTypeIcon = fc.changeType === 'added' ? '+' :
-                fc.changeType === 'deleted' ? '−' : 'M'
-              
-              return (
-                <div key={i} className="rounded-md border border-surface-200 dark:border-surface-700 overflow-hidden">
-                  {/* 文件头部 */}
-                  <div className="flex items-center gap-2 px-2 py-1.5 bg-surface-50 dark:bg-surface-800/50">
-                    <span className={`${changeTypeColor} flex-shrink-0`}>
-                      {changeTypeIcon}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      {dir && (
-                        <p className="text-[9px] text-gray-400 dark:text-gray-500 truncate">{dir}</p>
-                      )}
-                      <p className="text-[11px] text-gray-700 dark:text-gray-300 truncate">{file}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0 text-[10px]">
-                      <span className="text-green-500">+{fc.linesAdded}</span>
-                      {fc.linesRemoved > 0 && (
-                        <span className="text-red-400">-{fc.linesRemoved}</span>
-                      )}
-                    </div>
-                    {/* 查看 diff 按钮 */}
-                    {fc.unifiedDiff && (
-                      <button
-                        onClick={() => toggleDiff(i)}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors"
-                        title={t('workspace.viewChanges')}
-                      >
-                        {expandedDiff === i ? (
-                          <>
-                            <Eye size={10} className="text-gray-500" />
-                            <span className="text-gray-600 dark:text-gray-400">{t('workspace.collapse')}</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye size={10} className="text-teal-500" />
-                            <span className="text-teal-600 dark:text-teal-400">{t('workspace.viewChanges')}</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* Diff 内容 */}
-                  {fc.unifiedDiff && expandedDiff === i && (
-                    <div className="mx-2 mb-2 rounded-md bg-surface-900 dark:bg-surface-950 p-2 overflow-x-auto">
-                      <pre className="text-[10px] leading-4 font-mono text-surface-300">
-                        {fc.unifiedDiff.split('\n').map((line, lineIndex) => {
-                          let lineClass = 'text-surface-500'
-                          let bgClass = ''
-                          if (line.startsWith('+') && !line.startsWith('+++')) {
-                            lineClass = 'text-emerald-400'
-                            bgClass = 'bg-emerald-950/30'
-                          } else if (line.startsWith('-') && !line.startsWith('---')) {
-                            lineClass = 'text-red-400'
-                            bgClass = 'bg-red-950/30'
-                          }
-                          return (
-                            <div key={lineIndex} className={`px-1.5 py-0.5 rounded ${bgClass}`}>
-                              <span className={lineClass}>{line || ' '}</span>
-                            </div>
-                          )
-                        })}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* 还原按钮 */}
-          <button
-            onClick={() => handleRestore(selectedId)}
-            disabled={restoring !== null}
-            className="w-full mt-3 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors text-xs disabled:opacity-50"
-          >
-            {restoring === selectedId ? (
-              <>
-                <Loader2 size={12} className="animate-spin" />
-                <span>{t('workspace.restoring')}</span>
-              </>
-            ) : (
-              <>
-                <RotateCcw size={12} />
-                <span>{t('workspace.restoreToThisCheckpoint')}</span>
-              </>
-            )}
-          </button>
-        </div>
-      ) : sorted.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <Clock size={24} className="text-gray-300 dark:text-gray-600 mb-2" />
-          <p className="text-xs text-gray-400 dark:text-gray-500">{t('workspace.noCheckpoints')}</p>
-          <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">
-            {t('workspace.checkpointsAutoCreatedHint')}
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* 列表视图 - 加载中 */}
-          {loadingDetail && (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 size={16} className="animate-spin text-gray-400" />
-            </div>
-          )}
-
-          {/* 时间线列表 */}
-          <div className="relative">
-            {/* 时间线竖线 */}
-            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-surface-200 dark:bg-surface-700" />
-
-            <div className="space-y-0.5">
-              {sorted.slice(0, 30).map((cp) => {
-                const typeColors: Record<string, string> = {
-                  auto: 'bg-blue-400',
-                  manual: 'bg-amber-400',
-                  'pre-command': 'bg-purple-400',
-                  'pre-restore': 'bg-green-400',
-                }
-                const typeLabels: Record<string, string> = {
-                  auto: t('workspace.auto'),
-                  manual: t('workspace.manual'),
-                  'pre-command': t('workspace.beforeCommand'),
-                  'pre-restore': t('workspace.beforeRestore'),
-                }
-                const isSelected = selectedId === cp.id
-
-                return (
-                  <div
-                    key={cp.id}
-                    className={`relative flex items-start gap-2.5 pl-5 py-1.5 rounded-lg transition-colors group ${
-                      isSelected
-                        ? 'bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800/30'
-                        : 'hover:bg-surface-100 dark:hover:bg-surface-800/50'
-                    }`}
-                    onClick={() => handleItemClick(cp.id)}
-                  >
-                    {/* 时间线节点 */}
-                    <div className={`absolute left-[4px] top-[10px] w-[7px] h-[7px] rounded-full border-2 border-white dark:border-surface-900 ${typeColors[cp.type] || 'bg-gray-400'} z-10`} />
-
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-xs truncate leading-tight ${
-                        isSelected ? 'text-teal-700 dark:text-teal-300 font-medium' : 'text-gray-700 dark:text-gray-300'
-                      }`}>
-                        {cp.description}
-                      </p>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <span className={`text-[9px] px-1 rounded ${
-                          cp.type === 'auto' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' :
-                          cp.type === 'manual' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-500' :
-                          cp.type === 'pre-command' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-500' :
-                          'bg-gray-100 dark:bg-gray-800 text-gray-500'
-                        }`}>
-                          {typeLabels[cp.type] || cp.type}
-                        </span>
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                          {t('workspace.filesCount', { count: cp.filesChanged })}
-                        </span>
-                        <span className="text-[10px] text-green-500">+{cp.linesAdded}</span>
-                        {cp.linesRemoved > 0 && (
-                          <span className="text-[10px] text-red-400">-{cp.linesRemoved}</span>
-                        )}
-                        <span className="text-[10px] text-gray-300 dark:text-gray-600">
-                          {formatTime(cp.createdAt)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* 还原按钮 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleRestore(cp.id)
-                      }}
-                      disabled={restoring !== null}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-teal-500 transition-all flex-shrink-0"
-                      title={t('workspace.restoreToThisCheckpoint')}
-                    >
-                      {restoring === cp.id ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <RotateCcw size={12} />
-                      )}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -773,10 +358,6 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
             <span>{t('workspace.approvalPolicy')}</span>
             <span>{workspace.commandPolicy === 'auto-approve-safe' ? t('workspace.safeAuto') : workspace.commandPolicy === 'auto-approve-all' ? t('workspace.allAuto') : t('workspace.allApproval')}</span>
           </div>
-          <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
-            <span>{t('workspace.checkpointPolicy')}</span>
-            <span>{workspace.checkpointPolicy === 'auto-before-modify' ? t('workspace.auto') : workspace.checkpointPolicy === 'timed' ? t('workspace.timed') : t('workspace.manual')}</span>
-          </div>
         </div>
       </div>
 
@@ -915,8 +496,7 @@ function WorkspaceSkillsPanel({ workspace, skills }: WorkspaceSkillsPanelProps) 
                 >
                   {skill.enabled
                     ? <ToggleRight size={16} className="text-teal-500" />
-                    : <ToggleLeft size={16} className="text-gray-400" />
-                  }
+                    : <ToggleLeft size={16} className="text-gray-400" />}
                 </button>
               </div>
               {expandedDir === skill.dirPath && (

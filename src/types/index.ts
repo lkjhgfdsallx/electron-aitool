@@ -176,6 +176,44 @@ export {
   DEFAULT_POST_WRITE_LINT_CONFIG,
 } from './workspace'
 
+// AI Changes（对话回合级文件变更）
+export type {
+  AiFileChange,
+  AiTurnChanges,
+  AiFileChangeDraft,
+  AiTurnBuffer,
+  AiTurnChangesStored,
+  AiTurnRestoreResult,
+  UnifiedDiffOptions,
+  LineStats,
+} from './ai-changes'
+export { computeUnifiedDiffAndStats, simpleHash } from './ai-changes'
+
+// Git SCM
+export type {
+  GitFileStatus,
+  GitChangeSide,
+  GitFileChange,
+  GitBranchInfo,
+  GitRemoteInfo,
+  GitStashEntry,
+  GitTagInfo,
+  GitLogEntry,
+  GitRepoState,
+  GitStatusResult,
+  GitDiffResult,
+  GitRunResult,
+  GitOutputLine,
+  GitCommitOptions,
+  GitPushOptions,
+  GitPullOptions,
+  GitCloneOptions,
+  GitCheckoutOptions,
+  GitDiscardOptions,
+  GitStashPushOptions,
+  GitIpcResult,
+} from './git'
+
 // ==================== 界面偏好类型 ====================
 
 export type ThemeMode = 'light' | 'dark' | 'system'

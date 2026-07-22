@@ -3,26 +3,26 @@
  *
  * ┌──────────────┬──────────────────────────┬───────────┐
  * │  项目浏览器   │   AI 领导控制台 / 文件预览  │           │
- * │  (左栏)      │   (中栏)                  │           │
- * │  文件树      │   消息列表 + 输入框         │           │
- * │  存档历史    │   或 FilePreview           │           │
- * │  Agent 团队  │                           │           │
+ * │  文件 / Git  │   消息列表 + 输入框         │           │
+ * │  团队/Skills │   或 FilePreview           │           │
  * ├──────────────┴──────────────────────────┴───────────┤
- * │  终端 & 审批 (底栏，可折叠)                            │
+ * │  底栏：Terminal | Git Output（可折叠）                 │
  * └─────────────────────────────────────────────────────┘
  *
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useConversationStore } from '../../stores/conversation-store'
-import { Settings, ChevronLeft, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users, Terminal } from 'lucide-react'
+import { Settings, ChevronLeft, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users, Terminal, GitBranch } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useWorkspaceGitStore } from '../../stores/workspace-git-store'
 import { workspaceFileWatcher } from '../../services/workspace-file-watcher'
 import { formatRelativeTime } from '../../utils/format-time'
 import { ResizeHandle } from '../shared/ResizeHandle'
 import { ProjectExplorer } from './ProjectExplorer'
 import { WorkspaceChatPanel } from './WorkspaceChatPanel'
 import { TerminalPanel } from './TerminalPanel'
+import { GitOutputPanel } from './git'
 import { FilePreview, type FilePreviewHandle } from './FilePreview'
 import { WorkspaceCreateDialog } from './WorkspaceCreateDialog'
 import { WorkspaceSettingsPopover } from './WorkspaceSettingsPopover'
@@ -31,7 +31,8 @@ import { useAppTranslation } from '../../i18n/hooks'
 
 interface WorkspacePageProps {
   onBackToChat: () => void
-  onOpenSettings?: (section?: string) => void
+  /** 打开设置；可选 section 与 editId（如 AI 源编辑页） */
+  onOpenSettings?: (section?: string, editId?: string) => void
 }
 
 export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePageProps) {
@@ -48,12 +49,16 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [bottomPanelCollapsed, setBottomPanelCollapsed] = useState(true)
+  const [bottomTab, setBottomTab] = useState<'terminal' | 'git-output'>('terminal')
   const [leftPanelWidth, setLeftPanelWidth] = useState(260)
   const [bottomPanelHeight, setBottomPanelHeight] = useState(200)
   const [showCreateWorkspace, setShowCreateWorkspace] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'recent' | 'all'>('recent')
+  const gitSetCwd = useWorkspaceGitStore((s) => s.setCwd)
+  const gitScheduleRefresh = useWorkspaceGitStore((s) => s.scheduleRefresh)
+  const gitEnsureOutput = useWorkspaceGitStore((s) => s.ensureOutputSubscription)
 
   // B2: 文件预览状态
   const [previewFile, setPreviewFile] = useState<string | null>(null)
@@ -100,9 +105,12 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // B10: 进入工作区时启动文件监控
+  // 进入工作区：文件监控 + Git 状态
   useEffect(() => {
     if (!activeWorkspace) return
+
+    gitSetCwd(activeWorkspace.folderPath)
+    gitEnsureOutput()
 
     const startWatcher = async () => {
       try {
@@ -117,7 +125,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
     startWatcher()
 
-    // 监听文件变更事件，更新 changedFiles
+    // 监听文件变更事件，更新 changedFiles，并触发 git status 刷新
     const unsubscribe = window.electronAPI.workspace.watcher.onChange((data:any) => {
       const events = data.events as Array<{ eventType: string; filePath: string; timestamp: number }>
       if (events.length > 0) {
@@ -134,6 +142,8 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           return next
         })
 
+        gitScheduleRefresh(activeWorkspace.folderPath, 600)
+
         // 5 秒后清除高亮
         setTimeout(() => {
           setChangedFiles((prev) => {
@@ -147,8 +157,14 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
       }
     })
 
+    const onFocus = () => {
+      gitScheduleRefresh(activeWorkspace.folderPath, 200)
+    }
+    window.addEventListener('focus', onFocus)
+
     return () => {
       unsubscribe()
+      window.removeEventListener('focus', onFocus)
       workspaceFileWatcher.stopWatching()
     }
   }, [activeWorkspace?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -783,13 +799,45 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           />
         )}
 
-        {/* 底栏：终端 & 审批 */}
+        {/* 底栏：Terminal | Git Output */}
         {!bottomPanelCollapsed && (
           <div
-            className="flex-shrink-0 min-h-0 overflow-hidden border-t-2 border-surface-300 dark:border-surface-600"
+            className="flex-shrink-0 min-h-0 overflow-hidden border-t-2 border-surface-300 dark:border-surface-600 flex flex-col"
             style={{ height: bottomPanelHeight }}
           >
-            <TerminalPanel workspace={activeWorkspace} />
+            <div className="flex items-center gap-0 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-950 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setBottomTab('terminal')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors ${
+                  bottomTab === 'terminal'
+                    ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                    : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                }`}
+              >
+                <Terminal size={12} />
+                {t('workspace.terminal')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBottomTab('git-output')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors ${
+                  bottomTab === 'git-output'
+                    ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+                    : 'border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                }`}
+              >
+                <GitBranch size={12} />
+                {t('workspace.gitOutput', { defaultValue: 'Git Output' })}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {bottomTab === 'terminal' ? (
+                <TerminalPanel workspace={activeWorkspace} />
+              ) : (
+                <GitOutputPanel />
+              )}
+            </div>
           </div>
         )}
       </div>

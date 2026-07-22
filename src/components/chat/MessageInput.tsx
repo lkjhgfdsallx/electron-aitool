@@ -214,8 +214,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     const resolved = await resolveSlashCommand(input, workspacePath)
 
     // 判断是否直接发送还是填入编辑区
-    // 对于以 / 开头的模板（如 /checkpoint, /restore），直接发送
-    // 对于自然语言模板（如 /init, /status），填入编辑区让用户确认
+    // 对于以 / 开头的动作模板，直接发送；自然语言模板（如 /init, /status）填入编辑区确认
     const shouldAutoSend = resolved.message.startsWith('/')
 
     if (shouldAutoSend) {

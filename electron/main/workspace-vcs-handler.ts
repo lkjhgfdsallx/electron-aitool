@@ -325,17 +325,15 @@ async function createCheckpoint(
           } else {
             // 修改的文件，计算 diff
             const oldContent = oldEntry.content
-            if (oldContent !== newContent) {
-              changeType = 'modified'
-              unifiedDiff = computeUnifiedDiff(oldContent, newContent)
-              // 计算增减行数
-              const diffLines = unifiedDiff.split('\n')
-              linesAdded = diffLines.filter(line => line.startsWith('+') && !line.startsWith('+++')).length
-              linesRemoved = diffLines.filter(line => line.startsWith('-') && !line.startsWith('---')).length
-            } else {
-              // 内容相同，但仍然是修改类型的存档（如手动存档）
-              linesAdded = stats.lines
+            if (oldContent === newContent) {
+              // 内容未变：跳过，避免假变更
+              continue
             }
+            changeType = 'modified'
+            unifiedDiff = computeUnifiedDiff(oldContent, newContent)
+            const diffLines = unifiedDiff.split('\n')
+            linesAdded = diffLines.filter(line => line.startsWith('+') && !line.startsWith('+++')).length
+            linesRemoved = diffLines.filter(line => line.startsWith('-') && !line.startsWith('---')).length
           }
           
           fileChanges.push({
@@ -438,18 +436,20 @@ async function scanAndCopyFolder(
       totalFiles++
       allPaths.push(relPath)
       
-      // 计算 diff
+      // 计算 diff：仅在内容相对上一快照真正变化时计入变更
       let changeType: 'added' | 'modified' | 'deleted' = 'modified'
       let unifiedDiff = ''
-      let linesAdded = stats.lines
+      let linesAdded = 0
       let linesRemoved = 0
+      let hasRealChange = !previousFileMap
       
       if (previousFileMap) {
         const oldEntry = previousFileMap.get(relPath)
         if (!oldEntry || oldEntry.changeType === 'deleted') {
           changeType = 'added'
           unifiedDiff = newContent.split('\n').map(line => '+' + line).join('\n')
-          linesRemoved = 0
+          linesAdded = newContent.split('\n').length
+          hasRealChange = true
         } else {
           const oldContent = oldEntry.content
           if (oldContent !== newContent) {
@@ -458,23 +458,23 @@ async function scanAndCopyFolder(
             const diffLines = unifiedDiff.split('\n')
             linesAdded = diffLines.filter(line => line.startsWith('+') && !line.startsWith('+++')).length
             linesRemoved = diffLines.filter(line => line.startsWith('-') && !line.startsWith('---')).length
-          } else {
-            changeType = 'modified'
-            linesAdded = stats.lines
-            linesRemoved = 0
+            hasRealChange = true
           }
         }
       }
-      
-      fileChanges.push({
-        filePath: relPath,
-        changeType,
-        linesAdded,
-        linesRemoved,
-        unifiedDiff: unifiedDiff || undefined,
-      })
-      totalLinesAdded += linesAdded
-      totalLinesRemoved += linesRemoved
+
+      // 始终复制快照文件，但仅真实变更计入 fileChanges 统计
+      if (hasRealChange) {
+        fileChanges.push({
+          filePath: relPath,
+          changeType,
+          linesAdded,
+          linesRemoved,
+          unifiedDiff: unifiedDiff || undefined,
+        })
+        totalLinesAdded += linesAdded
+        totalLinesRemoved += linesRemoved
+      }
     }
   }
 

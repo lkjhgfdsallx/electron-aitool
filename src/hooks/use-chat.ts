@@ -11,6 +11,7 @@ import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../service
 import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
 import { knowledgeBaseService } from '../services/knowledge-base-service'
+import { aiChangesService } from '../services/ai-changes-service'
 import { useConversationStore } from '../stores/conversation-store'
 import { useGlobalConfigStore } from '../stores/global-config-store'
 import { useAgentStore } from '../stores/agent-store'
@@ -24,6 +25,7 @@ import { applyWebSearchPolicy, getWebToolsIfEnabled, isWebTool } from '../utils/
 import { DEFAULT_POST_WRITE_LINT_CONFIG } from '../types'
 import type { Message, Tool, ToolDefinition, ToolExecuteResult, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
 import type { AgentEvent } from '../services/agent/event-bus'
+import type { AiTurnChanges } from '../types/ai-changes'
 
 /** 根据 finishReason 生成截断/中断提示 */
 function getFinishNotice(finishReason?: string): string | null {
@@ -32,6 +34,43 @@ function getFinishNotice(finishReason?: string): string | null {
     return '\n\n> ⚠️ **回复中断**：流连接在生成过程中异常断开，输出可能不完整。请检查网络连接或 API 服务状态。'
   }
   return null
+}
+
+/**
+ * 回合结束时 flush AI Changes 到 assistant 消息 metadata
+ */
+async function flushAiChangesToMessage(
+  conversationId: string,
+  messageId: string,
+  workspaceContext: WorkspaceContext | undefined,
+  updateMessage: (messageId: string, updates: Partial<Message>) => void,
+): Promise<AiTurnChanges | null> {
+  if (!workspaceContext?.folderPath || !workspaceContext.workspaceId) return null
+  if (!aiChangesService.hasBuffer(conversationId, messageId)) return null
+
+  try {
+    const turnChanges = await aiChangesService.flushTurn(
+      conversationId,
+      messageId,
+      workspaceContext.workspaceId,
+      workspaceContext.folderPath,
+    )
+    if (!turnChanges) return null
+
+    const currentMsg = useConversationStore.getState().getMessages(conversationId)
+      .find((m) => m.id === messageId)
+    const prevMeta = (currentMsg?.metadata ?? {}) as Record<string, unknown>
+    updateMessage(messageId, {
+      metadata: {
+        ...prevMeta,
+        aiChanges: turnChanges,
+      },
+    })
+    return turnChanges
+  } catch (err) {
+    console.error('[AI Changes] flushTurn failed:', err)
+    return null
+  }
 }
 
 /**
@@ -889,6 +928,8 @@ export function useChat(options: UseChatOptions = {}) {
                   finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop',
                   continuable: agentContinuable
                 })
+                // AI Changes：回合结束 flush 到消息 metadata
+                void flushAiChangesToMessage(convId, assistantMsg.id, wsContext, updateMessage)
                 isStreamingRef.current = false
                 if (status === 'completed') {
                   notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
@@ -927,6 +968,7 @@ export function useChat(options: UseChatOptions = {}) {
                 isError: true,
                 agentSteps: [...agentSteps]
               })
+              void flushAiChangesToMessage(convId, assistantMsg.id, wsContext, updateMessage)
               isStreamingRef.current = false
             },
             onDone: (doneContent) => {
@@ -950,6 +992,8 @@ export function useChat(options: UseChatOptions = {}) {
                 finishReason: existingFinishReason ?? 'stop',
                 continuable: currentMsg?.continuable ?? agentContinuable
               })
+              // 兜底：若 onStatusChange 未触发 completed，也确保 flush
+              void flushAiChangesToMessage(convId, assistantMsg.id, wsContext, updateMessage)
               isStreamingRef.current = false
             },
             onHumanInput: async (step) => {
@@ -1020,7 +1064,9 @@ export function useChat(options: UseChatOptions = {}) {
             }
           },
           wsContext,
-          convId
+          convId,
+          undefined,
+          assistantMsg.id,
         )
       } catch (error) {
         const aborted = abortControllerRef.current?.signal.aborted
@@ -1042,6 +1088,7 @@ export function useChat(options: UseChatOptions = {}) {
             finishReason: 'abort'
           })
         }
+        void flushAiChangesToMessage(convId, assistantMsg.id, wsContext, updateMessage)
         isStreamingRef.current = false
       } finally {
         planUnsub()
@@ -1709,6 +1756,7 @@ export function useChat(options: UseChatOptions = {}) {
                   agentSteps: [...agentSteps],
                   finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
                 })
+                void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
                 isStreamingRef.current = false
                 if (status === 'completed') {
                   notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
@@ -1718,6 +1766,7 @@ export function useChat(options: UseChatOptions = {}) {
             onError: (error) => {
               streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: finalContent || error, isStreaming: false, isError: true, agentSteps: [...agentSteps] })
+              void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
               isStreamingRef.current = false
             },
             onDone: (doneContent) => {
@@ -1730,6 +1779,8 @@ export function useChat(options: UseChatOptions = {}) {
               const notice = getFinishNotice(existingFinishReason)
               const finalContentWithNotice = notice ? baseContent + notice : baseContent
               updateMessage(assistantMsg.id, { content: finalContentWithNotice, isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined, finishReason: existingFinishReason ?? 'stop' })
+              // 兜底：若 onStatusChange 未触发 completed，也确保 flush
+              void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
               isStreamingRef.current = false
             },
             onHumanInput: async (step) => {
@@ -1793,7 +1844,9 @@ export function useChat(options: UseChatOptions = {}) {
             }
           },
           wsContext,
-          currentConversationId // Phase 2: conversationId 用于 checkpoint 关联
+          currentConversationId,
+          undefined,
+          assistantMsg.id,
         )
         } catch (error) {
           const aborted = abortControllerRef.current?.signal.aborted
@@ -1815,6 +1868,7 @@ export function useChat(options: UseChatOptions = {}) {
               finishReason: 'abort'
             })
           }
+          void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
           isStreamingRef.current = false
         }
       } else {
@@ -2133,6 +2187,7 @@ export function useChat(options: UseChatOptions = {}) {
                   agentSteps: [...agentSteps],
                   finishReason: status === 'stopped' ? 'abort' : status === 'error' ? 'error' : 'stop'
                 })
+                void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
                 isStreamingRef.current = false
                 if (status === 'completed') {
                   notifyIfReady('AI 回复完成', (finalContent || '已完成').slice(0, 100))
@@ -2142,6 +2197,7 @@ export function useChat(options: UseChatOptions = {}) {
             onError: (error) => {
               streamingBufferRef.current.flush()
               updateMessage(assistantMsg.id, { content: finalContent || error, isStreaming: false, isError: true, agentSteps: [...agentSteps] })
+              void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
               isStreamingRef.current = false
             },
             onDone: (doneContent) => {
@@ -2154,6 +2210,8 @@ export function useChat(options: UseChatOptions = {}) {
               const notice = getFinishNotice(existingFinishReason)
               const finalContentWithNotice = notice ? baseContent + notice : baseContent
               updateMessage(assistantMsg.id, { content: finalContentWithNotice, isStreaming: false, agentSteps: [...agentSteps], reasoningContent: reasoningContent || undefined, finishReason: existingFinishReason ?? 'stop' })
+              // 兜底：若 onStatusChange 未触发 completed，也确保 flush
+              void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
               isStreamingRef.current = false
             },
             onHumanInput: async (step) => {
@@ -2217,7 +2275,9 @@ export function useChat(options: UseChatOptions = {}) {
             }
           },
           wsContext,
-          currentConversationId // Phase 2: conversationId 用于 checkpoint 关联
+          currentConversationId,
+          undefined,
+          assistantMsg.id,
         )
         } catch (error) {
           const aborted = abortControllerRef.current?.signal.aborted
@@ -2239,6 +2299,7 @@ export function useChat(options: UseChatOptions = {}) {
               finishReason: 'abort'
             })
           }
+          void flushAiChangesToMessage(currentConversationId, assistantMsg.id, wsContext, updateMessage)
           isStreamingRef.current = false
         }
       } else {
@@ -2436,11 +2497,14 @@ export function useChat(options: UseChatOptions = {}) {
               },
               onStatusChange: (status) => {
                 streamingBufferRef.current.flush()
-                if (status === 'stopped') {
-                  updateMessage(messageId, {
-                    isStreaming: false,
-                    continuable: 'agent' // 停止后仍可继续
-                  })
+                if (status === 'completed' || status === 'error' || status === 'stopped') {
+                  if (status === 'stopped') {
+                    updateMessage(messageId, {
+                      isStreaming: false,
+                      continuable: 'agent' // 停止后仍可继续
+                    })
+                  }
+                  void flushAiChangesToMessage(convId, messageId, wsContext, updateMessage)
                   isStreamingRef.current = false
                 }
               },
@@ -2464,6 +2528,8 @@ export function useChat(options: UseChatOptions = {}) {
                   finishReason: existingFinishReason ?? 'stop',
                   continuable: agentContinuable
                 })
+                // 兜底 flush（继续生成会合并到同一 messageId 的 AI Changes）
+                void flushAiChangesToMessage(convId, messageId, wsContext, updateMessage)
                 isStreamingRef.current = false
               },
               onError: (error) => {
@@ -2472,6 +2538,7 @@ export function useChat(options: UseChatOptions = {}) {
                   isError: true,
                   continuable: 'agent' // 出错后仍可继续
                 })
+                void flushAiChangesToMessage(convId, messageId, wsContext, updateMessage)
                 isStreamingRef.current = false
               },
               onHumanInput: async (step) => {
@@ -2523,7 +2590,8 @@ export function useChat(options: UseChatOptions = {}) {
             },
             wsContext,
             convId,
-            { resume: true, existingSteps }
+            { resume: true, existingSteps },
+            messageId,
           )
         } catch (error) {
           if (!abortControllerRef.current.signal.aborted) {
@@ -2534,6 +2602,7 @@ export function useChat(options: UseChatOptions = {}) {
             })
             isStreamingRef.current = false
           }
+          void flushAiChangesToMessage(convId, messageId, wsContext, updateMessage)
         }
       } else {
         // ===== 普通对话继续 =====

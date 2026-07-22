@@ -2,9 +2,12 @@
  * Slash 命令服务（参考 ROO CODE Slash Commands）
  *
  * 提供工作区快捷指令系统，支持：
- * - 内置命令（/init, /checkpoint, /restore 等）
+ * - 内置命令（/init, /status, /compact 等）
  * - 工作区自定义命令（.ai-workspace-vcs/commands/*.md）
  * - 命令面板搜索与过滤
+ *
+ * 说明：全局文件存档 /checkpoint、/restore 已废弃；
+ * 文件历史交给 Git，AI 写入还原使用对话内 AI Changes 卡片。
  */
 
 import { workspaceVCSService } from './workspace-vcs-service'
@@ -40,22 +43,6 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
     template: '请分析当前项目结构，生成项目初始化规划和开发建议。',
   },
   {
-    name: 'checkpoint',
-    description: '手动创建存档点',
-    category: 'workspace',
-    icon: '📌',
-    workspaceOnly: true,
-    template: '/checkpoint',
-  },
-  {
-    name: 'restore',
-    description: '还原到指定存档点',
-    category: 'workspace',
-    icon: '↩️',
-    workspaceOnly: true,
-    template: '/restore',
-  },
-  {
     name: 'agents',
     description: '查看和管理团队 Agent',
     category: 'agent',
@@ -73,7 +60,7 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
   },
   {
     name: 'clear',
-    description: '清空当前对话上下文（保留存档）',
+    description: '清空当前对话上下文',
     category: 'context',
     icon: '🗑️',
     template: '/clear',

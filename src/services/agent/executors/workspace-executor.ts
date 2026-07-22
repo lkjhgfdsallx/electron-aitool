@@ -23,6 +23,7 @@ import { useAgentStore } from '../../../stores/agent-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { useAIProviderStore } from '../../../stores/ai-provider-store'
 import { runAgent } from '../../agent-engine'
+import { aiChangesService } from '../../ai-changes-service'
 import type { ToolExecutor, AgentSessionContext, ToolSessionContext } from '../tool-executor'
 import type {
   ToolExecuteResult,
@@ -263,7 +264,32 @@ export class WorkspaceToolExecutor implements ToolExecutor {
         }
       }
       const absolutePath = this.resolveWorkspacePath(relativePath, wsCtx)
+
+      // AI Changes：写入前记录快照（仅在 Agent 有 messageId 且 workspaceId 时采集）
+      const mid = agentSessionCtx.messageId
+      const wid = agentSessionCtx.workspaceId ?? wsCtx.workspaceId
+      if (mid && wid) {
+        await aiChangesService.recordBeforeWrite(
+          agentSessionCtx.conversationId,
+          mid,
+          wid,
+          wsCtx.folderPath,
+          relativePath,
+        )
+      }
+
       await workspaceFsService.writeFile(absolutePath, content)
+
+      // AI Changes：记录写入后内容
+      if (mid && wid) {
+        aiChangesService.recordAfterWrite(
+          agentSessionCtx.conversationId,
+          mid,
+          relativePath,
+          content,
+        )
+      }
+
       // 记录产物路径
       if (!agentSessionCtx.artifacts.includes(relativePath)) {
         agentSessionCtx.artifacts.push(relativePath)
@@ -395,6 +421,10 @@ export class WorkspaceToolExecutor implements ToolExecutor {
       )
       if (!approved) return { success: false, data: '', error: '用户拒绝了批量精确编辑操作；未修改任何文件' }
 
+      // AI Changes：仅在成功写入后记录 before/after（利用已有的 originalContent）
+      const mid = agentSessionCtx.messageId
+      const wid = agentSessionCtx.workspaceId ?? wsCtx.workspaceId
+
       const writtenFiles: EditedFile[] = []
       try {
         for (const file of changedFiles) {
@@ -415,6 +445,19 @@ export class WorkspaceToolExecutor implements ToolExecutor {
           ? `；回滚失败文件：${rollbackFailures.join(', ')}`
           : '；已回滚此前写入的文件'
         return { success: false, data: '', error: `批量精确编辑写入失败：${reason}${rollbackMessage}` }
+      }
+
+      if (mid && wid) {
+        for (const file of writtenFiles) {
+          aiChangesService.recordStrReplaceAfterWrite(
+            agentSessionCtx.conversationId,
+            mid,
+            wid,
+            file.relativePath,
+            file.originalContent,
+            file.content,
+          )
+        }
       }
       for (const file of changedFiles) {
         if (!agentSessionCtx.artifacts.includes(file.relativePath)) agentSessionCtx.artifacts.push(file.relativePath)

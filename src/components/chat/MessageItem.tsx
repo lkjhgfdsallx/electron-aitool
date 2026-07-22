@@ -28,8 +28,10 @@ import { ThinkingSection } from './ThinkingSection'
 import { ToolCallDisplay } from './ToolCallDisplay'
 import { AgentStepDisplay } from './AgentStepDisplay'
 import { SiteAnalyzerProgressPanel } from './SiteAnalyzerProgressPanel'
+import { AiChangesCard } from '../workspace/AiChangesCard'
 import { reportStore } from '../../services/report-store'
 import type { Message, AgentPlan } from '../../types'
+import type { AiTurnChanges } from '../../types/ai-changes'
 import { useAppTranslation } from '@/i18n/hooks'
 
 /** 格式化文件大小 */
@@ -97,6 +99,14 @@ export const MessageItem = memo(function MessageItem({
 
   const role = roleConfig[message.role]
   const RoleIcon = role.icon
+
+  const aiChanges = useMemo(() => {
+    const raw = message.metadata?.aiChanges
+    if (!raw || typeof raw !== 'object') return null
+    const turn = raw as AiTurnChanges
+    if (!Array.isArray(turn.files) || turn.files.length === 0) return null
+    return turn
+  }, [message.metadata])
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(message.content)
@@ -402,6 +412,11 @@ export const MessageItem = memo(function MessageItem({
               {reportLoadError && <p className="mt-2 text-xs text-red-500">{reportLoadError}</p>}
             </div>
           )}
+
+          {/* AI 本轮文件变更卡片 */}
+          {!message.isStreaming && aiChanges && (
+            <AiChangesCard turnChanges={aiChanges} />
+          )}
   
           {/* 操作按钮 */}
         {!message.isStreaming && !isEditing && (
@@ -486,6 +501,7 @@ export const MessageItem = memo(function MessageItem({
     agentStepsEqual && !hasHumanInputChange &&
     prevProps.message.continuable === nextProps.message.continuable &&
     prevProps.message.attachments === nextProps.message.attachments &&
+    prevProps.message.metadata === nextProps.message.metadata &&
     prevProps.showTimestamp === nextProps.showTimestamp &&
     prevProps.showTokenUsage === nextProps.showTokenUsage &&
     prevProps.showAvatar === nextProps.showAvatar &&

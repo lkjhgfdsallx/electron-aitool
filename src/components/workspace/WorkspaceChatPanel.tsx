@@ -7,6 +7,7 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import { Bot, RotateCcw, Plus, MessageSquare, Trash2, ChevronDown, Settings } from 'lucide-react'
 import { ChatViewCore } from '../chat/ChatViewCore'
+import { ModelSelector } from '../chat/ModelSelector'
 import { CompressionIndicator } from './CompressionIndicator'
 import { useConversationStore } from '../../stores/conversation-store'
 import { useSettingsStore } from '../../stores'
@@ -29,7 +30,8 @@ interface CompressionData {
 
 interface WorkspaceChatPanelProps {
   workspace: Workspace
-  onOpenSettings?: (section?: string) => void
+  /** 打开设置；可选 section 与 editId（如直接进入 AI 源编辑） */
+  onOpenSettings?: (section?: string, editId?: string) => void
 }
 
 export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatPanelProps) {
@@ -50,6 +52,10 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       window.alert(t('workspace.aiProviderNotConfigured'))
     }
   }, [onOpenSettings, t])
+
+  const handleOpenAiProviderSettings = useCallback((providerId?: string) => {
+    onOpenSettings?.('ai-providers', providerId)
+  }, [onOpenSettings])
 
   const {
     sendMessage,
@@ -256,11 +262,12 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
 
   const headerSlot = (
     <div className="relative z-10 flex-shrink-0 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/60 dark:bg-surface-900/60 backdrop-blur-sm">
-      <div className="flex items-center gap-1.5 px-3 py-1.5">
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        {/* 左侧：对话切换 */}
         <div className="relative flex-1 min-w-0" ref={dropdownRef}>
           <button
             onClick={() => setShowDropdown(!showDropdown)}
-            className="flex items-center gap-1.5 w-full px-2 py-1 rounded-lg text-xs text-gray-700 dark:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+            className="flex items-center gap-1.5 w-full min-w-0 px-2 py-1 rounded-lg text-xs text-gray-700 dark:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
           >
             <MessageSquare size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
             <span className="truncate font-medium">{activeConvTitle}</span>
@@ -346,22 +353,34 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
           )}
         </div>
 
-        <button
-          onClick={handleCreateConversation}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
-          title={t('workspace.newConversation')}
-        >
-          <Plus size={14} />
-        </button>
+        {/* 右侧：AI 源选择 + 对话操作 */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="w-px h-4 bg-surface-200/80 dark:bg-surface-700/60" aria-hidden="true" />
+          <ModelSelector
+            conversationId={conversationId}
+            onOpenSettings={handleOpenAiProviderSettings}
+            maxWidthClassName="max-w-[168px] sm:max-w-[200px]"
+            className="bg-white/80 dark:bg-surface-800/70 border-teal-200/70 dark:border-teal-800/40 hover:border-teal-400/70 dark:hover:border-teal-600/50 hover:bg-teal-50/50 dark:hover:bg-teal-950/20"
+          />
+          <div className="w-px h-4 bg-surface-200/80 dark:bg-surface-700/60" aria-hidden="true" />
 
-        <button
-          onClick={handleExport}
-          disabled={messages.length === 0}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title={t('workspace.moveConversationToGlobal')}
-        >
-          <RotateCcw size={13} />
-        </button>
+          <button
+            onClick={handleCreateConversation}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+            title={t('workspace.newConversation')}
+          >
+            <Plus size={14} />
+          </button>
+
+          <button
+            onClick={handleExport}
+            disabled={messages.length === 0}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title={t('workspace.moveConversationToGlobal')}
+          >
+            <RotateCcw size={13} />
+          </button>
+        </div>
       </div>
     </div>
   )

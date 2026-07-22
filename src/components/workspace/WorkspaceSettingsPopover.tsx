@@ -122,10 +122,6 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
 
   const quickSettingItems = useMemo(() => {
     const workspaceSettingText: Record<string, { label: string; description: string; unit?: string }> = {
-      'workspace.checkpointPolicy': {
-        label: t('workspace.quickCheckpointPolicy'),
-        description: t('workspace.quickCheckpointPolicyDescription'),
-      },
       'workspace.commandPolicy': {
         label: t('workspace.quickCommandPolicy'),
         description: t('workspace.quickCommandPolicyDescription'),
@@ -150,33 +146,9 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
         label: t('workspace.quickCheckpointBeforeCompression'),
         description: t('workspace.quickCheckpointBeforeCompressionDescription'),
       },
-      'workspace.timedIntervalMinutes': {
-        label: t('workspace.quickTimedInterval'),
-        description: t('workspace.quickTimedIntervalDescription'),
-        unit: t('workspace.minutesUnit'),
-      },
-      'workspace.maxCheckpoints': {
-        label: t('workspace.quickMaxCheckpoints'),
-        description: t('workspace.quickMaxCheckpointsDescription'),
-        unit: t('workspace.countUnit'),
-      },
     }
 
     const optionText: Record<string, Record<string, { label: string; desc?: string }>> = {
-      'workspace.checkpointPolicy': {
-        'auto-before-modify': {
-          label: t('workspace.quickCheckpointAutoBeforeModify'),
-          desc: t('workspace.quickCheckpointAutoBeforeModifyDescription'),
-        },
-        timed: {
-          label: t('workspace.quickCheckpointTimed'),
-          desc: t('workspace.quickCheckpointTimedDescription'),
-        },
-        manual: {
-          label: t('workspace.quickCheckpointManual'),
-          desc: t('workspace.quickCheckpointManualDescription'),
-        },
-      },
       'workspace.commandPolicy': {
         'auto-approve-safe': {
           label: t('workspace.quickCommandAutoApproveSafe'),

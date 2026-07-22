@@ -213,9 +213,6 @@ function WorkspaceEditForm({
         leaderAgentId: form.leaderAgentId,
         allowDynamicAgents: form.allowDynamicAgents,
         teamAgentIds: form.teamAgentIds,
-        checkpointPolicy: form.checkpointPolicy,
-        timedIntervalMinutes: form.timedIntervalMinutes,
-        maxCheckpoints: form.maxCheckpoints,
         commandPolicy: form.commandPolicy,
         commandExecutionEnabled: form.commandExecutionEnabled,
         safeCommandWhitelist: form.safeCommandWhitelist,
@@ -358,9 +355,9 @@ function WorkspaceEditForm({
         />
       </div>
 
-      {/* 工作文件夹 + 存档策略 */}
+      {/* 工作文件夹（文件历史由 Git 管理；AI 写入还原见对话内 AI Changes） */}
       <div className="p-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800/50 space-y-3">
-        <SettingsSectionHeader icon={FolderOpen} title={t('workspace.workingFolderAndArchive')} />
+        <SettingsSectionHeader icon={FolderOpen} title={t('workspace.workingFolder')} />
         <div className="flex gap-2">
           <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-surface-300 dark:border-surface-600 bg-surface-50 dark:bg-surface-800/80 min-w-0">
             <FolderOpen size={14} className="text-surface-400 shrink-0" />
@@ -373,25 +370,9 @@ function WorkspaceEditForm({
             {t('workspace.change')}
           </button>
         </div>
-        <div className="divide-y divide-surface-100 dark:divide-surface-700/60">
-          <SettingFieldRenderer
-            item={workspaceSetting('workspace.checkpointPolicy')}
-            value={getWorkspaceSettingValue(form, workspaceSetting('workspace.checkpointPolicy'))}
-            onChange={(value) => updateRegistryField(workspaceSetting('workspace.checkpointPolicy'), value)}
-          />
-          {form.checkpointPolicy === 'timed' && (
-            <SettingFieldRenderer
-              item={workspaceSetting('workspace.timedIntervalMinutes')}
-              value={getWorkspaceSettingValue(form, workspaceSetting('workspace.timedIntervalMinutes'))}
-              onChange={(value) => updateRegistryField(workspaceSetting('workspace.timedIntervalMinutes'), value)}
-            />
-          )}
-          <SettingFieldRenderer
-            item={workspaceSetting('workspace.maxCheckpoints')}
-            value={getWorkspaceSettingValue(form, workspaceSetting('workspace.maxCheckpoints'))}
-            onChange={(value) => updateRegistryField(workspaceSetting('workspace.maxCheckpoints'), value)}
-          />
-        </div>
+        <p className="text-[11px] text-surface-400 dark:text-surface-500 leading-relaxed">
+          {t('workspace.workingFolderHint')}
+        </p>
       </div>
 
       {/* 命令执行策略 */}

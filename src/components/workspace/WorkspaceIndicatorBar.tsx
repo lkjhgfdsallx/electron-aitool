@@ -2,7 +2,8 @@
  * 工作区指示条组件
  *
  * 在 ChatWindow 中的 Agent 选择栏上方显示，
- * 展示当前工作区信息、存档点数量、操作入口。
+ * 展示当前工作区信息、文件监控状态、操作入口。
+ * 全局存档计数已废弃（AI Changes 在对话内；版本历史交给 Git）。
  */
 
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -10,20 +11,19 @@ import { useAgentStore } from '../../stores/agent-store'
 import { useAppTranslation } from '../../i18n/hooks'
 
 interface WorkspaceIndicatorBarProps {
+  /** @deprecated 左侧存档 tab 已移除，保留以兼容旧调用 */
   onOpenCheckpointHistory?: () => void
   onOpenSettings?: (section: string) => void
   onExitWorkspace?: () => void
 }
 
 export function WorkspaceIndicatorBar({
-  onOpenCheckpointHistory,
   onOpenSettings,
   onExitWorkspace,
 }: WorkspaceIndicatorBarProps) {
   const { t } = useAppTranslation()
   const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
   const workspaces = useWorkspaceStore((s) => s.workspaces)
-  const checkpointIndex = useWorkspaceStore((s) => s.checkpointIndex)
   const watcherActive = useWorkspaceStore((s) => s.watcherActive)
   const agents = useAgentStore((s) => s.agents)
 
@@ -67,21 +67,6 @@ export function WorkspaceIndicatorBar({
           )}
         </div>
       )}
-
-      {/* 分隔符 */}
-      <div className="w-px h-4 bg-teal-200 dark:bg-teal-800" />
-
-      {/* 存档点信息 */}
-      <button
-        onClick={onOpenCheckpointHistory}
-        className="flex items-center gap-1.5 text-xs text-surface-500 dark:text-surface-400 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
-        </svg>
-        <span>{t('workspace.checkpointsCount', { count: checkpointIndex.length })}</span>
-      </button>
 
       {/* 监控状态 */}
       {watcherActive && (

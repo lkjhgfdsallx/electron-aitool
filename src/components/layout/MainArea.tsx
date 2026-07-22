@@ -39,7 +39,9 @@ export function MainArea({ viewMode, settingsSection, settingsEditId, onOpenSett
         return (
           <WorkspacePage
             onBackToChat={onCloseSettings}
-            onOpenSettings={(section) => onOpenSettings(section as SettingsSection)}
+            onOpenSettings={(section?: string, editId?: string) =>
+              onOpenSettings(section as SettingsSection | undefined, editId)
+            }
           />
         )
       case 'chat':

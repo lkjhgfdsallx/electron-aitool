@@ -45,6 +45,10 @@ export interface AgentSessionContext {
   signal: AbortSignal
   /** 工作区上下文（可选，工作区模式下提供） */
   workspace?: WorkspaceContext
+  /** 当前 assistant 消息 ID（用于 AI Changes 采集） */
+  messageId?: string
+  /** 工作区 ID（用于 AI Changes 采集） */
+  workspaceId?: string
   /** 引擎回调（用于 ask_human 等需要与 UI 交互的工具） */
   callbacks: AgentEngineCallbacks
   /** 当前步数计数器引用（与引擎共享，工具可推进步数） */

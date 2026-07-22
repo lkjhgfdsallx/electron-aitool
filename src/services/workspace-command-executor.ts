@@ -3,10 +3,10 @@
  *
  * 封装命令执行流程：风险评估 → 策略匹配 → 审批 → 执行。
  * 与 workspace-store 的审批机制配合，实现完整的命令审批流。
+ * 版本历史交给 Git；不再在命令前自动创建 .ai-workspace-vcs 存档点。
  */
 
 import { useWorkspaceStore } from '../stores/workspace-store'
-import { workspaceVCSService } from './workspace-vcs-service'
 import type {
   CommandPolicy,
   CommandRiskLevel,
@@ -40,9 +40,8 @@ export const workspaceCommandExecutor = {
    * 1. 检查命令是否在黑名单 → 拒绝
    * 2. 评估风险等级
    * 3. 根据审批策略决定是否需要审批
-   * 4. 命令执行前自动创建 pre-command 存档点
-   * 5. 通过 Electron IPC 在主进程中执行命令
-   * 6. 返回执行结果
+   * 4. 通过 Electron IPC 在主进程中执行命令
+   * 5. 返回执行结果
    */
   async executeCommand(
     command: string,
@@ -113,24 +112,7 @@ export const workspaceCommandExecutor = {
       }
     }
 
-    // ---- 4. 创建 pre-command 存档点 ----
-    try {
-      const store = useWorkspaceStore.getState()
-      const workspace = store.getActiveWorkspace()
-      if (workspace) {
-        await workspaceVCSService.createCheckpoint({
-          folderPath: workspace.folderPath,
-          description: `命令执行前存档：${command.length > 60 ? command.slice(0, 60) + '...' : command}`,
-          type: 'pre-command',
-          workspaceId: workspace.id,
-        })
-      }
-    } catch (err) {
-      console.warn('[workspace-command] 创建 pre-command 存档失败:', err)
-      // 不阻止命令执行
-    }
-
-    // ---- 5. 执行命令 ----
+// ---- 4. 执行命令（pre-command 自动存档已废弃，版本历史交给 Git） ----
     const commandId = `cmd-${uuidv4().slice(0, 8)}`
     const result = await api().workspace.command.execute({
       commandId,
