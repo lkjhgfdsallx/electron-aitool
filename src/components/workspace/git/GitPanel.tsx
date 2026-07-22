@@ -74,6 +74,7 @@ function ChangeRow({
   onUnstage?: () => void
   onDiscard?: () => void
 }) {
+  const { t } = useAppTranslation()
   const letter = workspaceGitService.statusLetter(change)
   const name = change.path.includes('/')
     ? change.path.slice(change.path.lastIndexOf('/') + 1)
@@ -107,7 +108,7 @@ function ChangeRow({
             type="button"
             disabled={busy}
             className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-500"
-            title="Unstage"
+            title={t('workspace.gitUnstage', { defaultValue: 'Unstage' })}
             onClick={(e) => {
               e.stopPropagation()
               onUnstage()
@@ -121,7 +122,7 @@ function ChangeRow({
             type="button"
             disabled={busy}
             className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-500"
-            title="Stage"
+            title={t('workspace.gitStage', { defaultValue: 'Stage' })}
             onClick={(e) => {
               e.stopPropagation()
               onStage()
@@ -135,7 +136,7 @@ function ChangeRow({
             type="button"
             disabled={busy}
             className="p-0.5 rounded hover:bg-red-50 dark:hover:bg-red-950/40 text-red-500"
-            title="Discard"
+            title={t('workspace.gitDiscard', { defaultValue: 'Discard Changes' })}
             onClick={(e) => {
               e.stopPropagation()
               onDiscard()
@@ -195,6 +196,7 @@ export function GitPanel({ workspace, onOpenFile }: GitPanelProps) {
   const unstage = useWorkspaceGitStore((s) => s.unstage)
   const unstageAll = useWorkspaceGitStore((s) => s.unstageAll)
   const discard = useWorkspaceGitStore((s) => s.discard)
+  const discardAll = useWorkspaceGitStore((s) => s.discardAll)
   const commit = useWorkspaceGitStore((s) => s.commit)
   const initRepo = useWorkspaceGitStore((s) => s.initRepo)
   const checkout = useWorkspaceGitStore((s) => s.checkout)
@@ -232,6 +234,14 @@ export function GitPanel({ workspace, onOpenFile }: GitPanelProps) {
     },
     [discard, t]
   )
+
+  const handleDiscardAll = useCallback(async () => {
+    const ok = window.confirm(
+      t('workspace.gitConfirmDiscardAll', { defaultValue: 'Discard all unstaged changes and untracked files? This cannot be undone.' })
+    )
+    if (!ok) return
+    await discardAll()
+  }, [discardAll, t])
 
   const handleCommit = useCallback(async () => {
     if (!commitMessage.trim()) return
@@ -541,14 +551,25 @@ export function GitPanel({ workspace, onOpenFile }: GitPanelProps) {
               </span>
             </span>
             {changeCount > 0 && (
-              <button
-                type="button"
-                disabled={busy}
-                className="text-[10px] text-gray-400 hover:text-teal-600 px-1"
-                onClick={() => void stageAll()}
-              >
-                {t('workspace.gitStageAll', { defaultValue: 'Stage All' })}
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="text-[10px] text-gray-400 hover:text-teal-600 px-1"
+                  onClick={() => void stageAll()}
+                >
+                  {t('workspace.gitStageAll', { defaultValue: 'Stage All' })}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="text-[10px] text-gray-400 hover:text-red-600 dark:hover:text-red-400 px-1"
+                  onClick={() => void handleDiscardAll()}
+                  title={t('workspace.gitDiscardAll', { defaultValue: 'Discard All Changes' })}
+                >
+                  {t('workspace.gitDiscardAll', { defaultValue: 'Discard All' })}
+                </button>
+              </>
             )}
           </div>
           {changesOpen && (

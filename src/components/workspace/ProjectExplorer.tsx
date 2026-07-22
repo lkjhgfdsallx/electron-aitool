@@ -59,9 +59,9 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
   ]
 
   return (
-    <div className="flex flex-col h-full">
-      {/* 标签切换 */}
-      <div className="flex items-center border-b border-surface-200/80 dark:border-surface-700/60 flex-shrink-0 w-full">
+    <div className="flex h-full">
+      {/* VSCode 风格竖直侧边栏标签 */}
+      <div className="flex flex-col items-center py-2 bg-surface-50 dark:bg-surface-900/50 border-r border-surface-200/80 dark:border-surface-700/60 flex-shrink-0 w-[48px]">
         {tabs.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
@@ -70,26 +70,31 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center justify-between gap-1 px-2 py-2 text-xs font-medium transition-all relative min-w-0 w-full ${
+              title={hasCount ? `${tab.label} (${tab.count})` : tab.label}
+              className={`relative flex items-center justify-center w-10 h-10 mb-1 rounded-lg transition-all duration-150 group ${
                 isActive
-                  ? 'text-teal-600 dark:text-teal-400'
-                  : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+                  ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
+                  : 'text-gray-400 dark:text-gray-500 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-600 dark:hover:text-gray-300'
               }`}
             >
-              <Icon size={14} className="flex-shrink-0" />
-              <span className="truncate flex-1 text-center">{tab.label}</span>
-              {hasCount && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+              <Icon size={18} className="flex-shrink-0" />
+              {hasCount && tab.count !== undefined && (
+                <span className={`absolute -top-0.5 -right-0.5 text-[9px] min-w-[14px] h-[14px] px-0.5 rounded-full flex items-center justify-center font-medium ${
                   isActive
-                    ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
-                    : 'bg-surface-200 dark:bg-surface-700 text-gray-500 dark:text-gray-400'
+                    ? 'bg-teal-500 text-white'
+                    : 'bg-surface-300 dark:bg-surface-600 text-gray-600 dark:text-gray-300'
                 }`}>
-                  {tab.count}
+                  {tab.count > 99 ? '99+' : tab.count}
                 </span>
               )}
+              {/* 活跃指示条 - VSCode 风格左侧竖线 */}
               {isActive && (
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-teal-500 rounded-full" />
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-teal-500 rounded-r-full" />
               )}
+              {/* 悬浮提示 */}
+              <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                {hasCount ? `${tab.label} (${tab.count})` : tab.label}
+              </span>
             </button>
           )
         })}

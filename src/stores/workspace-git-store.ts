@@ -63,6 +63,7 @@ interface WorkspaceGitState {
   unstage: (paths: string[]) => Promise<void>
   unstageAll: () => Promise<void>
   discard: (paths: string[], includeUntracked?: boolean) => Promise<void>
+  discardAll: () => Promise<void>
   commit: (options?: Partial<GitCommitOptions>) => Promise<void>
   initRepo: () => Promise<void>
 
@@ -321,6 +322,28 @@ export const useWorkspaceGitStore = create<WorkspaceGitState>((set, get) => ({
       if (get().selectedPath && paths.includes(get().selectedPath!)) {
         set({ selectedPath: null, diff: null })
       }
+    })
+  },
+
+  discardAll: async () => {
+    const status = get().status
+    if (!status) return
+    const unstagedPaths = status.unstaged.map((f) => f.path)
+    const untrackedPaths = status.untracked.map((f) => f.path)
+    const allPaths = [...unstagedPaths, ...untrackedPaths]
+    if (allPaths.length === 0) return
+    const c = requireCwd(get())
+    await withBusy(set, get, async () => {
+      // 先放弃已跟踪文件的修改
+      if (unstagedPaths.length > 0) {
+        await workspaceGitService.discard(c, { paths: unstagedPaths, includeUntracked: false })
+      }
+      // 再删除未跟踪文件
+      if (untrackedPaths.length > 0) {
+        await workspaceGitService.discard(c, { paths: untrackedPaths, includeUntracked: true })
+      }
+      set({ selectedPath: null, diff: null })
+      await get().refreshStatus(c)
     })
   },
 
