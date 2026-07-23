@@ -130,6 +130,52 @@ export const workspaceFsService = {
   },
 
   /**
+   * 重命名文件/目录
+   * @param oldPath 旧路径（绝对路径）
+   * @param newPath 新路径（绝对路径）
+   */
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    const result = await api().workspace.fs.rename(oldPath, newPath)
+    if (!result.success) {
+      throw new Error(result.error || '重命名失败')
+    }
+  },
+
+  /**
+   * 复制文件
+   * @param srcPath 源文件路径（绝对路径）
+   * @param destPath 目标文件路径（绝对路径）
+   */
+  async copyFile(srcPath: string, destPath: string): Promise<void> {
+    const result = await api().workspace.fs.copyFile(srcPath, destPath)
+    if (!result.success) {
+      throw new Error(result.error || '复制文件失败')
+    }
+  },
+
+  /**
+   * 删除目录（递归）
+   * @param dirPath 目录绝对路径
+   */
+  async deleteDir(dirPath: string): Promise<void> {
+    const result = await api().workspace.fs.deleteDir(dirPath)
+    if (!result.success) {
+      throw new Error(result.error || '删除目录失败')
+    }
+  },
+
+  /**
+   * 在文件资源管理器中显示文件
+   * @param filePath 文件绝对路径
+   */
+  async revealInExplorer(filePath: string): Promise<void> {
+    const result = await api().workspace.fs.revealInExplorer(filePath)
+    if (!result.success) {
+      throw new Error(result.error || '打开文件资源管理器失败')
+    }
+  },
+
+  /**
    * 根据文件扩展名判断是否为文本文件
    */
   isTextFile(ext: string): boolean {

@@ -186,6 +186,26 @@ export interface ElectronAPI {
         success: boolean
         error?: string
       }>
+      /** 重命名文件/目录 */
+      rename: (oldPath: string, newPath: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      /** 复制文件 */
+      copyFile: (srcPath: string, destPath: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      /** 删除目录（递归） */
+      deleteDir: (dirPath: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
+      /** 在文件资源管理器中显示 */
+      revealInExplorer: (filePath: string) => Promise<{
+        success: boolean
+        error?: string
+      }>
     }
     /** 代码库检索（由主进程执行，避免暴露 Node API） */
     search: {
@@ -421,6 +441,14 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.invoke('workspace:fs:createDir', dirPath),
       deleteFile: (filePath: string) =>
         ipcRenderer.invoke('workspace:fs:deleteFile', filePath),
+      rename: (oldPath: string, newPath: string) =>
+        ipcRenderer.invoke('workspace:fs:rename', oldPath, newPath),
+      copyFile: (srcPath: string, destPath: string) =>
+        ipcRenderer.invoke('workspace:fs:copyFile', srcPath, destPath),
+      deleteDir: (dirPath: string) =>
+        ipcRenderer.invoke('workspace:fs:deleteDir', dirPath),
+      revealInExplorer: (filePath: string) =>
+        ipcRenderer.invoke('workspace:fs:revealInExplorer', filePath),
     },
     search: {
       findFiles: (rootPath: string, options?: { glob?: string; maxResults?: number }) =>

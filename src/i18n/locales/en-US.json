@@ -180,6 +180,66 @@ export const enUS = {
     manualCheckpoint: 'Manual Checkpoint',
     restoreCheckpoint: 'Restore Checkpoint',
     teamAgents: 'Team Agents',
+    
+    // File tree search
+    searchFiles: 'Search files...',
+    searchInFiles: 'Search in files...',
+    searchFilename: 'Search filename',
+    searchContent: 'Search content',
+    searchResults: 'Search results',
+    noResults: 'No results found',
+    
+    // Search panel
+    search: 'Search',
+    searchPlaceholder: 'Search',
+    replace: 'Replace',
+    replaceAll: 'Replace All',
+    replacePlaceholder: 'Replace',
+    matchCase: 'Match Case',
+    matchWholeWord: 'Match Whole Word',
+    useRegex: 'Use Regular Expression',
+    filesToInclude: 'files to include',
+    filesToExclude: 'files to exclude',
+    matchesInFiles: 'matches in',
+    noSearchResults: 'No results found',
+    searching: 'Searching...',
+    showReplace: 'Toggle Replace',
+    showFilters: 'Toggle Search Details',
+    clearResults: 'Clear Search Results',
+    
+    // Context menu - folder
+    newFile: 'New File',
+    newFolder: 'New Folder',
+    searchInFolder: 'Search in Folder',
+    
+    // Context menu - file
+    copy: 'Copy',
+    cut: 'Cut',
+    paste: 'Paste',
+    rename: 'Rename',
+    delete: 'Delete',
+    revealInExplorer: 'Reveal in File Explorer',
+    
+    // Confirmation dialogs
+    confirmDeleteFile: 'Are you sure you want to delete this file?',
+    confirmDeleteFolder: 'Are you sure you want to delete this folder and all its contents?',
+    enterFileName: 'Enter file name',
+    enterFolderName: 'Enter folder name',
+    fileAlreadyExists: 'File already exists',
+    folderAlreadyExists: 'Folder already exists',
+    invalidName: 'Name cannot contain special characters',
+    emptyDirectory: 'Empty directory',
+    
+    // Others
+    files: 'Files',
+    git: 'Git',
+    team: 'Team',
+    skills: 'Skills',
+    leader: 'Leader',
+    defaultLeaderDescription: 'AI Leader Agent',
+    teamMembers: 'Team Members',
+    editAiLeaderAgent: 'Edit AI Leader Agent',
+    remove: 'Remove',
   },
   
   // Prompts & Skills

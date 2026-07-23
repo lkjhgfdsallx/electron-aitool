@@ -457,6 +457,75 @@ function setupIPCHandlers(): void {
     }
   })
 
+  /**
+   * 重命名文件/目录
+   * 用于文件树右键菜单重命名功能
+   */
+  ipcMain.handle('workspace:fs:rename', async (_event, oldPath: string, newPath: string) => {
+    try {
+      const { rename } = await import('fs/promises')
+      await rename(oldPath, newPath)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '重命名失败'
+      }
+    }
+  })
+
+  /**
+   * 复制文件
+   * 用于文件树右键菜单复制功能
+   */
+  ipcMain.handle('workspace:fs:copyFile', async (_event, srcPath: string, destPath: string) => {
+    try {
+      const { copyFile, mkdir } = await import('fs/promises')
+      const { dirname } = await import('path')
+      await mkdir(dirname(destPath), { recursive: true })
+      await copyFile(srcPath, destPath)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '复制文件失败'
+      }
+    }
+  })
+
+  /**
+   * 删除目录（递归）
+   * 用于文件树右键菜单删除文件夹功能
+   */
+  ipcMain.handle('workspace:fs:deleteDir', async (_event, dirPath: string) => {
+    try {
+      const { rm } = await import('fs/promises')
+      await rm(dirPath, { recursive: true, force: true })
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '删除目录失败'
+      }
+    }
+  })
+
+  /**
+   * 在文件资源管理器中显示文件
+   * 用于文件树右键菜单显示文件位置功能
+   */
+  ipcMain.handle('workspace:fs:revealInExplorer', async (_event, filePath: string) => {
+    try {
+      shell.showItemInFolder(filePath)
+      return { success: true }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '打开文件资源管理器失败'
+      }
+    }
+  })
+
   // 窗口控制
   ipcMain.on('window:minimize', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize()

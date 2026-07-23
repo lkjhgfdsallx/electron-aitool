@@ -1,6 +1,7 @@
 /**
  * 项目浏览器组件 - 左栏
  * - 文件标签页：FileTree 组件，支持点击预览
+ * - 搜索标签页：WorkspaceSearchPanel，VSCode 风格搜索面板
  * - Git SCM 标签页
  * - 团队标签页：AgentTeamPanel，显示真实 Agent 信息
  * - Skills 标签页：工作区绑定技能
@@ -9,7 +10,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
-  FileText, Users, Plus, X, Zap, ToggleLeft, ToggleRight, GitBranch,
+  FileText, Users, Plus, X, Zap, ToggleLeft, ToggleRight, GitBranch, Search,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
@@ -17,6 +18,7 @@ import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useSkillStore } from '../../stores/skill-store'
 import { useWorkspaceGitStore, selectGitChangeCount } from '../../stores/workspace-git-store'
 import { FileTree } from './FileTree'
+import { WorkspaceSearchPanel } from './WorkspaceSearchPanel'
 import { GitPanel } from './git'
 import { AgentManager } from '../settings/AgentManager'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
@@ -26,18 +28,19 @@ import { useAppTranslation } from '../../i18n/hooks'
 interface ProjectExplorerProps {
   workspace: Workspace
   /** 文件被选中时回调（用于打开 FilePreview） */
-  onFileSelect?: (filePath: string) => void
+  onFileSelect?: (filePath: string, line?: number) => void
   /** 当前选中的文件路径 */
   selectedFile?: string
   /** 文件变化集合（B8 高亮） */
   changedFiles?: Set<string>
 }
 
-type ExplorerTab = 'files' | 'git' | 'agents' | 'skills'
+type ExplorerTab = 'files' | 'search' | 'git' | 'agents' | 'skills'
 
 export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changedFiles }: ProjectExplorerProps) {
   const { t } = useAppTranslation()
   const [activeTab, setActiveTab] = useState<ExplorerTab>('files')
+  const [searchFolderPath, setSearchFolderPath] = useState<string | undefined>(undefined)
 
   const allSkills = useSkillStore((s) => s.skills)
   const ensureSkillsLoaded = useSkillStore((s) => s.ensureSkillsLoaded)
@@ -53,6 +56,7 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
 
   const tabs: { key: ExplorerTab; label: string; icon: typeof FileText; count?: number }[] = [
     { key: 'files', label: t('workspace.files'), icon: FileText },
+    { key: 'search', label: t('workspace.search', { defaultValue: 'Search' }), icon: Search },
     { key: 'git', label: t('workspace.git', { defaultValue: 'Git' }), icon: GitBranch, count: gitChangeCount > 0 ? gitChangeCount : undefined },
     { key: 'agents', label: t('workspace.team'), icon: Users, count: workspace.teamAgentIds.length + (workspace.leaderAgentId ? 1 : 0) },
     { key: 'skills', label: t('workspace.skills'), icon: Zap, count: projectSkills.length },
@@ -110,8 +114,22 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
               onFileSelect={(path) => onFileSelect?.(path)}
               selectedFile={selectedFile}
               changedFiles={changedFiles}
+              onSearchInFolder={(folderPath) => {
+                setSearchFolderPath(folderPath)
+                setActiveTab('search')
+              }}
             />
           </div>
+        )}
+
+        {/* 搜索面板 */}
+        {activeTab === 'search' && (
+          <WorkspaceSearchPanel
+            rootPath={workspace.folderPath}
+            folderPath={searchFolderPath}
+            onFileSelect={(path, line) => onFileSelect?.(path, line)}
+            onClearFolderPath={() => setSearchFolderPath(undefined)}
+          />
         )}
 
         {/* Git SCM */}

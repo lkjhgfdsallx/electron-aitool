@@ -180,6 +180,66 @@ export const zhCN = {
     manualCheckpoint: '手动创建检查点',
     restoreCheckpoint: '还原检查点',
     teamAgents: '团队 Agent',
+    
+    // 文件树搜索
+    searchFiles: '搜索文件...',
+    searchInFiles: '在文件中搜索...',
+    searchFilename: '搜索文件名',
+    searchContent: '搜索内容',
+    searchResults: '搜索结果',
+    noResults: '未找到结果',
+    
+    // 搜索面板
+    search: '搜索',
+    searchPlaceholder: '搜索',
+    replace: '替换',
+    replaceAll: '全部替换',
+    replacePlaceholder: '替换',
+    matchCase: '匹配大小写',
+    matchWholeWord: '全词匹配',
+    useRegex: '使用正则表达式',
+    filesToInclude: '包含的文件',
+    filesToExclude: '排除的文件',
+    matchesInFiles: '个匹配，共',
+    noSearchResults: '未找到匹配结果',
+    searching: '搜索中...',
+    showReplace: '显示替换',
+    showFilters: '显示过滤选项',
+    clearResults: '清除结果',
+    
+    // 右键菜单 - 文件夹
+    newFile: '新建文件',
+    newFolder: '新建文件夹',
+    searchInFolder: '在文件夹中搜索',
+    
+    // 右键菜单 - 文件
+    copy: '复制',
+    cut: '剪切',
+    paste: '粘贴',
+    rename: '重命名',
+    delete: '删除',
+    revealInExplorer: '在文件资源管理器中显示',
+    
+    // 确认对话框
+    confirmDeleteFile: '确定要删除此文件吗？',
+    confirmDeleteFolder: '确定要删除此文件夹及其所有内容吗？',
+    enterFileName: '输入文件名',
+    enterFolderName: '输入文件夹名',
+    fileAlreadyExists: '文件已存在',
+    folderAlreadyExists: '文件夹已存在',
+    invalidName: '名称不能包含特殊字符',
+    emptyDirectory: '空目录',
+    
+    // 其他
+    files: '文件',
+    git: 'Git',
+    team: '团队',
+    skills: 'Skills',
+    leader: '领导',
+    defaultLeaderDescription: 'AI 领导 Agent',
+    teamMembers: '团队成员',
+    editAiLeaderAgent: '编辑 AI 领导 Agent',
+    remove: '移除',
   },
   
   // 提示词与 Skills
