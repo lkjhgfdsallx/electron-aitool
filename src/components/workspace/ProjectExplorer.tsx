@@ -102,7 +102,7 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
 
       {/* 内容区 */}
       <div className="flex-1 overflow-y-auto">
-        {/* B1: 文件树 */}
+        {/* 文件树 */}
         {activeTab === 'files' && (
           <div className="py-1">
             <FileTree
@@ -127,12 +127,12 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
           />
         )}
 
-        {/* B6: Agent 团队 */}
+        {/* Agent 团队 */}
         {activeTab === 'agents' && (
           <AgentTeamPanel workspace={workspace} />
         )}
 
-        {/* B7: 工作区 Skills */}
+        {/* 工作区 Skills */}
         {activeTab === 'skills' && (
           <WorkspaceSkillsPanel workspace={workspace} skills={projectSkills} />
         )}
@@ -141,7 +141,7 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
   )
 }
 
-// ---- B6: Agent 团队面板子组件 ----
+// ---- Agent 团队面板子组件 ----
 
 interface AgentTeamPanelProps {
   workspace: Workspace
@@ -384,7 +384,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   )
 }
 
-// ---- B7: 工作区 Skills 子组件 ----
+// ---- 工作区 Skills 子组件 ----
 
 interface WorkspaceSkillsPanelProps {
   workspace: Workspace

@@ -193,7 +193,7 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
         </div>
       </div>
 
-      {/* B5: 内嵌审批卡片 */}
+      {/* 内嵌审批卡片 */}
       {pendingCommandApproval && (
         <InlineApprovalCard
           request={pendingCommandApproval}
@@ -205,7 +205,7 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
         />
       )}
 
-      {/* B4: 终端输出区域 */}
+      {/* 终端输出区域 */}
       <div ref={terminalRef} className="flex-1 min-h-0 overflow-y-auto p-3 font-mono text-xs select-text">
         {terminalHistory.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
@@ -278,7 +278,7 @@ export function TerminalPanel({ workspace }: TerminalPanelProps) {
   )
 }
 
-// ---- B5: 内嵌审批卡片 ----
+// ---- 内嵌审批卡片 ----
 
 interface InlineApprovalCardProps {
   request: CommandApprovalRequest

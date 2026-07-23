@@ -22,6 +22,7 @@ import {
   mkdir,
   readFile,
   writeFile,
+  appendFile,
   readdir,
   stat,
   copyFile,
@@ -259,6 +260,22 @@ async function initWorkspaceVCS(folderPath: string): Promise<{ success: boolean;
       await access(indexPath, constants.F_OK)
     } catch {
       await writeJson(indexPath, [])
+    }
+
+    // 确保 .ai-workspace-vcs/ 在 .gitignore 中
+    const gitignorePath = join(folderPath, '.gitignore')
+    const vcsIgnoreEntry = '.ai-workspace-vcs/'
+    try {
+      await access(gitignorePath, constants.F_OK)
+      // .gitignore 已存在，检查是否已有该条目
+      const content = await readFile(gitignorePath, 'utf-8')
+      const hasEntry = content.split('\n').some((line) => line.trim() === vcsIgnoreEntry)
+      if (!hasEntry) {
+        await appendFile(gitignorePath, `\n${vcsIgnoreEntry}\n`)
+      }
+    } catch {
+      // .gitignore 不存在，创建它
+      await writeFile(gitignorePath, `${vcsIgnoreEntry}\n`)
     }
 
     return { success: true }

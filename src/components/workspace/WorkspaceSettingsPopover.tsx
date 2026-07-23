@@ -1,12 +1,12 @@
 /**
- * 工作区快捷设置浮层 - B7 + C3 + C4
+ * 工作区快捷设置浮层
  *
  * 从顶部栏的齿轮图标弹出，提供常用工作区设置的快速访问：
  * - 命令执行开关
  * - 审批策略切换
  * - 存档策略切换
- * - C3: 知识库关联选择器
- * - C4: MCP 服务器选择器
+ * - 知识库关联选择器
+ * - MCP 服务器选择器
  * - 跳转完整设置页面
  */
 
@@ -88,11 +88,11 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     }
   }, [anchorRef])
 
-  // C3: 知识库数据
+  // 知识库数据
   const collections = useKnowledgeCollectionStore((s) => s.collections)
   const [showKBSection, setShowKBSection] = useState(false)
 
-  // C4: MCP 数据
+  // MCP 数据
   const mcpServers = useGlobalConfigStore((s) => s.mcpServers)
   const [showMCPSection, setShowMCPSection] = useState(false)
 
@@ -210,7 +210,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     { field: 'mcpTools', label: t('workspace.autoApprovalMcpTools'), desc: t('workspace.linkedServers') },
   ]
 
-  // C3: 切换知识库关联
+  // 切换知识库关联
   const toggleKnowledgeBase = useCallback((collectionId: string) => {
     const current = workspace.knowledgeBaseIds ?? []
     const next = current.includes(collectionId)
@@ -219,7 +219,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     updateWorkspace({ id: workspace.id, knowledgeBaseIds: next })
   }, [workspace, updateWorkspace])
 
-  // C4: 切换 MCP 服务器
+  // 切换 MCP 服务器
   const toggleMCPServer = useCallback((serverId: string) => {
     const current = workspace.mcpServerIds ?? []
     const next = current.includes(serverId)
@@ -316,7 +316,7 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
           )}
         </div>
 
-        {/* C3: 知识库关联 */}
+        {/* 知识库关联 */}
         <div className="rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors">
           <button
             onClick={() => setShowKBSection(!showKBSection)}

@@ -60,7 +60,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
   const gitScheduleRefresh = useWorkspaceGitStore((s) => s.scheduleRefresh)
   const gitEnsureOutput = useWorkspaceGitStore((s) => s.ensureOutputSubscription)
 
-  // B2: 文件预览状态
+  // 文件预览状态
   const [previewFile, setPreviewFile] = useState<string | null>(null)
   const [previewDirty, setPreviewDirty] = useState(false)
   const [pendingPreviewAction, setPendingPreviewAction] = useState<(() => void) | null>(null)
@@ -81,17 +81,17 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     workspaceFileWatcher.cancelPendingAutoCheckpoint()
   }, [])
 
-  // B8: 文件变化跟踪
+  // 文件变化跟踪
   const [changedFiles, setChangedFiles] = useState<Set<string>>(new Set())
 
-  // B7: 工作区设置浮层
+  // 工作区设置浮层
   const [showSettingsPopover, setShowSettingsPopover] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
 
-  // C6: 上下文时间线面板
+  // 上下文时间线面板
   const [showContextTimeline, setShowContextTimeline] = useState(false)
 
-  // C1: Tab 右键菜单
+  // Tab 右键菜单
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
 
   // 自动激活已有工作区：进入页面时若有打开的 Tab 但无活跃工作区，自动激活默认/第一个
@@ -690,7 +690,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             <Clock size={16} />
           </button>
 
-          {/* C5: 导出工作区 */}
+          {/* 导出工作区 */}
           <button
             onClick={handleExport}
             className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
@@ -699,7 +699,7 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             <Download size={16} />
           </button>
 
-          {/* B7: 工作区设置 */}
+          {/* 工作区设置 */}
           <div>
             <button
               ref={settingsButtonRef}
