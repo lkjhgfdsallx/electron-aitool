@@ -81,9 +81,6 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
     workspaceFileWatcher.cancelPendingAutoCheckpoint()
   }, [])
 
-  // 文件变化跟踪
-  const [changedFiles, setChangedFiles] = useState<Set<string>>(new Set())
-
   // 工作区设置浮层
   const [showSettingsPopover, setShowSettingsPopover] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
@@ -125,45 +122,12 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
     startWatcher()
 
-    // 监听文件变更事件，更新 changedFiles，并触发 git status 刷新
-    const unsubscribe = window.electronAPI.workspace.watcher.onChange((data:any) => {
-      const events = data.events as Array<{ eventType: string; filePath: string; timestamp: number }>
-      if (events.length > 0) {
-        setChangedFiles((prev) => {
-          const next = new Set(prev)
-          for (const event of events) {
-            const fullPath = activeWorkspace.folderPath + '/' + event.filePath
-            if (event.eventType === 'deleted') {
-              next.delete(fullPath)
-            } else {
-              next.add(fullPath)
-            }
-          }
-          return next
-        })
-
-        gitScheduleRefresh(activeWorkspace.folderPath, 600)
-
-        // 5 秒后清除高亮
-        setTimeout(() => {
-          setChangedFiles((prev) => {
-            const next = new Set(prev)
-            for (const event of events) {
-              next.delete(activeWorkspace.folderPath + '/' + event.filePath)
-            }
-            return next
-          })
-        }, 5000)
-      }
-    })
-
     const onFocus = () => {
       gitScheduleRefresh(activeWorkspace.folderPath, 200)
     }
     window.addEventListener('focus', onFocus)
 
     return () => {
-      unsubscribe()
       window.removeEventListener('focus', onFocus)
       workspaceFileWatcher.stopWatching()
     }
@@ -637,12 +601,6 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           {activeWorkspaceId === defaultWorkspaceId && (
             <span title={t('workspace.defaultWorkspace')}><Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" /></span>
           )}
-          {/* B8: 文件变化计数 */}
-          {changedFiles.size > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex-shrink-0">
-              {t('workspace.changedFilesCount', { count: changedFiles.size })}
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -750,7 +708,6 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 workspace={activeWorkspace}
                 onFileSelect={handleFileSelect}
                 selectedFile={previewFile || undefined}
-                changedFiles={changedFiles}
               />
             </div>
           )}

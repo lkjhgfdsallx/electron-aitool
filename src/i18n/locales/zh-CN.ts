@@ -854,7 +854,6 @@ export const zhCN = {
       setDefaultWorkspace: '设为默认工作区',
       unsetDefaultWorkspace: '取消默认工作区',
       defaultWorkspace: '默认工作区',
-      changedFilesCount: '{{count}} 变更',
       expandProjectExplorer: '展开项目浏览器',
       collapseProjectExplorer: '折叠项目浏览器',
       expandTerminalPanel: '展开终端面板',

@@ -31,13 +31,11 @@ interface ProjectExplorerProps {
   onFileSelect?: (filePath: string, line?: number) => void
   /** 当前选中的文件路径 */
   selectedFile?: string
-  /** 文件变化集合（B8 高亮） */
-  changedFiles?: Set<string>
 }
 
 type ExplorerTab = 'files' | 'search' | 'git' | 'agents' | 'skills'
 
-export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changedFiles }: ProjectExplorerProps) {
+export function ProjectExplorer({ workspace, onFileSelect, selectedFile }: ProjectExplorerProps) {
   const { t } = useAppTranslation()
   const [activeTab, setActiveTab] = useState<ExplorerTab>('files')
   const [searchFolderPath, setSearchFolderPath] = useState<string | undefined>(undefined)
@@ -113,7 +111,6 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile, changed
               rootPath={workspace.folderPath}
               onFileSelect={(path) => onFileSelect?.(path)}
               selectedFile={selectedFile}
-              changedFiles={changedFiles}
               onSearchInFolder={(folderPath) => {
                 setSearchFolderPath(folderPath)
                 setActiveTab('search')

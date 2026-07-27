@@ -71,7 +71,9 @@ export function FileTreeSearchBar({ rootPath, onSearchChange, onResultSelect }: 
           glob: `*${searchQuery}*`,
           maxResults: 50,
         })
-        const fileResults: SearchResult[] = (result.files || []).map((filePath) => ({
+        // 默认排除 .gitignore 文件
+        const filteredFiles = (result.files || []).filter((filePath) => !filePath.endsWith('.gitignore'))
+        const fileResults: SearchResult[] = filteredFiles.map((filePath) => ({
           type: 'file' as const,
           path: `${rootPath}/${filePath}`,
           name: filePath.split('/').pop() || filePath,
@@ -85,7 +87,9 @@ export function FileTreeSearchBar({ rootPath, onSearchChange, onResultSelect }: 
           maxResults: 50,
           contextLines: 0,
         })
-        const matchResults: SearchResult[] = (result.matches || []).map((match: WorkspaceSearchMatch) => ({
+        // 默认排除 .gitignore 文件
+        const filteredMatches = (result.matches || []).filter((match: WorkspaceSearchMatch) => !match.file_path.endsWith('.gitignore'))
+        const matchResults: SearchResult[] = filteredMatches.map((match: WorkspaceSearchMatch) => ({
           type: 'match' as const,
           path: `${rootPath}/${match.file_path}`,
           name: match.file_path.split('/').pop() || match.file_path,
@@ -177,8 +181,8 @@ export function FileTreeSearchBar({ rootPath, onSearchChange, onResultSelect }: 
   return (
     <div ref={containerRef} className="relative">
       {/* 搜索输入栏 */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-surface-200 dark:border-surface-700">
-        <Search size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-surface-700">
+        <Search size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
         <input
           ref={inputRef}
           type="text"
@@ -189,22 +193,22 @@ export function FileTreeSearchBar({ rootPath, onSearchChange, onResultSelect }: 
           }}
           onFocus={() => setShowResults(true)}
           placeholder={mode === 'filename' ? t('workspace.searchFilename', '搜索文件名...') : t('workspace.searchContent', '搜索内容...')}
-          className="flex-1 bg-transparent text-xs text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+          className="flex-1 bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-colors focus:text-gray-900 dark:focus:text-white"
         />
         {query && (
           <button
             onClick={handleClear}
-            className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-150"
           >
             <X size={12} />
           </button>
         )}
         <button
           onClick={handleModeToggle}
-          className={`p-0.5 rounded transition-colors ${
+          className={`p-1 rounded-md transition-all duration-150 ${
             mode === 'content'
-              ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400'
-              : 'hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+              ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 shadow-sm ring-1 ring-teal-200 dark:ring-teal-800'
+              : 'hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
           title={mode === 'filename' ? t('workspace.searchContent', '搜索内容') : t('workspace.searchFilename', '搜索文件名')}
         >
@@ -214,35 +218,35 @@ export function FileTreeSearchBar({ rootPath, onSearchChange, onResultSelect }: 
 
       {/* 搜索结果面板 */}
       {showResults && query.trim() && (
-        <div className="absolute left-0 right-0 top-full z-50 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-lg rounded-b-lg max-h-64 overflow-y-auto">
+        <div className="absolute left-0 right-0 top-full z-50 bg-white dark:bg-surface-800 border border-gray-200 dark:border-surface-600 shadow-xl rounded-b-lg max-h-80 overflow-y-auto mt-0.5">
           {isSearching ? (
-            <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+            <div className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
               {t('common.loading', '加载中...')}
             </div>
           ) : results && results.length > 0 ? (
             <div>
-              <div className="px-3 py-1.5 text-[10px] text-gray-400 dark:text-gray-500 border-b border-surface-100 dark:border-surface-700">
+              <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-surface-700 bg-gray-50/50 dark:bg-surface-800/50 font-medium">
                 {t('workspace.searchResults', '搜索结果')} ({results.length})
               </div>
               {results.map((result, index) => (
                 <button
                   key={`${result.path}-${result.line || ''}-${index}`}
                   onClick={() => handleResultClick(result)}
-                  className="w-full text-left px-3 py-1.5 hover:bg-surface-100 dark:hover:bg-surface-700/50 transition-colors border-b border-surface-50 dark:border-surface-700/50 last:border-0"
+                  className="w-full text-left px-3 py-2 hover:bg-teal-50/50 dark:hover:bg-teal-900/20 transition-all duration-150 border-b border-gray-50 dark:border-surface-700/30 last:border-0"
                 >
                   <div className="flex items-center gap-1.5">
-                    <FileText size={10} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                    <span className="text-xs text-gray-700 dark:text-gray-300 truncate">
+                    <FileText size={12} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                    <span className="text-sm text-gray-700 dark:text-gray-200 truncate">
                       {highlightMatch(result.name, query)}
                     </span>
                     {result.line && (
-                      <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 ml-auto">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 ml-auto font-mono">
                         :{result.line}
                       </span>
                     )}
                   </div>
                   {result.lineText && (
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5 pl-5">
+                    <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5 pl-6">
                       {highlightMatch(result.lineText.trim(), query)}
                     </div>
                   )}
@@ -250,7 +254,7 @@ export function FileTreeSearchBar({ rootPath, onSearchChange, onResultSelect }: 
               ))}
             </div>
           ) : (
-            <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">
+            <div className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
               {t('workspace.noResults', '未找到结果')}
             </div>
           )}

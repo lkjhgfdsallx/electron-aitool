@@ -854,7 +854,6 @@ export const enUS = {
       setDefaultWorkspace: 'Set as Default Workspace',
       unsetDefaultWorkspace: 'Unset Default Workspace',
       defaultWorkspace: 'Default Workspace',
-      changedFilesCount: '{{count}} changed',
       expandProjectExplorer: 'Expand Project Explorer',
       collapseProjectExplorer: 'Collapse Project Explorer',
       expandTerminalPanel: 'Expand Terminal Panel',

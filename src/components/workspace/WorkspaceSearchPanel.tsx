@@ -68,7 +68,7 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
   const [includeGlob, setIncludeGlob] = useState('')
-  const [excludeGlob, setExcludeGlob] = useState('')
+  const [excludeGlob, setExcludeGlob] = useState('.gitignore')
 
   // 搜索结果状态
   const [results, setResults] = useState<WorkspaceSearchMatch[]>([])
@@ -268,27 +268,27 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
       <div className="flex-shrink-0 border-b border-surface-200 dark:border-surface-700">
         {/* 文件夹路径指示器 */}
         {folderPath && (
-          <div className="flex items-center gap-1 px-2 py-1 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800/50">
-            <span className="text-[10px] text-teal-700 dark:text-teal-300 flex-shrink-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-teal-50/80 dark:bg-teal-900/20 border-b border-teal-100 dark:border-teal-800/30">
+            <span className="text-xs text-teal-700 dark:text-teal-300 flex-shrink-0 font-medium">
               {t('workspace.searchingIn', '搜索范围:')}
             </span>
-            <span className="text-[10px] text-teal-600 dark:text-teal-400 truncate flex-1 font-mono">
+            <span className="text-xs text-teal-600 dark:text-teal-400 truncate flex-1 font-mono">
               {folderPath.replace(rootPath, '').replace(/^[\\/]+/, '') || folderPath}
             </span>
             <button
               onClick={() => {
                 onClearFolderPath?.()
               }}
-              className="p-0.5 rounded hover:bg-teal-200 dark:hover:bg-teal-800/50 text-teal-600 dark:text-teal-400 transition-colors"
+              className="p-1 rounded-md hover:bg-teal-200/60 dark:hover:bg-teal-800/50 text-teal-600 dark:text-teal-400 transition-all duration-150"
               title={t('workspace.clearSearchScope', '清除搜索范围')}
             >
-              <X size={10} />
+              <X size={12} />
             </button>
           </div>
         )}
         {/* 搜索框行 */}
-        <div className="flex items-center gap-1 px-2 py-1.5">
-          <Search size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-2">
+          <Search size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
           <input
             ref={searchInputRef}
             type="text"
@@ -298,12 +298,12 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
               ? t('workspace.searchInFolderPlaceholder', '在文件夹中搜索...')
               : t('workspace.searchPlaceholder', '搜索')
             }
-            className="flex-1 bg-transparent text-xs text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-colors focus:text-gray-900 dark:focus:text-white"
           />
           {query && (
             <button
               onClick={handleClear}
-              className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-150"
               title={t('workspace.clearResults', '清除结果')}
             >
               <X size={12} />
@@ -311,10 +311,10 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
           )}
           <button
             onClick={() => setShowReplace(!showReplace)}
-            className={`p-0.5 rounded transition-colors ${
+            className={`p-1 rounded-md transition-all duration-150 ${
               showReplace
-                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400'
-                : 'hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 shadow-sm ring-1 ring-teal-200 dark:ring-teal-800'
+                : 'hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title={t('workspace.showReplace', '显示替换')}
           >
@@ -322,10 +322,10 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`p-0.5 rounded transition-colors ${
+            className={`p-1 rounded-md transition-all duration-150 ${
               showFilters
-                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400'
-                : 'hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'
+                ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 shadow-sm ring-1 ring-teal-200 dark:ring-teal-800'
+                : 'hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title={t('workspace.showFilters', '显示过滤选项')}
           >
@@ -335,26 +335,26 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
 
         {/* 替换框行 */}
         {showReplace && (
-          <div className="flex items-center gap-1 px-2 py-1.5 border-t border-surface-100 dark:border-surface-700/50">
-            <Replace size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+          <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 dark:border-surface-700/50">
+            <Replace size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
             <input
               type="text"
               value={replaceQuery}
               onChange={(e) => setReplaceQuery(e.target.value)}
               placeholder={t('workspace.replacePlaceholder', '替换')}
-              className="flex-1 bg-transparent text-xs text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none"
+              className="flex-1 bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 outline-none transition-colors focus:text-gray-900 dark:focus:text-white"
             />
           </div>
         )}
 
         {/* 搜索选项按钮行 */}
-        <div className="flex items-center gap-0.5 px-2 py-1">
+        <div className="flex items-center gap-1 px-3 py-1.5">
           <button
             onClick={() => setCaseSensitive(!caseSensitive)}
-            className={`p-1 rounded text-[10px] transition-colors ${
+            className={`p-1.5 rounded-md transition-all duration-150 ${
               caseSensitive
-                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400'
-                : 'text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-gray-600 dark:hover:text-gray-300'
+                ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 ring-1 ring-teal-200 dark:ring-teal-800'
+                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-surface-700 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title={t('workspace.matchCase', '匹配大小写')}
           >
@@ -362,10 +362,10 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
           </button>
           <button
             onClick={() => setWholeWord(!wholeWord)}
-            className={`p-1 rounded text-[10px] transition-colors ${
+            className={`p-1.5 rounded-md transition-all duration-150 ${
               wholeWord
-                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400'
-                : 'text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-gray-600 dark:hover:text-gray-300'
+                ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 ring-1 ring-teal-200 dark:ring-teal-800'
+                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-surface-700 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title={t('workspace.matchWholeWord', '全词匹配')}
           >
@@ -373,10 +373,10 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
           </button>
           <button
             onClick={() => setIsRegex(!isRegex)}
-            className={`p-1 rounded text-[10px] transition-colors ${
+            className={`p-1.5 rounded-md transition-all duration-150 ${
               isRegex
-                ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400'
-                : 'text-gray-400 hover:bg-surface-200 dark:hover:bg-surface-700 hover:text-gray-600 dark:hover:text-gray-300'
+                ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 ring-1 ring-teal-200 dark:ring-teal-800'
+                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-surface-700 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
             title={t('workspace.useRegex', '使用正则表达式')}
           >
@@ -386,9 +386,9 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
 
         {/* 文件过滤行 */}
         {showFilters && (
-          <div className="px-2 py-1.5 space-y-1.5 border-t border-surface-100 dark:border-surface-700/50">
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 w-16">
+          <div className="px-3 py-2 space-y-2 border-t border-gray-100 dark:border-surface-700/50">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 w-16">
                 {t('workspace.filesToInclude', '包含的文件')}
               </span>
               <input
@@ -396,11 +396,11 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
                 value={includeGlob}
                 onChange={(e) => setIncludeGlob(e.target.value)}
                 placeholder="*.ts, *.tsx"
-                className="flex-1 bg-surface-50 dark:bg-surface-800 text-[10px] text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded px-1.5 py-0.5 border border-surface-200 dark:border-surface-700"
+                className="flex-1 bg-gray-50 dark:bg-surface-800 text-xs text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-md px-2 py-1 border border-gray-200 dark:border-surface-600 focus:border-teal-400 dark:focus:border-teal-500 focus:ring-1 focus:ring-teal-400/30 transition-all duration-150"
               />
             </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 w-16">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0 w-16">
                 {t('workspace.filesToExclude', '排除的文件')}
               </span>
               <input
@@ -408,7 +408,7 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
                 value={excludeGlob}
                 onChange={(e) => setExcludeGlob(e.target.value)}
                 placeholder="**/node_modules/**"
-                className="flex-1 bg-surface-50 dark:bg-surface-800 text-[10px] text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded px-1.5 py-0.5 border border-surface-200 dark:border-surface-700"
+                className="flex-1 bg-gray-50 dark:bg-surface-800 text-xs text-gray-700 dark:text-gray-300 placeholder-gray-400 dark:placeholder-gray-500 outline-none rounded-md px-2 py-1 border border-gray-200 dark:border-surface-600 focus:border-teal-400 dark:focus:border-teal-500 focus:ring-1 focus:ring-teal-400/30 transition-all duration-150"
               />
             </div>
           </div>
@@ -418,39 +418,39 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
       {/* 搜索结果区域 */}
       <div className="flex-1 overflow-y-auto">
         {isSearching ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={16} className="text-gray-400 dark:text-gray-500 animate-spin" />
-            <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-              {t('workspace.searching', '搜索中...')}
-            </span>
+          <div className="flex items-center justify-center py-12">
+            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+              <Loader2 size={18} className="animate-spin" />
+              <span className="text-sm font-medium">{t('workspace.searching', '搜索中...')}</span>
+            </div>
           </div>
         ) : query.trim() && results.length === 0 ? (
-          <div className="flex items-center justify-center py-8">
-            <span className="text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex items-center justify-center py-12">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               {t('workspace.noSearchResults', '未找到匹配结果')}
             </span>
           </div>
         ) : results.length > 0 ? (
           <div>
             {/* 结果统计和操作 */}
-            <div className="flex items-center justify-between px-2 py-1.5 border-b border-surface-100 dark:border-surface-700/50">
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-surface-700/50 bg-gray-50/50 dark:bg-surface-800/30">
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                 {searchCount} {t('workspace.matchesInFiles', '个匹配，共')} {fileCount} {t('workspace.files', '文件')}
               </span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={expandAll}
-                  className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-150"
                   title="展开全部"
                 >
-                  <ChevronDown size={10} />
+                  <ChevronDown size={12} />
                 </button>
                 <button
                   onClick={collapseAll}
-                  className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                  className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-surface-700 text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition-all duration-150"
                   title="折叠全部"
                 >
-                  <ChevronRight size={10} />
+                  <ChevronRight size={12} />
                 </button>
               </div>
             </div>
@@ -459,22 +459,22 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
             {groupedResults.map(([filePath, matches]) => {
               const isExpanded = expandedFiles.has(filePath)
               return (
-                <div key={filePath} className="border-b border-surface-50 dark:border-surface-700/30">
+                <div key={filePath} className="border-b border-gray-50 dark:border-surface-700/30">
                   {/* 文件头 */}
                   <button
                     onClick={() => toggleFileExpanded(filePath)}
-                    className="w-full flex items-center gap-1.5 px-2 py-1 hover:bg-surface-100 dark:hover:bg-surface-800/60 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-surface-700/50 transition-all duration-150 group"
                   >
                     {isExpanded ? (
-                      <ChevronDown size={10} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                      <ChevronDown size={12} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
                     ) : (
-                      <ChevronRight size={10} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                      <ChevronRight size={12} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
                     )}
-                    <FileText size={10} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                    <span className="text-[11px] text-gray-700 dark:text-gray-300 truncate flex-1 text-left">
+                    <FileText size={12} className="text-gray-400 dark:text-gray-500 flex-shrink-0 group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors" />
+                    <span className="text-sm text-gray-700 dark:text-gray-200 truncate flex-1 text-left font-medium">
                       {getFileName(filePath)}
                     </span>
-                    <span className="text-[9px] text-gray-400 dark:text-gray-500 flex-shrink-0">
+                    <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0 bg-gray-100 dark:bg-surface-700 px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
                       {matches.length}
                     </span>
                   </button>
@@ -486,14 +486,14 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
                         <button
                           key={`${match.line}-${match.column}-${index}`}
                           onClick={() => handleMatchClick(match)}
-                          className="w-full text-left px-2 py-0.5 hover:bg-surface-100 dark:hover:bg-surface-800/60 transition-colors group"
-                          style={{ paddingLeft: '28px' }}
+                          className="w-full text-left px-3 py-1 hover:bg-teal-50/50 dark:hover:bg-teal-900/20 transition-all duration-150 group rounded-sm"
+                          style={{ paddingLeft: '32px' }}
                         >
                           <div className="flex items-start gap-1.5">
-                            <span className="text-[9px] text-gray-400 dark:text-gray-500 flex-shrink-0 w-8 text-right select-none">
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500 flex-shrink-0 w-10 text-right select-none font-mono">
                               {match.line}
                             </span>
-                            <span className="text-[11px] text-gray-600 dark:text-gray-400 truncate group-hover:text-gray-800 dark:group-hover:text-gray-200">
+                            <span className="text-xs text-gray-600 dark:text-gray-400 truncate group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">
                               {highlightMatch(match.line_text.trim(), query)}
                             </span>
                           </div>
@@ -503,7 +503,7 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
                               {match.context.map((ctx) => (
                                 <div
                                   key={ctx.line}
-                                  className="text-[9px] text-gray-400 dark:text-gray-600 truncate"
+                                  className="text-[10px] text-gray-400 dark:text-gray-500 truncate"
                                 >
                                   {ctx.text.trim()}
                                 </div>
@@ -519,9 +519,12 @@ export function WorkspaceSearchPanel({ rootPath, folderPath, onFileSelect, onCle
             })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-600">
-            <Search size={32} className="mb-3 opacity-30" />
-            <span className="text-xs">{t('workspace.searchPlaceholder', '输入关键词开始搜索')}</span>
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+            <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-surface-700/50 flex items-center justify-center mb-4">
+              <Search size={24} className="opacity-50" />
+            </div>
+            <span className="text-sm font-medium">{t('workspace.searchPlaceholder', '输入关键词开始搜索')}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-600 mt-1">支持正则表达式、全词匹配</span>
           </div>
         )}
       </div>

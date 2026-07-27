@@ -5,7 +5,6 @@
  * - 读取真实目录结构（通过 IPC readDir）
  * - 懒加载：展开目录时才读取子目录
  * - 点击文件触发 onFileSelect 回调
- * - 支持文件变化高亮（B8：changedFiles prop）
  * - 右键菜单：文件和文件夹操作
  * - 剪贴板：复制、剪切、粘贴
  * - 内联输入：新建文件/文件夹、重命名
@@ -31,8 +30,6 @@ interface FileTreeProps {
   onFileSelect: (filePath: string, line?: number) => void
   /** 当前选中的文件路径 */
   selectedFile?: string
-  /** 文件变化集合（B8：高亮标记） */
-  changedFiles?: Set<string>
   /** 在文件夹中搜索回调 */
   onSearchInFolder?: (folderPath: string) => void
 }
@@ -188,7 +185,6 @@ interface TreeNodeProps {
   rootPath: string
   onFileSelect: (filePath: string, line?: number) => void
   selectedFile?: string
-  changedFiles?: Set<string>
   /** 内联输入状态 */
   inlineInput: InlineInputState | null
   onSetInlineInput: (state: InlineInputState | null) => void
@@ -218,7 +214,6 @@ function TreeNode({
   rootPath,
   onFileSelect,
   selectedFile,
-  changedFiles,
   inlineInput,
   onSetInlineInput,
   contextMenu,
@@ -239,7 +234,6 @@ function TreeNode({
   const [loaded, setLoaded] = useState(false)
 
   const isSelected = selectedFile === entry.path
-  const isChanged = changedFiles?.has(entry.path) ?? false
   const isRoot = entry.path === rootPath
 
   const handleToggle = useCallback(async () => {
@@ -441,15 +435,10 @@ function TreeNode({
           isSelected
             ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300'
             : 'text-gray-600 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800/60'
-        } ${isChanged ? 'relative' : ''}`}
+        }`}
         style={{ paddingLeft: `${indent + 8}px` }}
         title={entry.path}
       >
-        {/* 变化高亮点 */}
-        {isChanged && (
-          <span className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-amber-400" />
-        )}
-
         {/* 展开/折叠箭头 */}
         {entry.isDirectory ? (
           loading ? (
@@ -523,7 +512,6 @@ function TreeNode({
                 rootPath={rootPath}
                 onFileSelect={onFileSelect}
                 selectedFile={selectedFile}
-                changedFiles={changedFiles}
                 inlineInput={inlineInput}
                 onSetInlineInput={onSetInlineInput}
                 contextMenu={contextMenu}
@@ -557,7 +545,7 @@ function TreeNode({
 
 // ---- 主组件 ----
 
-export function FileTree({ rootPath, onFileSelect, selectedFile, changedFiles, onSearchInFolder }: FileTreeProps) {
+export function FileTree({ rootPath, onFileSelect, selectedFile, onSearchInFolder }: FileTreeProps) {
   const { t } = useAppTranslation()
   const [inlineInput, setInlineInput] = useState<InlineInputState | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
@@ -691,7 +679,6 @@ export function FileTree({ rootPath, onFileSelect, selectedFile, changedFiles, o
         rootPath={rootPath}
         onFileSelect={onFileSelect}
         selectedFile={selectedFile}
-        changedFiles={changedFiles}
         inlineInput={inlineInput}
         onSetInlineInput={setInlineInput}
         contextMenu={contextMenu}
