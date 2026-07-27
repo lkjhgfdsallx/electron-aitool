@@ -24,6 +24,7 @@ module.exports = {
     'src/services/agent-engine.ts',
     'src/hooks/use-chat.ts',
     'src/types/message.ts',
+    'src/services/workspace-command-handler.ts',
   ],
   coverageThreshold: {
     // 覆盖率基线基于当前完整测试集（238 个测试）校准；
@@ -39,6 +40,12 @@ module.exports = {
       functions: 73,
       lines: 75,
       statements: 75,
+    },
+    'src/services/workspace-command-handler.ts': {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
     },
   },
 };

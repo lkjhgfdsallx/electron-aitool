@@ -481,6 +481,8 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       runtimeContext={runtimeContext}
       workspacePath={workspace.folderPath}
       isWorkspaceMode={true}
+      onOpenSettings={onOpenSettings}
+      workspace={workspace}
       inputClassName="flex-shrink-0 border-t border-surface-200 dark:border-surface-700/60"
     />
   )

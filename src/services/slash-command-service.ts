@@ -48,7 +48,7 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
     category: 'agent',
     icon: '👥',
     workspaceOnly: true,
-    template: '/agents',
+    template: '#agents',
   },
   {
     name: 'newtask',
@@ -56,14 +56,14 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
     category: 'agent',
     icon: '🔄',
     workspaceOnly: true,
-    template: '/newtask',
+    template: '#newtask',
   },
   {
     name: 'clear',
     description: '清空当前对话上下文',
     category: 'context',
     icon: '🗑️',
-    template: '/clear',
+    template: '#clear',
   },
   {
     name: 'compact',
@@ -71,7 +71,7 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
     category: 'context',
     icon: '📦',
     workspaceOnly: true,
-    template: '/compact',
+    template: '#compact',
   },
   {
     name: 'approve',
@@ -79,7 +79,7 @@ const BUILTIN_COMMANDS: SlashCommand[] = [
     category: 'workspace',
     icon: '🛡️',
     workspaceOnly: true,
-    template: '/approve',
+    template: '#approve',
   },
   {
     name: 'status',
@@ -155,7 +155,7 @@ export async function searchSlashCommands(
   isWorkspaceMode?: boolean,
 ): Promise<SlashCommand[]> {
   const allCommands = await getSlashCommands(workspacePath)
-  const q = query.toLowerCase().replace(/^\//, '')
+  const q = query.toLowerCase().replace(/^#/, '')
 
   return allCommands.filter((cmd) => {
     // 工作区模式下过滤非工作区命令
@@ -179,7 +179,7 @@ export async function resolveSlashCommand(
   workspacePath?: string,
 ): Promise<{ command?: SlashCommand; message: string }> {
   const trimmed = input.trim()
-  if (!trimmed.startsWith('/')) {
+  if (!trimmed.startsWith('#')) {
     return { message: trimmed }
   }
 
@@ -197,7 +197,7 @@ export async function resolveSlashCommand(
   }
 
   // 使用模板或命令名称
-  let message = command.template ?? `/${command.name}`
+  let message = command.template ?? `#${command.name}`
 
   // 替换参数占位符（简单实现：{args} 替换为实际参数）
   if (args.length > 0) {
@@ -284,7 +284,7 @@ function parseCommandFile(content: string, fallbackName: string): SlashCommand |
     description,
     category,
     icon,
-    template: body || `/${name}`,
+    template: body || `#${name}`,
     frontmatter,
   }
 }

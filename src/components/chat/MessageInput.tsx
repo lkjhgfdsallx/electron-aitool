@@ -8,7 +8,8 @@ import { PromptVariableEngine } from '../../services/prompt-variable-engine'
 import { SlashCommandMenu } from './SlashCommandMenu'
 import { resolveSlashCommand } from '../../services/slash-command-service'
 import type { SlashCommand } from '../../services/slash-command-service'
-import type { MessageAttachment, Prompt, PromptRuntimeContext } from '../../types'
+import { workspaceCommandHandler } from '../../services/workspace-command-handler'
+import type { MessageAttachment, Prompt, PromptRuntimeContext, Workspace } from '../../types'
 import { useAppTranslation } from '@/i18n/hooks'
 
 interface MessageInputProps {
@@ -17,9 +18,14 @@ interface MessageInputProps {
   isStreaming?: boolean
   disabled?: boolean
   onOpenPromptManager?: () => void
+  onOpenSettings?: (section?: string, editId?: string) => void
   runtimeContext?: PromptRuntimeContext
   /** 工作区路径（用于 Slash 命令加载自定义命令） */
   workspacePath?: string
+  /** 当前工作区（用于命令执行器） */
+  workspace?: Workspace
+  /** 当前对话 ID（用于命令执行器） */
+  conversationId?: string
   /** 是否处于工作区模式 */
   isWorkspaceMode?: boolean
 }
@@ -68,7 +74,7 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager, runtimeContext, workspacePath, isWorkspaceMode }: MessageInputProps) {
+export function MessageInput({ onSend, onStop, isStreaming = false, disabled = false, onOpenPromptManager, onOpenSettings, runtimeContext, workspacePath, workspace, conversationId, isWorkspaceMode }: MessageInputProps) {
   const { t } = useAppTranslation()
   const [content, setContent] = useState('')
   const [attachments, setAttachments] = useState<MessageAttachment[]>([])
@@ -78,8 +84,10 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
   const { sendWithEnter, webSearchEnabled, toggleWebSearch } = useSettingsStore()
   const { prompts } = usePromptStore()
 
-  // Slash 命令面板
+  // 工作区指令面板（# 触发）
   const [showSlashPanel, setShowSlashPanel] = useState(false)
+  // 提示词面板（/ 触发）
+  const [showPromptPanel, setShowPromptPanel] = useState(false)
   // 变量填写弹窗
   const [variablePrompt, setVariablePrompt] = useState<Prompt | null>(null)
 
@@ -92,14 +100,22 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     }
   }, [content])
 
-  // 检测 / 触发 Slash 面板
+  // 检测触发字符：/ 触发提示词面板，# 触发工作区指令面板
   useEffect(() => {
-    if (content === '/' || content.startsWith('/')) {
+    // "#" 触发工作区指令面板（仅工作区模式）
+    if (isWorkspaceMode && (content === '#' || content.startsWith('#'))) {
       setShowSlashPanel(true)
+      setShowPromptPanel(false)
+    }
+    // "/" 触发提示词面板（全局）
+    else if (content === '/' || content.startsWith('/')) {
+      setShowPromptPanel(true)
+      setShowSlashPanel(false)
     } else {
       setShowSlashPanel(false)
+      setShowPromptPanel(false)
     }
-  }, [content])
+  }, [content, isWorkspaceMode])
 
   const handleSend = useCallback(() => {
     if ((content.trim() || attachments.length > 0) && !isStreaming && !disabled) {
@@ -111,8 +127,8 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      // Slash 面板激活时，不拦截方向键和回车
-      if (showSlashPanel) return
+      // 面板激活时，不拦截方向键和回车
+      if (showSlashPanel || showPromptPanel) return
 
       if (sendWithEnter) {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -126,7 +142,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
         }
       }
     },
-    [sendWithEnter, handleSend, showSlashPanel],
+    [sendWithEnter, handleSend, showSlashPanel, showPromptPanel],
   )
 
   /** 处理文件选择 */
@@ -205,30 +221,35 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
     setAttachments(prev => prev.filter((_, i) => i !== index))
   }, [])
 
-  /** 从 Slash 命令菜单选择命令 */
+  /** 从工作区指令菜单选择命令 */
   const handleSlashCommandSelect = useCallback(async (command: SlashCommand) => {
     setShowSlashPanel(false)
 
-    // 解析命令并生成消息
-    const input = content.startsWith('/') ? content : `/${command.name}`
-    const resolved = await resolveSlashCommand(input, workspacePath)
+    // 使用命令执行器处理指令
+    if (workspace && conversationId) {
+      const result = await workspaceCommandHandler.execute(
+        command.name,
+        workspace,
+        conversationId,
+        onSend,
+        onOpenSettings,
+      )
 
-    // 判断是否直接发送还是填入编辑区
-    // 对于以 / 开头的动作模板，直接发送；自然语言模板（如 /init, /status）填入编辑区确认
-    const shouldAutoSend = resolved.message.startsWith('/')
-
-    if (shouldAutoSend) {
-      onSend(resolved.message)
-      setContent('')
+      if (!result.success && result.error) {
+        console.error('[Command] 执行失败:', result.error)
+      }
     } else {
+      // 降级：使用旧的解析方式
+      const input = content.startsWith('#') ? content : `#${command.name}`
+      const resolved = await resolveSlashCommand(input, workspacePath)
       setContent(resolved.message)
       textareaRef.current?.focus()
     }
-  }, [content, workspacePath, onSend])
+  }, [content, workspace, conversationId, workspacePath, onSend, onOpenSettings])
 
-  /** 从 Slash 面板选择提示词（保留原有 PromptSearchPanel 的兼容） */
-  const handleSlashSelect = useCallback((prompt: Prompt) => {
-    setShowSlashPanel(false)
+  /** 从提示词面板选择提示词 */
+  const handlePromptSelect = useCallback((prompt: Prompt) => {
+    setShowPromptPanel(false)
 
     // 清除输入的 / 前缀
     setContent('')
@@ -245,7 +266,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
       setContent(rendered.content)
       textareaRef.current?.focus()
     }
-  }, [runtimeContext])
+  }, [runtimeContext, setShowPromptPanel])
 
   /** 变量填写完成 */
   const handleVariableSubmit = useCallback((renderedContent: string) => {
@@ -303,7 +324,7 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isExtracting ? t('chat.parsingFile') : isStreaming ? t('chat.responding') : t('chat.messagePlaceholder')}
+            placeholder={isExtracting ? t('chat.parsingFile') : isStreaming ? t('chat.responding') : isWorkspaceMode ? t('chat.messagePlaceholderWorkspace') : t('chat.messagePlaceholder')}
             disabled={disabled || isStreaming || isExtracting}
             rows={1}
             className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400/80 dark:placeholder-gray-500/80 py-2 max-h-[200px]"
@@ -382,11 +403,36 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
 
         {/* 提示文字 */}
         <div className="text-xs text-muted mt-2.5 text-center">
-          {sendWithEnter ? t('chat.sendShortcut') : t('chat.sendShortcutCtrl')} · {t('chat.openPromptPanel').replace('/', '')}<kbd className="px-1 py-0.5 bg-surface-100 dark:bg-surface-800 rounded text-[10px]">/</kbd>{t('chat.openPromptPanel').split('/').slice(1).join('/')}
+          {sendWithEnter ? t('chat.sendShortcut') : t('chat.sendShortcutCtrl')}
+          {' · '}
+          {t('chat.openPromptPanel')}
+          {isWorkspaceMode && (
+            <>
+              {' · '}
+              {t('chat.openCommandPanel')}
+            </>
+          )}
         </div>
       </div>
 
-      {/* Slash 命令面板 */}
+      {/* 提示词面板（/ 触发，全局可用） */}
+      {showPromptPanel && (
+        <div className="fixed inset-0 z-30" onClick={() => setShowPromptPanel(false)}>
+          <div
+            className="absolute bottom-24 left-1/2 -translate-x-1/2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <PromptSearchPanel
+              prompts={prompts}
+              onSelect={handlePromptSelect}
+              onClose={() => setShowPromptPanel(false)}
+              onOpenPromptManager={onOpenPromptManager}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 工作区指令面板（# 触发，仅工作区模式） */}
       {showSlashPanel && (
         <div className="fixed inset-0 z-30" onClick={() => setShowSlashPanel(false)}>
           <div

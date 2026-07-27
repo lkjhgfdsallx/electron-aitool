@@ -10,6 +10,7 @@ import { Command, Hash, Users, Brain, Settings, X } from 'lucide-react'
 import { searchSlashCommands } from '../../services/slash-command-service'
 import type { SlashCommand } from '../../services/slash-command-service'
 import { useAppTranslation } from '@/i18n/hooks'
+import type { TFunction } from 'i18next'
 
 interface SlashCommandMenuProps {
   /** 当前输入文本（用于搜索过滤） */
@@ -30,6 +31,23 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   agent: <Users size={14} className="text-blue-500" />,
   context: <Brain size={14} className="text-violet-500" />,
   custom: <Hash size={14} className="text-amber-500" />,
+}
+
+/** 获取命令的国际化描述 */
+function getCommandDescription(commandName: string, t: TFunction): string {
+  const descriptionMap: Record<string, string> = {
+    init: t('chat.commandInitDescription'),
+    agents: t('chat.commandAgentsDescription'),
+    newtask: t('chat.commandNewtaskDescription'),
+    clear: t('chat.commandClearDescription'),
+    compact: t('chat.commandCompactDescription'),
+    approve: t('chat.commandApproveDescription'),
+    status: t('chat.commandStatusDescription'),
+    review: t('chat.commandReviewDescription'),
+    test: t('chat.commandTestDescription'),
+    explain: t('chat.commandExplainDescription'),
+  }
+  return descriptionMap[commandName] || ''
 }
 
 export function SlashCommandMenu({
@@ -217,10 +235,10 @@ export function SlashCommandMenu({
                   <span className="text-base flex-shrink-0">{cmd.icon || '⚡'}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                      /{cmd.name}
+                      #{cmd.name}
                     </p>
                     <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-                      {cmd.description}
+                      {getCommandDescription(cmd.name, t) || cmd.description}
                     </p>
                   </div>
                   {cmd.shortcut && (

@@ -37,6 +37,7 @@ export interface ChatViewCoreProps {
   onRejectPlan?: (plan: import('../../types').AgentPlan, reason?: string) => void
   onSend: (content: string, attachments?: MessageAttachment[]) => void
   onStop: () => void
+  onOpenSettings?: (section?: string, editId?: string) => void
   isStreaming?: boolean
   showTimestamp: boolean
   showTokenUsage: boolean
@@ -44,6 +45,7 @@ export interface ChatViewCoreProps {
   messageAlignment: MessageAlignment
   runtimeContext?: PromptRuntimeContext
   workspacePath?: string
+  workspace?: import('../../types').Workspace
   isWorkspaceMode?: boolean
   onOpenPromptManager?: () => void
   inputClassName?: string
@@ -66,6 +68,7 @@ export function ChatViewCore({
   onRejectPlan,
   onSend,
   onStop,
+  onOpenSettings,
   isStreaming,
   showTimestamp,
   showTokenUsage,
@@ -73,6 +76,7 @@ export function ChatViewCore({
   messageAlignment,
   runtimeContext,
   workspacePath,
+  workspace,
   isWorkspaceMode,
   onOpenPromptManager,
   inputClassName,
@@ -174,8 +178,11 @@ export function ChatViewCore({
           onStop={onStop}
           isStreaming={streaming}
           onOpenPromptManager={onOpenPromptManager}
+          onOpenSettings={onOpenSettings}
           runtimeContext={runtimeContext}
           workspacePath={workspacePath}
+          workspace={workspace}
+          conversationId={conversationId}
           isWorkspaceMode={isWorkspaceMode}
         />
       </div>
