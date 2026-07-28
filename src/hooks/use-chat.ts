@@ -20,6 +20,7 @@ import { useAIProviderStore } from '../stores/ai-provider-store'
 import { useWorkspaceStore } from '../stores/workspace-store'
 import { useWorkspaceAgentStore } from '../stores/workspace-agent-store'
 import { useSettingsStore } from '../stores'
+import { useDebugStore } from '../stores/debug-store'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import { applyWebSearchPolicy, getWebToolsIfEnabled, isWebTool } from '../utils/web-tools'
 import { DEFAULT_POST_WRITE_LINT_CONFIG } from '../types'
@@ -289,9 +290,11 @@ export function useChat(options: UseChatOptions = {}) {
         ...useMCPToolStore.getState().mcpTools,
         ...useCustomToolStore.getState().customTools.filter((t) => t.enabled),
       ]
-      const targetTools = allTools.filter(
-        (t) => targetAgent.enabledToolIds.includes(t.id) && t.enabled
-      )
+      // 当 Agent 未配置 enabledToolIds（通常由 AI 领导通过 workspace_create_agent 创建的 sub-agent）
+      // 或 enabledToolIds 为空数组时，默认授予全部可用工具，避免 sub-agent 完全无工具可用。
+      const targetTools = targetAgent.enabledToolIds.length > 0
+        ? allTools.filter((t) => targetAgent.enabledToolIds.includes(t.id) && t.enabled)
+        : allTools
 
       // 从 store 读取最新的团队成员列表（而非使用快照）
       const freshWs = useWorkspaceStore.getState().workspaces.find((w) => w.id === ws.id)
@@ -1061,6 +1064,32 @@ export function useChat(options: UseChatOptions = {}) {
                   updateMessage(assistantMsg.id, { siteAnalyzerProgress: undefined })
                 }, 3000)
               }
+            },
+            onDebugInfo: (debugInfo) => {
+              if (useDebugStore.getState().debugMode) {
+                const conv = getConversation(convId)
+                const workspace = conv?.workspaceId
+                  ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
+                  : undefined
+                useDebugStore.getState().addDebugInfo({
+                  id: uuidv4(),
+                  messageId: assistantMsg.id,
+                  conversationId: convId,
+                  timestamp: debugInfo.timestamp,
+                  url: debugInfo.url,
+                  method: debugInfo.method,
+                  requestHeaders: debugInfo.requestHeaders,
+                  requestBody: debugInfo.requestBody,
+                  responseHeaders: debugInfo.responseHeaders,
+                  responseStatus: debugInfo.responseStatus,
+                  responseBody: debugInfo.responseBody,
+                  agentInfo: agent ? {
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    isLeader: agent.id === workspace?.leaderAgentId
+                  } : undefined
+                })
+              }
             }
           },
           wsContext,
@@ -1282,6 +1311,23 @@ export function useChat(options: UseChatOptions = {}) {
                 isError: true
               })
               isStreamingRef.current = false
+            },
+            onDebugInfo: (debugInfo) => {
+              if (useDebugStore.getState().debugMode) {
+                useDebugStore.getState().addDebugInfo({
+                  id: uuidv4(),
+                  messageId: assistantMsg.id,
+                  conversationId: convId,
+                  timestamp: debugInfo.timestamp,
+                  url: debugInfo.url,
+                  method: debugInfo.method,
+                  requestHeaders: debugInfo.requestHeaders,
+                  requestBody: debugInfo.requestBody,
+                  responseHeaders: debugInfo.responseHeaders,
+                  responseStatus: debugInfo.responseStatus,
+                  responseBody: debugInfo.responseBody
+                })
+              }
             }
           },
           resolveCurrentRequestConfig(convId)
@@ -1624,6 +1670,23 @@ export function useChat(options: UseChatOptions = {}) {
               reasoningContent: reasoningContent || undefined
             })
             isStreamingRef.current = false
+          },
+          onDebugInfo: (debugInfo) => {
+            if (useDebugStore.getState().debugMode) {
+              useDebugStore.getState().addDebugInfo({
+                id: uuidv4(),
+                messageId: replyMsg.id,
+                conversationId,
+                timestamp: debugInfo.timestamp,
+                url: debugInfo.url,
+                method: debugInfo.method,
+                requestHeaders: debugInfo.requestHeaders,
+                requestBody: debugInfo.requestBody,
+                responseHeaders: debugInfo.responseHeaders,
+                responseStatus: debugInfo.responseStatus,
+                responseBody: debugInfo.responseBody
+              })
+            }
           }
         },
         resolveCurrentRequestConfig(conversationId)
@@ -1841,6 +1904,32 @@ export function useChat(options: UseChatOptions = {}) {
                   updateMessage(assistantMsg.id, { siteAnalyzerProgress: undefined })
                 }, 3000)
               }
+            },
+            onDebugInfo: (debugInfo) => {
+              if (useDebugStore.getState().debugMode) {
+                const conv = getConversation(currentConversationId)
+                const workspace = conv?.workspaceId
+                  ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
+                  : undefined
+                useDebugStore.getState().addDebugInfo({
+                  id: uuidv4(),
+                  messageId: assistantMsg.id,
+                  conversationId: currentConversationId,
+                  timestamp: debugInfo.timestamp,
+                  url: debugInfo.url,
+                  method: debugInfo.method,
+                  requestHeaders: debugInfo.requestHeaders,
+                  requestBody: debugInfo.requestBody,
+                  responseHeaders: debugInfo.responseHeaders,
+                  responseStatus: debugInfo.responseStatus,
+                  responseBody: debugInfo.responseBody,
+                  agentInfo: agent ? {
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    isLeader: agent.id === workspace?.leaderAgentId
+                  } : undefined
+                })
+              }
             }
           },
           wsContext,
@@ -1934,6 +2023,23 @@ export function useChat(options: UseChatOptions = {}) {
                 streamingBufferRef.current.flush()
                 updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
                 isStreamingRef.current = false
+              },
+              onDebugInfo: (debugInfo) => {
+                if (useDebugStore.getState().debugMode) {
+                  useDebugStore.getState().addDebugInfo({
+                    id: uuidv4(),
+                    messageId: assistantMsg.id,
+                    conversationId: currentConversationId,
+                    timestamp: debugInfo.timestamp,
+                    url: debugInfo.url,
+                    method: debugInfo.method,
+                    requestHeaders: debugInfo.requestHeaders,
+                    requestBody: debugInfo.requestBody,
+                    responseHeaders: debugInfo.responseHeaders,
+                    responseStatus: debugInfo.responseStatus,
+                    responseBody: debugInfo.responseBody
+                  })
+                }
               }
             },
             resolveCurrentRequestConfig(currentConversationId)
@@ -2272,6 +2378,32 @@ export function useChat(options: UseChatOptions = {}) {
                   updateMessage(assistantMsg.id, { siteAnalyzerProgress: undefined })
                 }, 3000)
               }
+            },
+            onDebugInfo: (debugInfo) => {
+              if (useDebugStore.getState().debugMode) {
+                const conv = getConversation(currentConversationId)
+                const workspace = conv?.workspaceId
+                  ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
+                  : undefined
+                useDebugStore.getState().addDebugInfo({
+                  id: uuidv4(),
+                  messageId: assistantMsg.id,
+                  conversationId: currentConversationId,
+                  timestamp: debugInfo.timestamp,
+                  url: debugInfo.url,
+                  method: debugInfo.method,
+                  requestHeaders: debugInfo.requestHeaders,
+                  requestBody: debugInfo.requestBody,
+                  responseHeaders: debugInfo.responseHeaders,
+                  responseStatus: debugInfo.responseStatus,
+                  responseBody: debugInfo.responseBody,
+                  agentInfo: agent ? {
+                    agentId: agent.id,
+                    agentName: agent.name,
+                    isLeader: agent.id === workspace?.leaderAgentId
+                  } : undefined
+                })
+              }
             }
           },
           wsContext,
@@ -2365,6 +2497,23 @@ export function useChat(options: UseChatOptions = {}) {
                 streamingBufferRef.current.flush()
                 updateMessage(assistantMsg.id, { content: fullContent || error, isStreaming: false, isError: true })
                 isStreamingRef.current = false
+              },
+              onDebugInfo: (debugInfo) => {
+                if (useDebugStore.getState().debugMode) {
+                  useDebugStore.getState().addDebugInfo({
+                    id: uuidv4(),
+                    messageId: assistantMsg.id,
+                    conversationId: currentConversationId,
+                    timestamp: debugInfo.timestamp,
+                    url: debugInfo.url,
+                    method: debugInfo.method,
+                    requestHeaders: debugInfo.requestHeaders,
+                    requestBody: debugInfo.requestBody,
+                    responseHeaders: debugInfo.responseHeaders,
+                    responseStatus: debugInfo.responseStatus,
+                    responseBody: debugInfo.responseBody
+                  })
+                }
               }
             },
             resolveCurrentRequestConfig(currentConversationId)
@@ -2587,6 +2736,32 @@ export function useChat(options: UseChatOptions = {}) {
                   siteAnalyzerProgress: progress as unknown as SiteAnalyzerLiveProgress
                 })
               },
+              onDebugInfo: (debugInfo) => {
+                if (useDebugStore.getState().debugMode) {
+                  const conv = getConversation(convId)
+                  const workspace = conv?.workspaceId
+                    ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
+                    : undefined
+                  useDebugStore.getState().addDebugInfo({
+                    id: uuidv4(),
+                    messageId,
+                    conversationId: convId,
+                    timestamp: debugInfo.timestamp,
+                    url: debugInfo.url,
+                    method: debugInfo.method,
+                    requestHeaders: debugInfo.requestHeaders,
+                    requestBody: debugInfo.requestBody,
+                    responseHeaders: debugInfo.responseHeaders,
+                    responseStatus: debugInfo.responseStatus,
+                    responseBody: debugInfo.responseBody,
+                    agentInfo: agent ? {
+                      agentId: agent.id,
+                      agentName: agent.name,
+                      isLeader: agent.id === workspace?.leaderAgentId
+                    } : undefined
+                  })
+                }
+              },
             },
             wsContext,
             convId,
@@ -2668,6 +2843,23 @@ export function useChat(options: UseChatOptions = {}) {
                   continuable: 'normal' // 出错后仍可重试继续
                 })
                 isStreamingRef.current = false
+              },
+              onDebugInfo: (debugInfo) => {
+                if (useDebugStore.getState().debugMode) {
+                  useDebugStore.getState().addDebugInfo({
+                    id: uuidv4(),
+                    messageId,
+                    conversationId: convId,
+                    timestamp: debugInfo.timestamp,
+                    url: debugInfo.url,
+                    method: debugInfo.method,
+                    requestHeaders: debugInfo.requestHeaders,
+                    requestBody: debugInfo.requestBody,
+                    responseHeaders: debugInfo.responseHeaders,
+                    responseStatus: debugInfo.responseStatus,
+                    responseBody: debugInfo.responseBody
+                  })
+                }
               }
             },
             resolveCurrentRequestConfig(convId)

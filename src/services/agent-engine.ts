@@ -29,7 +29,7 @@ import type {
   PromptVariable,
   AgentWorkflow,
 } from '../types'
-import { aiService } from './ai-service'
+import { aiService, type DebugRequestInfo } from './ai-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { knowledgeBaseService } from './knowledge-base-service'
@@ -74,6 +74,8 @@ export interface AgentEngineCallbacks {
   onReportReady?: (reportHtml: string) => void
   /** 网站分析实时进度回调 */
   onSiteAnalyzerProgress?: (progress: { taskId: string; type: string; message: string; pagesCrawled?: number; totalPages?: number; apisFound?: number; pagesAnalyzed?: number; currentUrl?: string; error?: string }) => void
+  /** AI 请求调试信息回调 */
+  onDebugInfo?: (debugInfo: DebugRequestInfo) => void
 }
 
 /**
@@ -1049,6 +1051,10 @@ async function agentLoopBody(
           },
           onError: (error) => {
             throw new Error(error)
+          },
+          onDebugInfo: (debugInfo) => {
+            // 透传调试信息到上层回调
+            callbacks.onDebugInfo?.(debugInfo)
           }
         },
         requestConfig

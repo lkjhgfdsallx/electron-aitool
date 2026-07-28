@@ -10,7 +10,7 @@ import { ChatViewCore } from '../chat/ChatViewCore'
 import { ModelSelector } from '../chat/ModelSelector'
 import { CompressionIndicator } from './CompressionIndicator'
 import { useConversationStore } from '../../stores/conversation-store'
-import { useSettingsStore } from '../../stores'
+import { useSettingsStore, useDebugStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useChat, hasUsableAIProvider } from '../../hooks/use-chat'
@@ -83,12 +83,17 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
   const [activeConvId, setActiveConvId] = useState<string | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
 
+  // 等待 Leader Agent 加载完成后再创建对话
+  // 复用下方已有的 leaderAgent 定义（避免重复声明），此处只做对话创建逻辑
   useEffect(() => {
     if (workspaceConversations.length === 0) {
+      const leaderAgent = getLeaderAgent()
+      const targetAgentId = workspace.leaderAgentId || leaderAgent?.id
+      if (!targetAgentId) return // Leader Agent 尚未加载完成，等待下一次渲染
       const conv = createConversation(
         workspace.name,
         undefined,
-        workspace.leaderAgentId,
+        targetAgentId,
         workspace.id
       )
       if (workspace.knowledgeBaseIds.length > 0) {
@@ -103,13 +108,18 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       selectConversation(workspaceConversations[0].id)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceConversations.length, activeConvId, workspace.id])
+  }, [workspaceConversations.length, activeConvId, workspace.id, workspace.leaderAgentId, getLeaderAgent])
 
   useEffect(() => {
     if (activeConvId) {
       loadConversationMessages(activeConvId)
     }
   }, [activeConvId, loadConversationMessages])
+
+  // 切换对话时同步调试 store（自动清除旧对话调试信息）
+  useEffect(() => {
+    useDebugStore.getState().setActiveConversation(activeConvId)
+  }, [activeConvId])
 
   useEffect(() => {
     if (!showDropdown) return
@@ -123,10 +133,17 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
   }, [showDropdown])
 
   const handleCreateConversation = useCallback(() => {
+    // 确保使用加载完成的 Leader Agent ID
+    const leaderAgent = getLeaderAgent()
+    const targetAgentId = workspace.leaderAgentId || leaderAgent?.id
+    if (!targetAgentId) {
+      console.warn('[WorkspaceChatPanel] 无法创建对话：Leader Agent 未加载')
+      return
+    }
     const conv = createConversation(
       `${workspace.name} - ${workspaceConversations.length + 1}`,
       undefined,
-      workspace.leaderAgentId,
+      targetAgentId,
       workspace.id
     )
     if (workspace.knowledgeBaseIds.length > 0) {
@@ -137,7 +154,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
     setActiveConvId(conv.id)
     selectConversation(conv.id)
     setShowDropdown(false)
-  }, [workspace, workspaceConversations.length, createConversation, selectConversation])
+  }, [workspace, workspaceConversations.length, createConversation, selectConversation, getLeaderAgent])
 
   const handleSwitchConversation = useCallback((convId: string) => {
     setActiveConvId(convId)

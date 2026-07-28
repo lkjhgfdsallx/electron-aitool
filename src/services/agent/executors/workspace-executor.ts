@@ -864,7 +864,10 @@ export class WorkspaceToolExecutor implements ToolExecutor {
         error: `以下工具不在当前可授权目录中或已被禁用：${invalidToolIds.join('、')}`,
       }
     }
+    // Leader 未显式传递 enabled_tool_ids 时，默认授予全部可用工具。
+    // 这样即使 Leader prompt 中忘记指定工具，sub-agent 也不会完全无工具可用。
     const enabledToolIds = normalizedToolIds?.filter((toolId): toolId is string => Boolean(toolId))
+      ?? ALL_AGENT_TOOLS.map((t) => t.id)
 
     // 与用户手动创建 Agent 的可配置能力保持一致：工具、知识库、Skills、策略、模型、审批、工作流等均透传。
     const planningStrategy = typeof args.planning_strategy === 'string' ? (args.planning_strategy as CreateAgentInput['planningStrategy']) : undefined

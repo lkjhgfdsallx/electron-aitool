@@ -7,6 +7,7 @@ import { languages } from '@/i18n/config'
 import { useAppTranslation } from '@/i18n/hooks'
 import hljs from 'highlight.js'
 import { useSettingsStore, applyCSSVariables } from '../../stores/settings-store'
+import { useDebugStore } from '../../stores/debug-store'
 import type { CodeHighlightTheme, MessageAlignment } from '../../types'
 import { isShortcutBindingSupported } from '../../types'
 import { SettingsToggle, SettingsSlider, SettingsSelect, SettingsHeader, SettingsSectionHeader, SettingsCard } from './ui'
@@ -162,6 +163,9 @@ export function UIPreferencesSection() {
     { label: t('settings.soundNone'), value: 'none' },
   ], [t])
 
+  const debugMode = useDebugStore((s) => s.debugMode)
+  const toggleDebugMode = useDebugStore((s) => s.toggleDebugMode)
+
   const toggleItems = useMemo(() => [
     {
       label: t('settings.showTokenUsage'),
@@ -186,8 +190,14 @@ export function UIPreferencesSection() {
       description: t('settings.webSearchEnabledDesc'),
       checked: settings.webSearchEnabled,
       onChange: () => settings.toggleWebSearch()
+    },
+    {
+      label: t('settings.debugMode'),
+      description: t('settings.debugModeDesc'),
+      checked: debugMode,
+      onChange: () => toggleDebugMode()
     }
-  ], [t, settings])
+  ], [t, settings, debugMode, toggleDebugMode])
 
   return (
     <div className="space-y-8">

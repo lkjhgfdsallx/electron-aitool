@@ -7,7 +7,7 @@ import type { SiteAnalyzerFormData } from './SiteAnalyzerForm'
 import { BrandLogo } from '../brand'
 import { BRAND } from '../../constants/brand'
 import { useConversationStore } from '../../stores/conversation-store'
-import { useSettingsStore } from '../../stores'
+import { useSettingsStore, useDebugStore } from '../../stores'
 import { useAgentStore } from '../../stores/agent-store'
 import { useKnowledgeCollectionStore } from '../../stores/knowledge-collection-store'
 import { useChat, hasUsableAIProvider, MISSING_AI_PROVIDER_MESSAGE } from '../../hooks/use-chat'
@@ -78,6 +78,11 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       loadConversationMessages(currentConversationId)
     }
   }, [currentConversationId, loadConversationMessages])
+
+  // 切换对话时同步调试 store（自动清除旧对话调试信息）
+  useEffect(() => {
+    useDebugStore.getState().setActiveConversation(currentConversationId)
+  }, [currentConversationId])
 
   // 点击外部关闭知识库下拉菜单
   useEffect(() => {

@@ -1,5 +1,22 @@
 import type { Message, ResolvedAIConfig, ToolDefinition, ProviderRequestConfig } from '../types'
 
+/** 估算请求 token 数量（粗略计算：平均每 3 个字符约 1 个 token） */
+function estimateRequestTokens(
+  messages: Array<{ content: string | Array<{ type: string; text?: string }> | null }>,
+  systemPrompt: string | null
+): number {
+  let totalChars = 0
+  if (systemPrompt) {
+    totalChars += systemPrompt.length
+  }
+  for (const msg of messages) {
+    const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+    totalChars += contentStr.length
+  }
+  // 简单估算：平均每 3 个字符约 1 个 token
+  return Math.ceil(totalChars / 3)
+}
+
 /**
  * 按 baseUrl 记录上次请求完成时间，用于 Provider 级 API 请求频率限制。
  * key = 规范化后的 baseUrl
@@ -45,6 +62,26 @@ function markRequestCompleted(baseUrl: string): void {
   lastRequestAtByBaseUrl.set(baseUrl.replace(/\/+$/, ''), Date.now())
 }
 
+/** AI 请求调试信息（原始 HTTP 请求/响应） */
+export interface DebugRequestInfo {
+  /** 请求时间戳 */
+  timestamp: number
+  /** 请求 URL */
+  url: string
+  /** 请求方法 */
+  method: string
+  /** 请求头 */
+  requestHeaders: Record<string, string>
+  /** 请求体（JSON 字符串） */
+  requestBody: string
+  /** 响应头 */
+  responseHeaders: Record<string, string>
+  /** 响应状态码 */
+  responseStatus: number
+  /** 响应体（SSE 流原始数据，JSON 字符串） */
+  responseBody: string
+}
+
 export interface StreamCallbacks {
   onToken: (token: string) => void
   onReasoningToken?: (token: string) => void
@@ -55,6 +92,8 @@ export interface StreamCallbacks {
    */
   onDone: (finishReason?: string) => void
   onError: (error: string) => void
+  /** 调试信息回调（请求发送后立即触发） */
+  onDebugInfo?: (debugInfo: DebugRequestInfo) => void
 }
 
 interface ChatCompletionMessage {
@@ -98,6 +137,31 @@ export const aiService = {
     if (!apiKey && !isLocal) {
       callbacks.onError('请先配置 API Key')
       return
+    }
+
+    /**
+     * 过滤助手回复中包含的系统提示词注入片段。
+     * 当 AI 回复以系统提示词特征开头时（"## 可用工具"、"## 工作区信息" 等），
+     * 截断到注入点，避免历史消息中混入系统提示词导致重复注入。
+     */
+    const filterSystemPromptFragment = (content: string): string => {
+      const markers = [
+        '## 可用工具',
+        '## 工作区信息',
+        '## 知识库参考内容',
+        '## 团队成员',
+        '## 记忆',
+      ]
+      for (const marker of markers) {
+        const idx = content.indexOf(marker)
+        if (idx > 0) {
+          // 在标记前有换行（典型的注入结构），截断
+          if (content[idx - 1] === '\n') {
+            return content.substring(0, idx).trimEnd()
+          }
+        }
+      }
+      return content
     }
 
     // 构建请求消息
@@ -181,15 +245,43 @@ export const aiService = {
             })
           }
         } else {
+          // 跳过空内容用户消息（防止 OpenAI "message content cannot be empty" 错误）
+          if (!msg.content?.trim()) continue
           requestMessages.push({
             role: msg.role,
             content: msg.content
           })
         }
       } else {
+        // 处理其他角色（主要是 assistant）
+        // 过滤助手回复中的系统提示词注入片段
+        let content = msg.content
+        if (msg.role === 'assistant' && content) {
+          content = filterSystemPromptFragment(content)
+        }
+        // 跳过空内容消息（防止 OpenAI "message content cannot be empty" 错误）
+        // 注意：此分支中 msg.role 已被排除 'tool'/'user'，只能是 'system'/'assistant'
+        if (!content?.trim()) {
+          // 如果是 assistant 且有工具调用，保留消息但设置 content 为 null
+          if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+            requestMessages.push({
+              role: msg.role,
+              content: null,
+              tool_calls: msg.toolCalls.map((tc) => ({
+                id: tc.id,
+                type: 'function' as const,
+                function: {
+                  name: tc.name,
+                  arguments: tc.arguments
+                }
+              }))
+            })
+          }
+          continue
+        }
         requestMessages.push({
           role: msg.role,
-          content: msg.content
+          content: content || null
         })
       }
     }
@@ -236,16 +328,19 @@ export const aiService = {
     // 单次请求（带重试）
     let lastError: string = ''
     const maxRetries = requestConfig?.maxRetries || 0
+    const requestUrl = `${baseUrl}/chat/completions`
+    const requestBody = JSON.stringify(body, null, 2)
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         await this._doStreamRequest(
-          `${baseUrl}/chat/completions`,
+          requestUrl,
           headers,
           body,
           signal,
           requestConfig?.timeout,
-          callbacks
+          callbacks,
+          requestBody
         )
         markRequestCompleted(baseUrl)
         return // 请求成功，_doStreamRequest 内部已调用 onDone
@@ -281,7 +376,8 @@ export const aiService = {
     body: Record<string, unknown>,
     signal: AbortSignal,
     _timeout?: number,
-    callbacks?: StreamCallbacks
+    callbacks?: StreamCallbacks,
+    requestBodyStr?: string
   ): Promise<void> {
     // 直接使用外部 signal，不做任何超时限制
     const controller = new AbortController()
@@ -293,6 +389,8 @@ export const aiService = {
     let receivedDone = false
     // 追踪模型返回的 finish_reason
     let lastFinishReason: string | undefined
+    // 收集原始 SSE 响应数据（用于调试）
+    const rawResponseChunks: string[] = []
 
     try {
       const response = await fetch(url, {
@@ -302,6 +400,13 @@ export const aiService = {
         signal: controller.signal
       })
 
+      // 收集响应头
+      const responseHeaders: Record<string, string> = {}
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value
+      })
+      const responseStatus = response.status
+
       if (!response.ok) {
         const errorText = await response.text()
         let errorMessage = `API 请求失败 (${response.status})`
@@ -310,6 +415,19 @@ export const aiService = {
           errorMessage = errorJson.error?.message || errorMessage
         } catch {
           errorMessage = errorText || errorMessage
+        }
+        // 错误响应也触发调试回调
+        if (callbacks?.onDebugInfo && requestBodyStr) {
+          callbacks.onDebugInfo({
+            timestamp: Date.now(),
+            url,
+            method: 'POST',
+            requestHeaders: { ...headers },
+            requestBody: requestBodyStr,
+            responseHeaders,
+            responseStatus,
+            responseBody: errorText
+          })
         }
         throw new Error(errorMessage)
       }
@@ -332,7 +450,9 @@ export const aiService = {
         const { done, value } = await reader.read()
         if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
+        const chunk = decoder.decode(value, { stream: true })
+        rawResponseChunks.push(chunk)
+        buffer += chunk
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
@@ -354,6 +474,19 @@ export const aiService = {
                     arguments: tc.arguments
                   }))
               )
+            }
+            // 触发调试信息回调
+            if (callbacks?.onDebugInfo && requestBodyStr) {
+              callbacks.onDebugInfo({
+                timestamp: Date.now(),
+                url,
+                method: 'POST',
+                requestHeaders: { ...headers },
+                requestBody: requestBodyStr,
+                responseHeaders,
+                responseStatus,
+                responseBody: rawResponseChunks.join('')
+              })
             }
             callbacks?.onDone(lastFinishReason || 'stop')
             return
@@ -417,6 +550,19 @@ export const aiService = {
       // 流结束但未收到 [DONE] 标记 → 连接异常中断
       if (!receivedDone) {
         console.warn('[ai-service] 流连接异常中断：未收到 [DONE] 标记')
+        // 触发调试信息回调
+        if (callbacks?.onDebugInfo && requestBodyStr) {
+          callbacks.onDebugInfo({
+            timestamp: Date.now(),
+            url,
+            method: 'POST',
+            requestHeaders: { ...headers },
+            requestBody: requestBodyStr,
+            responseHeaders,
+            responseStatus,
+            responseBody: rawResponseChunks.join('')
+          })
+        }
         // 如果有 finish_reason，说明模型侧正常结束但连接提前断开
         callbacks?.onDone(lastFinishReason || 'abort')
       } else {

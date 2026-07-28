@@ -30,6 +30,7 @@ import { AgentStepDisplay } from './AgentStepDisplay'
 import { SiteAnalyzerProgressPanel } from './SiteAnalyzerProgressPanel'
 import { AiChangesCard } from '../workspace/AiChangesCard'
 import { reportStore } from '../../services/report-store'
+import { DebugRequestViewer } from './DebugRequestViewer'
 import type { Message, AgentPlan } from '../../types'
 import type { AiTurnChanges } from '../../types/ai-changes'
 import { useAppTranslation } from '@/i18n/hooks'
@@ -462,6 +463,8 @@ export const MessageItem = memo(function MessageItem({
                 {message.continuable === 'agent' ? t('chat.continueExecuting') : t('chat.continueGenerating')}
               </button>
             )}
+            {/* 调试按钮（仅调试模式开启时显示） */}
+            <DebugRequestViewer messageId={message.id} />
           </div>
         )}
       </div>
