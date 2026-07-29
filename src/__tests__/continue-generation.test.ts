@@ -41,6 +41,11 @@ jest.mock('../services/built-in-tools', () => ({
   BUILT_IN_TOOLS: [],
   AGENT_BUILTIN_TOOLS: [],
   WORKSPACE_TOOLS: [],
+  PLAN_EXECUTE_TOOL_IDS: [
+    'agent-builtin:create_plan',
+    'agent-builtin:update_task',
+    'agent-builtin:get_plan',
+  ],
 }))
 
 jest.mock('../services/report-store', () => ({

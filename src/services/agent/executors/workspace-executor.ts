@@ -15,7 +15,7 @@
 
 import { workspaceFsService } from '../../workspace-fs-service'
 import { formatPostWriteLintBlock, runPostWriteLint } from '../../workspace-post-write-lint'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../../built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS, PLAN_EXECUTE_TOOL_IDS } from '../../built-in-tools'
 import { isToolAutoApproved } from '../../tool-group-service'
 import { useConversationStore } from '../../../stores/conversation-store'
 import { useWorkspaceAgentStore } from '../../../stores/workspace-agent-store'
@@ -866,11 +866,17 @@ export class WorkspaceToolExecutor implements ToolExecutor {
     }
     // Leader 未显式传递 enabled_tool_ids 时，默认授予全部可用工具。
     // 这样即使 Leader prompt 中忘记指定工具，sub-agent 也不会完全无工具可用。
-    const enabledToolIds = normalizedToolIds?.filter((toolId): toolId is string => Boolean(toolId))
+    let enabledToolIds = normalizedToolIds?.filter((toolId): toolId is string => Boolean(toolId))
       ?? ALL_AGENT_TOOLS.map((t) => t.id)
 
     // 与用户手动创建 Agent 的可配置能力保持一致：工具、知识库、Skills、策略、模型、审批、工作流等均透传。
     const planningStrategy = typeof args.planning_strategy === 'string' ? (args.planning_strategy as CreateAgentInput['planningStrategy']) : undefined
+    // plan-and-execute：强制合并规划三件套，避免子 Agent 请求无 create_plan
+    if (planningStrategy === 'plan-and-execute') {
+      for (const id of PLAN_EXECUTE_TOOL_IDS) {
+        if (!enabledToolIds.includes(id)) enabledToolIds = [...enabledToolIds, id]
+      }
+    }
     const memoryConfig = args.memory_config && typeof args.memory_config === 'object' ? (args.memory_config as CreateAgentInput['memoryConfig']) : undefined
     const termination = args.termination_config && typeof args.termination_config === 'object' ? (args.termination_config as CreateAgentInput['termination']) : undefined
     const modelConfig = args.model_config && typeof args.model_config === 'object' ? (args.model_config as CreateAgentInput['modelConfig']) : undefined

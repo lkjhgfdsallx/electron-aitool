@@ -161,6 +161,11 @@ jest.mock('../services/built-in-tools', () => ({
   get WORKSPACE_TOOLS() {
     return mockWorkspaceTools
   },
+  PLAN_EXECUTE_TOOL_IDS: [
+    'agent-builtin:create_plan',
+    'agent-builtin:update_task',
+    'agent-builtin:get_plan',
+  ],
   // 供 buildAgentSystemPrompt 脱敏逻辑识别已知工具名
   BUILT_IN_TOOLS: [
     { id: 'builtin:web_search', name: 'web_search' },
@@ -168,15 +173,15 @@ jest.mock('../services/built-in-tools', () => ({
     { id: 'builtin:create_plan_alias_unused', name: 'calculate' },
   ],
   AGENT_BUILTIN_TOOLS: [
-    { id: 'agent-builtin:create_plan', name: 'create_plan' },
-    { id: 'agent-builtin:update_task', name: 'update_task' },
-    { id: 'agent-builtin:get_plan', name: 'get_plan' },
-    { id: 'agent-builtin:list_skills', name: 'list_skills' },
-    { id: 'agent-builtin:use_skill', name: 'use_skill' },
-    { id: 'agent-builtin:remember', name: 'remember' },
-    { id: 'agent-builtin:recall', name: 'recall' },
-    { id: 'agent-builtin:forget', name: 'forget' },
-    { id: 'agent-builtin:list_memories', name: 'list_memories' },
+    { id: 'agent-builtin:create_plan', name: 'create_plan', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:update_task', name: 'update_task', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:get_plan', name: 'get_plan', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:list_skills', name: 'list_skills', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:use_skill', name: 'use_skill', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:remember', name: 'remember', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:recall', name: 'recall', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:forget', name: 'forget', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:list_memories', name: 'list_memories', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
   ],
 }))
 
@@ -634,9 +639,9 @@ describe('runAgent - 正常模式', () => {
 
     it('不应执行未勾选的工具（即使模型发起了调用）', async () => {
       shouldReturnToolCalls = true
-      // agent 未启用 test-tool
+      // 显式白名单不含 test-tool（空数组语义已改为「默认全部」，不能再用于表示禁用）
       const agent = createMockAgent({
-        enabledToolIds: [],
+        enabledToolIds: ['other-tool-not-test'],
         termination: { maxSteps: 3, timeoutSeconds: 0, autoStopOnGoal: true },
       })
       const tools = createMockTools()
@@ -705,7 +710,7 @@ describe('runAgent - 正常模式', () => {
       const agent = createMockAgent({
         // systemPrompt 故意硬编码未启用工具，引擎应脱敏
         systemPrompt: '你可以使用 `workspace_write_file` 和 create_plan，以及 list_skills。',
-        planningStrategy: 'plan-and-execute',
+        planningStrategy: 'react',
         enabledToolIds: ['workspace:list_files'],
         termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
       })
@@ -739,6 +744,112 @@ describe('runAgent - 正常模式', () => {
       expect(prompt).not.toContain('list_skills')
       // 已启用工具应出现
       expect(prompt).toContain('workspace_list_files')
+    })
+
+    it('plan-and-execute 应自动并入规划三件套并出现在 tools 中', async () => {
+      const agent = createMockAgent({
+        planningStrategy: 'plan-and-execute',
+        enabledToolIds: ['workspace:list_files', 'workspace:write_file'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+      }
+      const { toolService } = require('../services/tool-service')
+      const toToolDefsSpy = toolService.toToolDefinitions as jest.Mock
+      toToolDefsSpy.mockClear()
+
+      await runAgent(
+        agent,
+        '规划任务',
+        [],
+        [],
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext,
+      )
+
+      expect(toToolDefsSpy).toHaveBeenCalled()
+      const passedTools = toToolDefsSpy.mock.calls[0][0] as Tool[]
+      const ids = passedTools.map((t) => t.id)
+      expect(ids).toContain('agent-builtin:create_plan')
+      expect(ids).toContain('agent-builtin:update_task')
+      expect(ids).toContain('agent-builtin:get_plan')
+      expect(passedTools.length).toBeGreaterThan(0)
+      // 规划阶段提示不应再把 create_plan 脱敏成「当前未启用」
+      expect(capturedSystemPrompt).toBeTruthy()
+      expect(capturedSystemPrompt as string).toContain('create_plan')
+      expect(capturedSystemPrompt as string).not.toMatch(/必须.*（当前未启用）/)
+    })
+
+    it('未关联知识库时不应调用 searchAndFormatContext（严格模式）', async () => {
+      const { knowledgeBaseService } = require('../services/knowledge-base-service')
+      const searchSpy = knowledgeBaseService.searchAndFormatContext as jest.Mock
+      searchSpy.mockClear()
+
+      const agent = createMockAgent({
+        enabledToolIds: ['workspace:list_files'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+        knowledgeBaseIds: [],
+      }
+
+      await runAgent(
+        agent,
+        '随便问',
+        [],
+        [],
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext,
+      )
+
+      expect(searchSpy).not.toHaveBeenCalled()
+    })
+
+    it('工作区显式关联知识库时应按集合检索', async () => {
+      const { knowledgeBaseService } = require('../services/knowledge-base-service')
+      const searchSpy = knowledgeBaseService.searchAndFormatContext as jest.Mock
+      searchSpy.mockClear()
+      searchSpy.mockResolvedValueOnce('\n\n## 知识库参考内容\nok\n')
+
+      const agent = createMockAgent({
+        enabledToolIds: ['workspace:list_files'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+        knowledgeBaseIds: ['kb-col-1'],
+      }
+
+      await runAgent(
+        agent,
+        '查知识库',
+        [],
+        [],
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext,
+      )
+
+      expect(searchSpy).toHaveBeenCalledWith('查知识库', undefined, undefined, ['kb-col-1'])
     })
   })
 

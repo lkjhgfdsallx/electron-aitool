@@ -63,6 +63,11 @@ jest.mock('../services/knowledge-base-service', () => ({
 jest.mock('../services/built-in-tools', () => ({
   WORKSPACE_TOOLS: [],
   BUILT_IN_TOOLS: [],
+  PLAN_EXECUTE_TOOL_IDS: [
+    'agent-builtin:create_plan',
+    'agent-builtin:update_task',
+    'agent-builtin:get_plan',
+  ],
   AGENT_BUILTIN_TOOLS: [],
 }))
 

@@ -48,6 +48,14 @@ jest.mock('../services/built-in-tools', () => ({
   ],
   AGENT_BUILTIN_TOOLS: [
     { id: 'tool-plan', name: 'create_plan', description: '创建计划', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:create_plan', name: 'create_plan', description: '创建计划', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:update_task', name: 'update_task', description: '更新任务', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:get_plan', name: 'get_plan', description: '获取计划', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+  ],
+  PLAN_EXECUTE_TOOL_IDS: [
+    'agent-builtin:create_plan',
+    'agent-builtin:update_task',
+    'agent-builtin:get_plan',
   ],
   WORKSPACE_TOOLS: [
     { id: 'workspace:read_file', name: 'read_file', description: '读文件', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
@@ -583,8 +591,8 @@ describe('buildWorkspaceContext', () => {
       })
 
       const createArg = mockCreateWorkspaceAgent.mock.calls[0][0]
-      // 默认工具集由 useChat 提供；新加入的查找、搜索及符号定位工具也应保留。
-      expect(createArg.enabledToolIds).toEqual([
+      // 默认工具集由 useChat 提供：工作区文件工具 + 规划三件套 + 记忆/Skills
+      expect(createArg.enabledToolIds).toEqual(expect.arrayContaining([
         'workspace:read_file',
         'workspace:write_file',
         'workspace:str_replace_editor',
@@ -593,7 +601,15 @@ describe('buildWorkspaceContext', () => {
         'workspace:search_files',
         'workspace:find_symbols',
         'workspace:execute_command',
-      ])
+        'agent-builtin:create_plan',
+        'agent-builtin:update_task',
+        'agent-builtin:get_plan',
+        'agent-builtin:remember',
+        'agent-builtin:recall',
+        'agent-builtin:list_skills',
+        'agent-builtin:use_skill',
+      ]))
+      expect(createArg.enabledToolIds).toHaveLength(15)
     })
 
     it('提供 enabledToolIds 时应使用提供的工具', async () => {
@@ -674,7 +690,14 @@ describe('buildWorkspaceContext', () => {
       const createArg = mockCreateWorkspaceAgent.mock.calls[0][0]
       // 验证所有字段都被正确传递
       expect(createArg.name).toBe('完整配置Agent')
-      expect(createArg.enabledToolIds).toEqual(['builtin:knowledge_search', 'workspace:read_file'])
+      // plan-and-execute 会强制合并规划三件套
+      expect(createArg.enabledToolIds).toEqual(expect.arrayContaining([
+        'builtin:knowledge_search',
+        'workspace:read_file',
+        'agent-builtin:create_plan',
+        'agent-builtin:update_task',
+        'agent-builtin:get_plan',
+      ]))
       expect(createArg.enabledSkillIds).toEqual(['skill-1', 'skill-2'])
       expect(createArg.enabled).toBe(false)
       expect(createArg.promptSections).toHaveLength(1)

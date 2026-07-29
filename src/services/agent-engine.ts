@@ -33,7 +33,9 @@ import { aiService, type DebugRequestInfo } from './ai-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
 import { knowledgeBaseService } from './knowledge-base-service'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from './built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS, PLAN_EXECUTE_TOOL_IDS } from './built-in-tools'
+/** 再导出，保持外部 `import { PLAN_EXECUTE_TOOL_IDS } from agent-engine` 兼容 */
+export { PLAN_EXECUTE_TOOL_IDS }
 import { useAIProviderStore } from '../stores/ai-provider-store'
 import { WORKSPACE_LEADER_AGENT_ID } from '../constants/default-agents'
 import { applyWebSearchPolicy, shouldBypassAgentToolWhitelist } from '../utils/web-tools'
@@ -190,6 +192,11 @@ export interface WorkspaceContext {
    * 仅作为 Leader 创建 Agent 时的能力参考，绝不加入 Leader 自身的可调用工具集合。
    */
   agentToolCatalog?: Tool[]
+  /**
+   * 工作区显式关联的知识库集合 ID。
+   * 严格模式：空数组/未设置表示不启用 RAG，禁止回退搜索全部知识库。
+   */
+  knowledgeBaseIds?: string[]
   /** 由上层注入的子任务分派函数（调用后会真正运行目标 Agent 并返回其最终输出） */
   dispatchSubTask?: (agentId: string, taskDescription: string, contextSummary?: string) => Promise<string>
   /**并行子任务分派函数（一次分派多个子任务，并行执行，结果按入参顺序返回） */
@@ -207,6 +214,31 @@ export interface WorkspaceContext {
   postWriteLint?: PostWriteLintConfig
   /** 文件操作审批回调（当自动审批未通过时，由上层弹出审批弹窗） */
   onFileActionApproval?: (request: FileActionApprovalRequest) => Promise<FileActionApprovalResult>
+}
+
+/** Leader 指挥/侦察类工作区工具（即使 enabledToolIds 勾选了执行类也不暴露写文件等） */
+const LEADER_ALLOWED_WORKSPACE_TOOL_IDS = [
+  'workspace:list_files',
+  'workspace:dispatch_task',
+  'workspace:create_agent',
+  'workspace:dispatch_parallel',
+] as const
+
+/**
+ * 严格模式 RAG 集合解析：仅工作区/对话显式关联才启用检索。
+ * - 优先级：conversation.activeKnowledgeBaseIds > workspace.knowledgeBaseIds
+ * - 二者皆空：返回 null（禁用 RAG，禁止全库回退）
+ * - Agent 自身 knowledgeBaseIds 在严格模式下不单独开启全库/Agent 级 RAG
+ */
+export function resolveRagCollectionIds(options: {
+  conversationIds?: string[] | null
+  workspaceIds?: string[] | null
+}): string[] | null {
+  const conv = (options.conversationIds ?? []).filter(Boolean)
+  if (conv.length > 0) return conv
+  const ws = (options.workspaceIds ?? []).filter(Boolean)
+  if (ws.length > 0) return ws
+  return null
 }
 
 /** 文件操作审批请求（发送给 UI 层） */
@@ -259,13 +291,24 @@ const PLAN_EXECUTE_WORKFLOW: AgentWorkflow = {
   states: {
     planning: {
       label: '规划阶段',
-      allowedTools: ['create_plan', 'get_plan', 'update_task'],
+      // 使用 name 与 id 双写，兼容 filterToolsByState 的 id/name 匹配
+      // 测试 mock 可能未导出 PLAN_EXECUTE_TOOL_IDS，需兜底
+      allowedTools: [
+        'create_plan',
+        'get_plan',
+        'update_task',
+        ...((PLAN_EXECUTE_TOOL_IDS as readonly string[] | undefined) ?? [
+          'agent-builtin:create_plan',
+          'agent-builtin:update_task',
+          'agent-builtin:get_plan',
+        ]),
+      ],
       systemPromptSection: `## ⚠️ 当前阶段：规划阶段
 
 你当前处于**规划阶段**。在此阶段：
 
 1. **必须**先调用 \`create_plan\` 工具创建结构化任务计划
-2. **不可以**调用任何任务执行工具（如 workspace_write_file、workspace_execute_command 等）
+2. **不可以**调用任何任务执行工具（如写文件、执行命令等）；这些工具将在计划创建后的执行阶段可用
 3. 可以调用 \`get_plan\` 查看当前计划状态（如果有）
 
 如果你尝试调用非规划类工具，引擎会拒绝执行并要求你先创建计划。`,
@@ -712,47 +755,93 @@ function renderPromptSections(sections: AgentProfile['promptSections']): string 
 /**
  * 过滤出 Agent 启用的工具
  *
- * 统一过滤逻辑：以 enabledToolIds 为白名单。
+ * 统一过滤逻辑：
+ * - enabledToolIds 非空：白名单过滤
+ * - enabledToolIds 为空：视为「未配置」，使用 allTools 中全部已启用工具（与 dispatchSubTask 语义对齐），
+ *   避免子 Agent / 错误配置导致请求完全不带 tools
  * 例外：联网工具（web_search / fetch_webpage）不走 Agent 白名单，
  * 仅由对话框「联网」按钮（webSearchEnabled）在 applyWebSearchPolicy 中控制。
- * 工作区场景下，仅补充「已勾选且尚未在 allTools 中的」工作区工具定义
+ * 工作区场景下，补充「已勾选（或空名单默认）且尚未在 allTools 中的」工作区工具定义
  *（因为 getAvailableTools 通常不包含 WORKSPACE_TOOLS）。
- * Leader 额外限制：即使勾选了执行类工作区工具，也只允许指挥/侦察类。
+ * Leader 额外限制：即使勾选了执行类工作区工具，也只允许指挥/侦察类；空名单时保底注入指挥四件套。
+ * plan-and-execute：自动并入 create_plan / update_task / get_plan（P1）。
  */
 function resolveAgentTools(
   agent: AgentProfile,
   allTools: Tool[],
   workspaceContext?: WorkspaceContext,
 ): Tool[] {
-  const enabledSet = new Set(agent.enabledToolIds ?? [])
-  // 先按 Agent 白名单过滤；联网工具允许绕过白名单（仍受 applyWebSearchPolicy 控制）
-  let agentTools = allTools.filter(
-    (t) => t.enabled && (enabledSet.has(t.id) || shouldBypassAgentToolWhitelist(t))
-  )
+  const rawEnabled = agent.enabledToolIds ?? []
+  const hasExplicitWhitelist = rawEnabled.length > 0
+  const enabledSet = new Set(rawEnabled)
+  const isLeaderAgent = agent.tags?.includes('leader') ?? false
+  const leaderAllowedToolIds = new Set<string>(LEADER_ALLOWED_WORKSPACE_TOOL_IDS)
+
+  // 先按 Agent 白名单过滤；空名单 = 全部已启用工具；联网工具允许绕过白名单
+  let agentTools = allTools.filter((t) => {
+    if (!t.enabled) return false
+    if (shouldBypassAgentToolWhitelist(t)) return true
+    if (!hasExplicitWhitelist) return true
+    return enabledSet.has(t.id)
+  })
 
   if (workspaceContext) {
-    const isLeaderAgent = agent.tags?.includes('leader') ?? false
-    // Leader 仅允许指挥/侦察类工作区工具（即使 enabledToolIds 勾选了执行类工具也不暴露）
-    const leaderAllowedToolIds = new Set([
-      'workspace:list_files',
-      'workspace:dispatch_task',
-      'workspace:create_agent',
-      'workspace:dispatch_parallel',
-    ])
-
     const workspaceToolsToAdd = WORKSPACE_TOOLS.filter((wt) => {
       if (!wt.enabled) return false
-      // 必须在 Agent 勾选列表中，禁止强制注入未勾选工具
-      if (!enabledSet.has(wt.id)) return false
+      // 显式白名单：必须勾选；空名单：默认允许（Leader 仍受限）
+      if (hasExplicitWhitelist && !enabledSet.has(wt.id)) return false
       if (isLeaderAgent && !leaderAllowedToolIds.has(wt.id)) return false
       if (agentTools.some((at) => at.id === wt.id)) return false
       return true
     })
     agentTools = [...agentTools, ...workspaceToolsToAdd]
+
+    // Leader 空名单或未勾选指挥工具时，保底注入指挥/侦察四件套
+    if (isLeaderAgent) {
+      for (const id of LEADER_ALLOWED_WORKSPACE_TOOL_IDS) {
+        if (agentTools.some((t) => t.id === id)) continue
+        const def = WORKSPACE_TOOLS.find((t) => t.id === id && t.enabled)
+        if (def) agentTools = [...agentTools, def]
+      }
+      // 再次收紧：去掉非指挥类工作区工具
+      agentTools = agentTools.filter((t) => {
+        const isWs = WORKSPACE_TOOLS.some((w) => w.id === t.id)
+        if (!isWs) return true
+        return leaderAllowedToolIds.has(t.id)
+      })
+    }
+  }
+
+  // P1: plan-and-execute 自动并入规划三件套，避免 workflow 白名单与 agentTools 交集为空
+  if (agent.planningStrategy === 'plan-and-execute' || agent.workflow) {
+    const needsPlanTools =
+      agent.planningStrategy === 'plan-and-execute' ||
+      workflowReferencesPlanTools(agent.workflow)
+    if (needsPlanTools) {
+      for (const id of PLAN_EXECUTE_TOOL_IDS) {
+        if (agentTools.some((t) => t.id === id)) continue
+        const def =
+          AGENT_BUILTIN_TOOLS.find((t) => t.id === id && t.enabled) ??
+          allTools.find((t) => t.id === id && t.enabled)
+        if (def) agentTools = [...agentTools, def]
+      }
+    }
   }
 
   // 联网工具最终只由对话框按钮控制：开启则强制注入，关闭则强制剥离
   return applyWebSearchPolicy(agentTools)
+}
+
+/** 工作流任一状态 allowedTools 是否引用规划工具 */
+function workflowReferencesPlanTools(workflow?: AgentWorkflow): boolean {
+  if (!workflow?.states) return false
+  const planNames = new Set(['create_plan', 'update_task', 'get_plan', ...PLAN_EXECUTE_TOOL_IDS])
+  for (const state of Object.values(workflow.states)) {
+    for (const name of state.allowedTools ?? []) {
+      if (planNames.has(name)) return true
+    }
+  }
+  return false
 }
 
 /**
@@ -987,11 +1076,24 @@ async function agentLoopBody(
     // ========== 工作流状态机 + 上下文压缩（每轮开始时应用，使用共享函数） ==========
     // 1) 工作流：按当前状态过滤工具
     // 2) 联网工具不受 workflow.allowedTools 限制，仅由对话框「联网」按钮控制
-    const effectiveTools: Tool[] = applyWebSearchPolicy(
+    // 3) 过滤结果为空时回退到 agentTools，避免请求完全不带 tools
+    let stateFiltered =
       workflowRuntime && effectiveWorkflow
         ? filterToolsByState(effectiveWorkflow, workflowRuntime, agentTools)
-        : agentTools,
-    )
+        : agentTools
+    if (
+      workflowRuntime &&
+      effectiveWorkflow &&
+      stateFiltered.length === 0 &&
+      agentTools.length > 0
+    ) {
+      console.warn(
+        '[agent-engine] filterToolsByState 结果为空，回退到 agentTools，避免请求无 tools',
+        { state: workflowRuntime.currentState, agentId: agent.id },
+      )
+      stateFiltered = agentTools
+    }
+    const effectiveTools: Tool[] = applyWebSearchPolicy(stateFiltered)
 
     // 2) 工作流：注入当前状态的 prompt 片段并重建系统提示词
     if (workflowRuntime && effectiveWorkflow) {
@@ -1487,15 +1589,28 @@ export async function runAgent(
     })
   }
 
-  // RAG: 检索知识库上下文（优先使用 Agent 绑定的知识库集合）
+  // RAG: 严格模式 — 仅对话/工作区显式关联的知识库集合才检索；禁止全库回退
   let knowledgeContext = ''
   try {
-    const collectionIds = agent.knowledgeBaseIds && agent.knowledgeBaseIds.length > 0
-      ? agent.knowledgeBaseIds
-      : undefined
-    knowledgeContext = await knowledgeBaseService.searchAndFormatContext(
-      userMessage, undefined, undefined, collectionIds
-    )
+    let conversationKbIds: string[] | undefined
+    if (conversationId) {
+      try {
+        const { useConversationStore } = await import('../stores/conversation-store')
+        const conv = useConversationStore.getState().getConversation(conversationId)
+        conversationKbIds = conv?.activeKnowledgeBaseIds
+      } catch {
+        // store 不可用时忽略对话级配置
+      }
+    }
+    const collectionIds = resolveRagCollectionIds({
+      conversationIds: conversationKbIds,
+      workspaceIds: workspaceContext?.knowledgeBaseIds,
+    })
+    if (collectionIds && collectionIds.length > 0) {
+      knowledgeContext = await knowledgeBaseService.searchAndFormatContext(
+        userMessage, undefined, undefined, collectionIds
+      )
+    }
   } catch {
     // 知识库检索失败不影响正常流程
   }

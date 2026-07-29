@@ -40,6 +40,11 @@ jest.mock('../services/built-in-tools', () => ({
   WORKSPACE_TOOLS: [],
   BUILT_IN_TOOLS: [],
   AGENT_BUILTIN_TOOLS: [],
+  PLAN_EXECUTE_TOOL_IDS: [
+    'agent-builtin:create_plan',
+    'agent-builtin:update_task',
+    'agent-builtin:get_plan',
+  ],
 }))
 
 jest.mock('../constants/default-agents', () => ({
@@ -99,7 +104,28 @@ jest.mock('../services/agent/workflow-engine', () => ({
 // 由于 parseToolCalls 和 toMessages 是内部函数，我们通过 runAgent 的行为间接测试
 // 但 createDefaultRunContext 和 getAgentBuiltinTools 是导出的
 
-import { createDefaultRunContext, getAgentBuiltinTools } from '../services/agent-engine'
+import { createDefaultRunContext, getAgentBuiltinTools, resolveRagCollectionIds } from '../services/agent-engine'
+
+describe('resolveRagCollectionIds', () => {
+  it('对话级优先于工作区', () => {
+    expect(resolveRagCollectionIds({
+      conversationIds: ['c1'],
+      workspaceIds: ['w1'],
+    })).toEqual(['c1'])
+  })
+
+  it('无对话级时使用工作区', () => {
+    expect(resolveRagCollectionIds({
+      conversationIds: [],
+      workspaceIds: ['w1', 'w2'],
+    })).toEqual(['w1', 'w2'])
+  })
+
+  it('皆空时返回 null（禁用全库回退）', () => {
+    expect(resolveRagCollectionIds({ conversationIds: [], workspaceIds: [] })).toBeNull()
+    expect(resolveRagCollectionIds({})).toBeNull()
+  })
+})
 
 describe('createDefaultRunContext', () => {
   it('应该创建包含正确字段的默认运行上下文', () => {

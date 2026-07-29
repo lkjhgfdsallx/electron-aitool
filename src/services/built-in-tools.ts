@@ -315,6 +315,13 @@ export const BUILT_IN_TOOLS: Tool[] = [
   }
 ]
 
+/** plan-and-execute 规划阶段必需的工具 ID（供引擎 / 创建子 Agent 合并） */
+export const PLAN_EXECUTE_TOOL_IDS = [
+  'agent-builtin:create_plan',
+  'agent-builtin:update_task',
+  'agent-builtin:get_plan',
+] as const
+
 /**
  * Agent 专用内置工具
  * 这些工具在 Agent 模式下自动可用，不需要用户手动启用

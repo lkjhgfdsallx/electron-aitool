@@ -3,11 +3,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
 import { siteAnalyzerService } from '../services/site-analyzer-service'
-import { runAgent } from '../services/agent-engine'
+import { runAgent, resolveRagCollectionIds } from '../services/agent-engine'
 import type { WorkspaceContext, CreateAgentInput, SubAgentActivityEvent, FileActionApprovalRequest, FileActionApprovalResult, ResumeOptions } from '../services/agent-engine'
 import { agentEventBus } from '../services/agent/event-bus'
 import type { AgentPlan } from '../types/agent-plan'
-import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS } from '../services/built-in-tools'
+import { BUILT_IN_TOOLS, AGENT_BUILTIN_TOOLS, WORKSPACE_TOOLS, PLAN_EXECUTE_TOOL_IDS } from '../services/built-in-tools'
 import { useCustomToolStore } from '../stores/custom-tool-store'
 import { reportStore } from '../services/report-store'
 import { knowledgeBaseService } from '../services/knowledge-base-service'
@@ -35,6 +35,73 @@ function getFinishNotice(finishReason?: string): string | null {
     return '\n\n> ⚠️ **回复中断**：流连接在生成过程中异常断开，输出可能不完整。请检查网络连接或 API 服务状态。'
   }
   return null
+}
+
+/** AI 服务回调中的原始调试信息 */
+type RawDebugRequestInfo = {
+  timestamp: number
+  url: string
+  method: string
+  requestHeaders: Record<string, string>
+  requestBody: string
+  responseHeaders: Record<string, string>
+  responseStatus: number
+  responseBody: string
+}
+
+/**
+ * 统一写入调试请求历史（同一 message 可追加多条，支持 Agent 轮次与子 Agent）。
+ * 仅在 debugMode 开启时落库。
+ */
+function recordChatDebugInfo(params: {
+  messageId: string
+  conversationId: string
+  raw: RawDebugRequestInfo
+  agent?: Pick<AgentProfile, 'id' | 'name' | 'avatar' | 'tags'> | null
+  /** 显式指定是否 Leader；缺省时按 workspace.leaderAgentId / tags 推断 */
+  isLeader?: boolean
+  roundIndex?: number
+  sourceAgentId?: string
+  runId?: string
+}): void {
+  if (!useDebugStore.getState().debugMode) return
+
+  const { messageId, conversationId, raw, agent, roundIndex, sourceAgentId, runId } = params
+  let isLeader = params.isLeader
+  if (isLeader === undefined && agent) {
+    const conv = useConversationStore.getState().conversations.find((c) => c.id === conversationId)
+    const workspace = conv?.workspaceId
+      ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
+      : undefined
+    isLeader =
+      agent.id === workspace?.leaderAgentId ||
+      (agent.tags?.includes('leader') ?? false)
+  }
+
+  useDebugStore.getState().addDebugInfo({
+    id: uuidv4(),
+    messageId,
+    conversationId,
+    timestamp: raw.timestamp,
+    url: raw.url,
+    method: raw.method,
+    requestHeaders: raw.requestHeaders,
+    requestBody: raw.requestBody,
+    responseHeaders: raw.responseHeaders,
+    responseStatus: raw.responseStatus,
+    responseBody: raw.responseBody,
+    roundIndex,
+    sourceAgentId: sourceAgentId ?? (agent && !isLeader ? agent.id : undefined),
+    runId,
+    agentInfo: agent
+      ? {
+          agentId: agent.id,
+          agentName: agent.name,
+          isLeader: Boolean(isLeader),
+          avatar: agent.avatar,
+        }
+      : undefined,
+  })
 }
 
 /**
@@ -237,7 +304,9 @@ export function useChat(options: UseChatOptions = {}) {
   /** 根据对话的工作区关联，构建 WorkspaceContext 传递给 agent-engine */
   const buildWorkspaceContext = useCallback((
     conversationId: string,
-    onSubAgentActivity?: (event: SubAgentActivityEvent) => void
+    onSubAgentActivity?: (event: SubAgentActivityEvent) => void,
+    /** Leader assistant 消息 ID：子 Agent 调试请求挂到该消息下 */
+    leaderAssistantMessageId?: string
   ): WorkspaceContext | undefined => {
     const conv = useConversationStore.getState().conversations.find((c) => c.id === conversationId)
     if (!conv?.workspaceId) return undefined
@@ -308,13 +377,20 @@ export function useChat(options: UseChatOptions = {}) {
         .map((a) => ({ id: a.id, name: a.name, description: a.description, avatar: a.avatar ?? '🤖', enabledToolIds: a.enabledToolIds }))
 
       // 构建子 Agent 的工作区上下文（不含 dispatchSubTask/createAgent 以避免递归）
+      // 继承工作区知识库关联，严格模式：空关联则子 Agent 也不做全库 RAG
       const subWorkspaceContext: WorkspaceContext | undefined = ws
-        ? { folderPath: ws.folderPath, workspaceId: ws.id, teamAgents: freshTeamAgents }
+        ? {
+            folderPath: ws.folderPath,
+            workspaceId: ws.id,
+            teamAgents: freshTeamAgents,
+            knowledgeBaseIds: ws.knowledgeBaseIds ?? [],
+          }
         : undefined
 
       // 运行子 Agent 并收集输出
       let finalContent = ''
       let stepCount = 0
+      let subDebugRound = 0
       const artifacts: string[] = []
       const subSignal = new AbortController().signal
 
@@ -401,6 +477,19 @@ export function useChat(options: UseChatOptions = {}) {
               throw new Error(err)
             },
             onDone: (content) => { if (content) finalContent = content },
+            onDebugInfo: (debugInfo) => {
+              if (!leaderAssistantMessageId) return
+              subDebugRound += 1
+              recordChatDebugInfo({
+                messageId: leaderAssistantMessageId,
+                conversationId,
+                raw: debugInfo,
+                agent: targetAgent,
+                isLeader: false,
+                roundIndex: subDebugRound,
+                sourceAgentId: targetAgent.id,
+              })
+            },
           },
           subWorkspaceContext,
           undefined // 子 Agent 不需要 conversationId（checkpoint 由主 Agent 管理）
@@ -416,15 +505,24 @@ export function useChat(options: UseChatOptions = {}) {
     // 支持 增强字段：planningStrategy, memoryConfig, termination, modelConfig,
     // knowledgeBaseIds, contextPolicy, approvalPolicy, maxParallelSubtasks
     const createAgent = async (input: CreateAgentInput): Promise<string> => {
-      // 为新 Agent 设置合理的默认工具：工作区文件工具 + 核心工具
+      // 为新 Agent 设置合理的默认工具：工作区文件工具 + 规划三件套 + 核心工具
+      // 若指定 plan-and-execute，无论是否传入 enabled_tool_ids 都合并规划工具，避免请求无 tools
       const defaultWorkspaceToolIds = [
         'workspace:read_file', 'workspace:write_file', 'workspace:str_replace_editor',
         'workspace:list_files', 'workspace:find_files', 'workspace:search_files',
-        'workspace:find_symbols', 'workspace:execute_command'
+        'workspace:find_symbols', 'workspace:execute_command',
+        ...PLAN_EXECUTE_TOOL_IDS,
+        'agent-builtin:remember', 'agent-builtin:recall',
+        'agent-builtin:list_skills', 'agent-builtin:use_skill',
       ]
-      const toolIds = input.enabledToolIds && input.enabledToolIds.length > 0
-        ? input.enabledToolIds
-        : defaultWorkspaceToolIds
+      let toolIds = input.enabledToolIds && input.enabledToolIds.length > 0
+        ? [...input.enabledToolIds]
+        : [...defaultWorkspaceToolIds]
+      if (input.planningStrategy === 'plan-and-execute') {
+        for (const id of PLAN_EXECUTE_TOOL_IDS) {
+          if (!toolIds.includes(id)) toolIds.push(id)
+        }
+      }
 
       // 创建工作区 Agent（而非全局 Agent），自动带有 workspace 标签
       // 字段优先使用传入值，未提供则使用合理默认值
@@ -548,6 +646,8 @@ export function useChat(options: UseChatOptions = {}) {
       workspaceId: ws.id,
       teamAgents,
       agentToolCatalog,
+      // 严格模式：仅显式关联集合；空数组表示禁用 RAG
+      knowledgeBaseIds: ws.knowledgeBaseIds ?? [],
       dispatchSubTask,
       dispatchTasks,
       createAgent,
@@ -827,7 +927,9 @@ export function useChat(options: UseChatOptions = {}) {
       }
 
       // 将包含附件内容的完整消息传递给 Agent 引擎
-      const wsContext = buildWorkspaceContext(convId, onSubAgentActivity)
+      // 传入 assistantMsg.id，使子 Agent 的 LLM 请求挂到同一条 Leader 消息的调试历史
+      let leaderDebugRound = 0
+      const wsContext = buildWorkspaceContext(convId, onSubAgentActivity, assistantMsg.id)
 
       // 订阅 plan_created / task_updated 事件，将结构化计划同步到消息
       let currentPlan: AgentPlan | null = null
@@ -1066,30 +1168,14 @@ export function useChat(options: UseChatOptions = {}) {
               }
             },
             onDebugInfo: (debugInfo) => {
-              if (useDebugStore.getState().debugMode) {
-                const conv = getConversation(convId)
-                const workspace = conv?.workspaceId
-                  ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
-                  : undefined
-                useDebugStore.getState().addDebugInfo({
-                  id: uuidv4(),
-                  messageId: assistantMsg.id,
-                  conversationId: convId,
-                  timestamp: debugInfo.timestamp,
-                  url: debugInfo.url,
-                  method: debugInfo.method,
-                  requestHeaders: debugInfo.requestHeaders,
-                  requestBody: debugInfo.requestBody,
-                  responseHeaders: debugInfo.responseHeaders,
-                  responseStatus: debugInfo.responseStatus,
-                  responseBody: debugInfo.responseBody,
-                  agentInfo: agent ? {
-                    agentId: agent.id,
-                    agentName: agent.name,
-                    isLeader: agent.id === workspace?.leaderAgentId
-                  } : undefined
-                })
-              }
+              leaderDebugRound += 1
+              recordChatDebugInfo({
+                messageId: assistantMsg.id,
+                conversationId: convId,
+                raw: debugInfo,
+                agent,
+                roundIndex: leaderDebugRound,
+              })
             }
           },
           wsContext,
@@ -1218,23 +1304,21 @@ export function useChat(options: UseChatOptions = {}) {
         branchIndex: currentBranchIdx
       })
 
-      // RAG: 检索知识库上下文（优先级：对话级 > Agent级 > 全局）
+      // RAG: 严格模式 — 仅对话显式挂载知识库时检索；禁止全库回退
       let systemPromptWithKB = prompt?.content ?? null
       try {
-        // 确定知识库集合范围
         const conversation = getConversation(convId)
-        let kbCollectionIds: string[] | undefined = undefined
-        if (conversation?.activeKnowledgeBaseIds && conversation.activeKnowledgeBaseIds.length > 0) {
-          // 对话级优先
-          kbCollectionIds = conversation.activeKnowledgeBaseIds
-        }
-        // 普通模式下没有 Agent 绑定的知识库，直接使用对话级或全局
-
-        const kbContext = await knowledgeBaseService.searchAndFormatContext(
-          content, undefined, undefined, kbCollectionIds
-        )
-        if (kbContext) {
-          systemPromptWithKB = (systemPromptWithKB ?? '') + kbContext
+        const kbCollectionIds = resolveRagCollectionIds({
+          conversationIds: conversation?.activeKnowledgeBaseIds,
+          workspaceIds: null,
+        })
+        if (kbCollectionIds && kbCollectionIds.length > 0) {
+          const kbContext = await knowledgeBaseService.searchAndFormatContext(
+            content, undefined, undefined, kbCollectionIds
+          )
+          if (kbContext) {
+            systemPromptWithKB = (systemPromptWithKB ?? '') + kbContext
+          }
         }
       } catch {
         // 知识库检索失败不影响正常流程
@@ -1313,21 +1397,11 @@ export function useChat(options: UseChatOptions = {}) {
               isStreamingRef.current = false
             },
             onDebugInfo: (debugInfo) => {
-              if (useDebugStore.getState().debugMode) {
-                useDebugStore.getState().addDebugInfo({
-                  id: uuidv4(),
-                  messageId: assistantMsg.id,
-                  conversationId: convId,
-                  timestamp: debugInfo.timestamp,
-                  url: debugInfo.url,
-                  method: debugInfo.method,
-                  requestHeaders: debugInfo.requestHeaders,
-                  requestBody: debugInfo.requestBody,
-                  responseHeaders: debugInfo.responseHeaders,
-                  responseStatus: debugInfo.responseStatus,
-                  responseBody: debugInfo.responseBody
-                })
-              }
+              recordChatDebugInfo({
+                messageId: assistantMsg.id,
+                conversationId: convId,
+                raw: debugInfo,
+              })
             }
           },
           resolveCurrentRequestConfig(convId)
@@ -1672,21 +1746,11 @@ export function useChat(options: UseChatOptions = {}) {
             isStreamingRef.current = false
           },
           onDebugInfo: (debugInfo) => {
-            if (useDebugStore.getState().debugMode) {
-              useDebugStore.getState().addDebugInfo({
-                id: uuidv4(),
-                messageId: replyMsg.id,
-                conversationId,
-                timestamp: debugInfo.timestamp,
-                url: debugInfo.url,
-                method: debugInfo.method,
-                requestHeaders: debugInfo.requestHeaders,
-                requestBody: debugInfo.requestBody,
-                responseHeaders: debugInfo.responseHeaders,
-                responseStatus: debugInfo.responseStatus,
-                responseBody: debugInfo.responseBody
-              })
-            }
+            recordChatDebugInfo({
+              messageId: replyMsg.id,
+              conversationId,
+              raw: debugInfo,
+            })
           }
         },
         resolveCurrentRequestConfig(conversationId)
@@ -1776,8 +1840,9 @@ export function useChat(options: UseChatOptions = {}) {
         const agentSteps: AgentStep[] = []
         let finalContent = ''
         let reasoningContent = ''
+        let leaderDebugRound = 0
 
-        const wsContext = buildWorkspaceContext(currentConversationId)
+        const wsContext = buildWorkspaceContext(currentConversationId, undefined, assistantMsg.id)
         try {
         await runAgent(
           agent,
@@ -1906,30 +1971,14 @@ export function useChat(options: UseChatOptions = {}) {
               }
             },
             onDebugInfo: (debugInfo) => {
-              if (useDebugStore.getState().debugMode) {
-                const conv = getConversation(currentConversationId)
-                const workspace = conv?.workspaceId
-                  ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
-                  : undefined
-                useDebugStore.getState().addDebugInfo({
-                  id: uuidv4(),
-                  messageId: assistantMsg.id,
-                  conversationId: currentConversationId,
-                  timestamp: debugInfo.timestamp,
-                  url: debugInfo.url,
-                  method: debugInfo.method,
-                  requestHeaders: debugInfo.requestHeaders,
-                  requestBody: debugInfo.requestBody,
-                  responseHeaders: debugInfo.responseHeaders,
-                  responseStatus: debugInfo.responseStatus,
-                  responseBody: debugInfo.responseBody,
-                  agentInfo: agent ? {
-                    agentId: agent.id,
-                    agentName: agent.name,
-                    isLeader: agent.id === workspace?.leaderAgentId
-                  } : undefined
-                })
-              }
+              leaderDebugRound += 1
+              recordChatDebugInfo({
+                messageId: assistantMsg.id,
+                conversationId: currentConversationId,
+                raw: debugInfo,
+                agent,
+                roundIndex: leaderDebugRound,
+              })
             }
           },
           wsContext,
@@ -2025,21 +2074,11 @@ export function useChat(options: UseChatOptions = {}) {
                 isStreamingRef.current = false
               },
               onDebugInfo: (debugInfo) => {
-                if (useDebugStore.getState().debugMode) {
-                  useDebugStore.getState().addDebugInfo({
-                    id: uuidv4(),
-                    messageId: assistantMsg.id,
-                    conversationId: currentConversationId,
-                    timestamp: debugInfo.timestamp,
-                    url: debugInfo.url,
-                    method: debugInfo.method,
-                    requestHeaders: debugInfo.requestHeaders,
-                    requestBody: debugInfo.requestBody,
-                    responseHeaders: debugInfo.responseHeaders,
-                    responseStatus: debugInfo.responseStatus,
-                    responseBody: debugInfo.responseBody
-                  })
-                }
+                recordChatDebugInfo({
+                  messageId: assistantMsg.id,
+                  conversationId: currentConversationId,
+                  raw: debugInfo,
+                })
               }
             },
             resolveCurrentRequestConfig(currentConversationId)
@@ -2250,8 +2289,9 @@ export function useChat(options: UseChatOptions = {}) {
         const agentSteps: AgentStep[] = []
         let finalContent = ''
         let reasoningContent = ''
+        let leaderDebugRound = 0
 
-        const wsContext = buildWorkspaceContext(currentConversationId)
+        const wsContext = buildWorkspaceContext(currentConversationId, undefined, assistantMsg.id)
         try {
         await runAgent(
           agent,
@@ -2380,30 +2420,14 @@ export function useChat(options: UseChatOptions = {}) {
               }
             },
             onDebugInfo: (debugInfo) => {
-              if (useDebugStore.getState().debugMode) {
-                const conv = getConversation(currentConversationId)
-                const workspace = conv?.workspaceId
-                  ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
-                  : undefined
-                useDebugStore.getState().addDebugInfo({
-                  id: uuidv4(),
-                  messageId: assistantMsg.id,
-                  conversationId: currentConversationId,
-                  timestamp: debugInfo.timestamp,
-                  url: debugInfo.url,
-                  method: debugInfo.method,
-                  requestHeaders: debugInfo.requestHeaders,
-                  requestBody: debugInfo.requestBody,
-                  responseHeaders: debugInfo.responseHeaders,
-                  responseStatus: debugInfo.responseStatus,
-                  responseBody: debugInfo.responseBody,
-                  agentInfo: agent ? {
-                    agentId: agent.id,
-                    agentName: agent.name,
-                    isLeader: agent.id === workspace?.leaderAgentId
-                  } : undefined
-                })
-              }
+              leaderDebugRound += 1
+              recordChatDebugInfo({
+                messageId: assistantMsg.id,
+                conversationId: currentConversationId,
+                raw: debugInfo,
+                agent,
+                roundIndex: leaderDebugRound,
+              })
             }
           },
           wsContext,
@@ -2499,21 +2523,11 @@ export function useChat(options: UseChatOptions = {}) {
                 isStreamingRef.current = false
               },
               onDebugInfo: (debugInfo) => {
-                if (useDebugStore.getState().debugMode) {
-                  useDebugStore.getState().addDebugInfo({
-                    id: uuidv4(),
-                    messageId: assistantMsg.id,
-                    conversationId: currentConversationId,
-                    timestamp: debugInfo.timestamp,
-                    url: debugInfo.url,
-                    method: debugInfo.method,
-                    requestHeaders: debugInfo.requestHeaders,
-                    requestBody: debugInfo.requestBody,
-                    responseHeaders: debugInfo.responseHeaders,
-                    responseStatus: debugInfo.responseStatus,
-                    responseBody: debugInfo.responseBody
-                  })
-                }
+                recordChatDebugInfo({
+                  messageId: assistantMsg.id,
+                  conversationId: currentConversationId,
+                  raw: debugInfo,
+                })
               }
             },
             resolveCurrentRequestConfig(currentConversationId)
@@ -2614,8 +2628,9 @@ export function useChat(options: UseChatOptions = {}) {
           finalContent = finalContent.slice(0, -abortNotice.length)
         }
         let reasoningContent = targetMsg.reasoningContent || ''
+        let leaderDebugRound = 0
 
-        const wsContext = buildWorkspaceContext(convId)
+        const wsContext = buildWorkspaceContext(convId, undefined, messageId)
 
         try {
           await runAgent(
@@ -2737,30 +2752,14 @@ export function useChat(options: UseChatOptions = {}) {
                 })
               },
               onDebugInfo: (debugInfo) => {
-                if (useDebugStore.getState().debugMode) {
-                  const conv = getConversation(convId)
-                  const workspace = conv?.workspaceId
-                    ? useWorkspaceStore.getState().workspaces.find((w) => w.id === conv.workspaceId)
-                    : undefined
-                  useDebugStore.getState().addDebugInfo({
-                    id: uuidv4(),
-                    messageId,
-                    conversationId: convId,
-                    timestamp: debugInfo.timestamp,
-                    url: debugInfo.url,
-                    method: debugInfo.method,
-                    requestHeaders: debugInfo.requestHeaders,
-                    requestBody: debugInfo.requestBody,
-                    responseHeaders: debugInfo.responseHeaders,
-                    responseStatus: debugInfo.responseStatus,
-                    responseBody: debugInfo.responseBody,
-                    agentInfo: agent ? {
-                      agentId: agent.id,
-                      agentName: agent.name,
-                      isLeader: agent.id === workspace?.leaderAgentId
-                    } : undefined
-                  })
-                }
+                leaderDebugRound += 1
+                recordChatDebugInfo({
+                  messageId,
+                  conversationId: convId,
+                  raw: debugInfo,
+                  agent,
+                  roundIndex: leaderDebugRound,
+                })
               },
             },
             wsContext,
@@ -2845,21 +2844,11 @@ export function useChat(options: UseChatOptions = {}) {
                 isStreamingRef.current = false
               },
               onDebugInfo: (debugInfo) => {
-                if (useDebugStore.getState().debugMode) {
-                  useDebugStore.getState().addDebugInfo({
-                    id: uuidv4(),
-                    messageId,
-                    conversationId: convId,
-                    timestamp: debugInfo.timestamp,
-                    url: debugInfo.url,
-                    method: debugInfo.method,
-                    requestHeaders: debugInfo.requestHeaders,
-                    requestBody: debugInfo.requestBody,
-                    responseHeaders: debugInfo.responseHeaders,
-                    responseStatus: debugInfo.responseStatus,
-                    responseBody: debugInfo.responseBody
-                  })
-                }
+                recordChatDebugInfo({
+                  messageId,
+                  conversationId: convId,
+                  raw: debugInfo,
+                })
               }
             },
             resolveCurrentRequestConfig(convId)

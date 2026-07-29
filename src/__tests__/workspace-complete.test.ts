@@ -55,6 +55,14 @@ jest.mock('../services/built-in-tools', () => ({
   ],
   AGENT_BUILTIN_TOOLS: [
     { id: 'tool-plan', name: 'create_plan', description: '创建计划', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:create_plan', name: 'create_plan', description: '创建计划', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:update_task', name: 'update_task', description: '更新任务', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+    { id: 'agent-builtin:get_plan', name: 'get_plan', description: '获取计划', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
+  ],
+  PLAN_EXECUTE_TOOL_IDS: [
+    'agent-builtin:create_plan',
+    'agent-builtin:update_task',
+    'agent-builtin:get_plan',
   ],
   WORKSPACE_TOOLS: [
     { id: 'workspace:read_file', name: 'read_file', description: '读文件', enabled: true, isBuiltIn: true, isMCP: false, parameters: { type: 'object', properties: {} } },
