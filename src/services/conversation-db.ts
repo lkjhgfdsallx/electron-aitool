@@ -78,6 +78,21 @@ class ConversationDBService {
   }
 
   /**
+   * 原子截断对话：在同一 readwrite 事务中保存截断后的目标消息并删除后续消息。
+   * 任一写入失败时，IndexedDB 会整体回滚，避免出现部分消息已删的状态。
+   */
+  async truncateMessages(updatedMessage: Message, deletedMessageIds: string[]): Promise<void> {
+    const db = await this.getDB()
+    const tx = db.transaction(STORES.MESSAGES, 'readwrite')
+    const store = tx.objectStore(STORES.MESSAGES)
+    await store.put(updatedMessage)
+    for (const messageId of deletedMessageIds) {
+      await store.delete(messageId)
+    }
+    await tx.done
+  }
+
+  /**
    * 获取指定对话的全部消息（按时间排序）
    * 使用复合索引 convTimestamp 实现 O(log n) 范围查询
    */
@@ -113,6 +128,24 @@ class ConversationDBService {
   async getAllMessages(): Promise<Message[]> {
     const db = await this.getDB()
     return db.getAll(STORES.MESSAGES)
+  }
+
+  /**
+   * 收集指定对话仍引用的 action 快照 ID。
+   * 直接读取 IndexedDB 而非仅查看当前内存对话，避免清理掉已卸载对话引用的快照。
+   */
+  async getReferencedActionSnapshotIds(conversationIds: string[]): Promise<string[]> {
+    if (conversationIds.length === 0) return []
+    const wanted = new Set(conversationIds)
+    const messages = await this.getAllMessages()
+    const snapshotIds = new Set<string>()
+    for (const message of messages) {
+      if (!wanted.has(message.conversationId)) continue
+      for (const step of message.agentSteps ?? []) {
+        if (step.snapshotId) snapshotIds.add(step.snapshotId)
+      }
+    }
+    return [...snapshotIds]
   }
 
   /** 获取全部对话 ID 列表（用于验证迁移完整性） */

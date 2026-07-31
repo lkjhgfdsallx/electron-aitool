@@ -30,6 +30,8 @@ interface AgentStepDisplayProps {
   isRunning?: boolean
   /** 用户选择回调（ask_human 工具），单选传字符串，多选传字符串数组 */
   onHumanInput?: (stepId: string, value: string | string[]) => void
+  /** 从指定 action 的执行前状态重新生成 */
+  onRegenerateFromAction?: (actionId: string) => void
   /** 消息是否处于错误状态 */
   isError?: boolean
 }
@@ -86,7 +88,7 @@ const stepTypeConfig = {
   }
 }
 
-export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError }: AgentStepDisplayProps) {
+export function AgentStepDisplay({ steps, isRunning, onHumanInput, onRegenerateFromAction, isError }: AgentStepDisplayProps) {
   const { t } = useAppTranslation()
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const [isAllExpanded, setIsAllExpanded] = useState(false)
@@ -383,6 +385,23 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError }: Ag
                     : (isRunning ? 'running' : 'completed')}
                   error={pairedObservation?.toolResult?.error}
                 />
+                {onRegenerateFromAction && (
+                  <button
+                    type="button"
+                    onClick={() => onRegenerateFromAction(step.actionId ?? step.id)}
+                    disabled={isRunning}
+                    className="mt-1 inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-500/60 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                    aria-label={t('chat.regenerateFromActionAria')}
+                    title={isRunning ? t('chat.regenerateFromActionDisabled') : t('chat.regenerateFromActionHint')}
+                  >
+                    {isRunning ? (
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <RotateCcw size={13} aria-hidden="true" />
+                    )}
+                    {isRunning ? t('chat.regeneratingFromAction') : t('chat.regenerateFromAction')}
+                  </button>
+                )}
               </div>
             )
           }
@@ -499,9 +518,10 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError }: Ag
                   )}
 
                   <div className={`rounded-lg border overflow-hidden my-1.5 ${isSubAgent ? 'ml-6 mr-2 border-indigo-200/60 dark:border-indigo-800/40 bg-indigo-50/30 dark:bg-indigo-950/10' : 'mx-2 border-surface-200/60 dark:border-surface-700/40'} ${isCurrentStep && !isAwaitingHumanInput ? 'animate-pulse ring-1 ring-accent-300 dark:ring-accent-600' : ''}`}>
+                    <div className="flex items-stretch">
                     <button
                       onClick={() => toggleStep(step.id)}
-                      className="flex items-center gap-3 w-full px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 transition-colors"
+                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-500/60 transition-colors"
                       aria-expanded={isExpanded}
                       aria-label={t(config.labelKey)}
                     >
@@ -528,6 +548,23 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError }: Ag
                         )}
                       </div>
                     </button>
+                    {step.type === 'action' && onRegenerateFromAction && (
+                      <button
+                        type="button"
+                        onClick={() => onRegenerateFromAction(step.actionId ?? step.id)}
+                        disabled={isRunning}
+                        className="inline-flex min-h-11 min-w-11 flex-shrink-0 items-center justify-center border-l border-surface-200/70 dark:border-surface-700/50 text-muted hover:bg-danger-50 hover:text-danger-600 dark:hover:bg-danger-950/30 dark:hover:text-danger-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-danger-500/60 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+                        aria-label={t('chat.regenerateFromActionAria')}
+                        title={isRunning ? t('chat.regenerateFromActionDisabled') : t('chat.regenerateFromActionHint')}
+                      >
+                        {isRunning ? (
+                          <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                        ) : (
+                          <RotateCcw size={14} aria-hidden="true" />
+                        )}
+                      </button>
+                    )}
+                    </div>
 
                     <div
                       className="overflow-hidden transition-all duration-300 ease-in-out"

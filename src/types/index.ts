@@ -189,6 +189,36 @@ export type {
 } from './ai-changes'
 export { computeUnifiedDiffAndStats, simpleHash } from './ai-changes'
 
+// Agent action 级工作区快照
+export type {
+  ActionSnapshotState,
+  ActionSnapshotEntryType,
+  ActionSnapshotEntry,
+  WorkspaceFileChangeType,
+  WorkspaceFileChange,
+  ActionSideEffectKind,
+  ActionSideEffectHint,
+  ActionSnapshotManifest,
+  ActionSnapshotErrorCode,
+  ActionSnapshotFailure,
+  ActionSnapshotContext,
+  BeginActionSnapshotRequest,
+  BeginActionSnapshotResult,
+  FinalizeActionSnapshotRequest,
+  FinalizeActionSnapshotResult,
+  InspectActionRollbackRequest,
+  InspectActionRollbackResult,
+  RollbackConflictReason,
+  RollbackConflict,
+  RollbackActionSnapshotRequest,
+  RollbackActionSnapshotResult,
+  DeleteActionSnapshotRequest,
+  DeleteActionSnapshotResult,
+  CleanupActionSnapshotsRequest,
+  CleanupActionSnapshotsResult,
+  WorkspaceChangeSummary,
+} from './action-snapshot'
+
 // Git SCM
 export type {
   GitFileStatus,

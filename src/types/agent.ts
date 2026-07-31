@@ -2,6 +2,11 @@
 
 import type { PromptSection, PromptVariable } from './prompt'
 import type { AgentWorkflow } from './agent-workflow'
+import type {
+  ActionSideEffectHint,
+  ActionSnapshotState,
+  WorkspaceChangeSummary,
+} from './action-snapshot'
 
 /**
  * 规划策略
@@ -168,6 +173,26 @@ export type AgentStepType = 'thinking' | 'action' | 'observation' | 'final_answe
 export interface AgentStep {
   id: string
   type: AgentStepType
+  /** 稳定的 action 标识；action 与其 observation 使用同一个值。 */
+  actionId?: string
+  /** observation 对应的 action 步骤 ID，避免依赖数组相邻关系。 */
+  actionStepId?: string
+  /** 本次 Agent 运行标识。 */
+  runId?: string
+  /** 父 Agent 运行标识（子 Agent 步骤使用）。 */
+  parentRunId?: string
+  /** 承载该步骤的 assistant 消息 ID。 */
+  messageId?: string
+  /** 跨主/子 Agent 共享的单调执行序号。 */
+  globalSequence?: number
+  /** action 执行前后工作区快照标识。 */
+  snapshotId?: string
+  /** action 快照生命周期状态。 */
+  snapshotState?: ActionSnapshotState
+  /** action 对工作区产生的文件变化摘要。 */
+  workspaceChangeSummary?: WorkspaceChangeSummary
+  /** 无法由文件快照保证撤销的外部副作用。 */
+  sideEffectHints?: ActionSideEffectHint[]
   /** 步骤内容 */
   content: string
   /** 如果是 action，记录工具调用信息 */

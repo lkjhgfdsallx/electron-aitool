@@ -28,6 +28,8 @@ import type {
   PromptSection,
   PromptVariable,
   AgentWorkflow,
+  ActionSideEffectHint,
+  WorkspaceFileChange,
 } from '../types'
 import type { AgentPlan } from '../types/agent-plan'
 import { aiService, type DebugRequestInfo } from './ai-service'
@@ -198,6 +200,8 @@ export interface WorkspaceContext {
    * 严格模式：空数组/未设置表示不启用 RAG，禁止回退搜索全部知识库。
    */
   knowledgeBaseIds?: string[]
+  /** 同一次多 Agent 编排共享的 action 单调序号。 */
+  actionSequence?: { value: number }
   /** 由上层注入的子任务分派函数（调用后会真正运行目标 Agent 并返回其最终输出） */
   dispatchSubTask?: (agentId: string, taskDescription: string, contextSummary?: string) => Promise<string>
   /**并行子任务分派函数（一次分派多个子任务，并行执行，结果按入参顺序返回） */
@@ -1026,6 +1030,146 @@ function toMessages(agentMessages: AgentMessage[]): Message[] {
   })
 }
 
+function classifyActionSideEffects(toolName: string, tool?: Tool): ActionSideEffectHint[] {
+  if (toolName.startsWith('workspace:')) {
+    return [{ kind: 'workspace-files', description: '该操作可能修改工作区文件，文件变化由 action 快照管理。', reversible: true }]
+  }
+  if (tool?.isMCP) {
+    return [{ kind: 'external-system', description: 'MCP 工具可能修改外部系统；文件回滚不会撤销这些副作用。', reversible: false }]
+  }
+  if (tool?.code) {
+    return [{ kind: 'unknown', description: '自定义工具可能产生工作区外副作用；无法保证撤销。', reversible: false }]
+  }
+  if (toolName === 'web_search' || toolName === 'fetch_webpage') {
+    return [{ kind: 'network', description: '该工具访问了网络；外部请求无法撤销。', reversible: false }]
+  }
+  return []
+}
+
+function summarizeWorkspaceChanges(snapshotId: string, changes: WorkspaceFileChange[]) {
+  return {
+    snapshotId,
+    changedFileCount: changes.length,
+    added: changes.filter((change) => change.type === 'added').length,
+    modified: changes.filter((change) => change.type === 'modified').length,
+    deleted: changes.filter((change) => change.type === 'deleted').length,
+    renamed: changes.filter((change) => change.type === 'renamed').length,
+    paths: changes.map((change) => change.path),
+  }
+}
+
+async function executeActionWithSnapshot(params: {
+  toolName: string
+  args: Record<string, unknown>
+  effectiveTools: Tool[]
+  agentSessionCtx: AgentSessionContext
+  sessionBundle: ToolExecutorSessionBundle
+  callbacks: AgentEngineCallbacks
+}): Promise<{ actionStep: AgentStep; observationStep: AgentStep; result: ToolExecuteResult }> {
+  const { toolName, args, effectiveTools, agentSessionCtx, sessionBundle, callbacks } = params
+  const actionId = crypto.randomUUID()
+  const globalSequence = agentSessionCtx.actionSequence.value++
+  const configuredTool = effectiveTools.find((tool) => tool.name === toolName)
+  const sideEffectHints = classifyActionSideEffects(toolName, configuredTool)
+  const actionStep: AgentStep = {
+    id: crypto.randomUUID(),
+    actionId,
+    runId: agentSessionCtx.runId,
+    messageId: agentSessionCtx.messageId,
+    globalSequence,
+    type: 'action',
+    content: `调用工具：${toolName}(${JSON.stringify(args)})`,
+    toolCall: { name: toolName, arguments: args },
+    sideEffectHints,
+    stepIndex: agentSessionCtx.stepCounter.value++,
+    timestamp: Date.now(),
+  }
+  agentSessionCtx.steps.push(actionStep)
+  callbacks.onStep(actionStep)
+
+  const snapshotContext = agentSessionCtx.workspace && agentSessionCtx.workspaceId && agentSessionCtx.conversationId
+    ? {
+        folderPath: agentSessionCtx.workspace.folderPath,
+        workspaceId: agentSessionCtx.workspaceId,
+        conversationId: agentSessionCtx.conversationId,
+        runId: agentSessionCtx.runId,
+        actionId,
+        messageId: agentSessionCtx.messageId,
+        sideEffectHints,
+      }
+    : null
+
+  if (snapshotContext && window.electronAPI?.workspace?.actionSnapshot) {
+    const begun = await window.electronAPI.workspace.actionSnapshot.begin(snapshotContext)
+    if (!begun.success) {
+      const result: ToolExecuteResult = { success: false, data: '', error: `无法创建 action 快照：${begun.error}` }
+      const observationStep: AgentStep = {
+        id: crypto.randomUUID(), actionId, actionStepId: actionStep.id,
+        runId: agentSessionCtx.runId, messageId: agentSessionCtx.messageId, globalSequence,
+        type: 'observation', content: `错误: ${result.error}`, toolResult: result,
+        sideEffectHints, stepIndex: agentSessionCtx.stepCounter.value++, timestamp: Date.now(),
+      }
+      agentSessionCtx.steps.push(observationStep)
+      callbacks.onStep(observationStep)
+      return { actionStep, observationStep, result }
+    }
+    actionStep.snapshotId = begun.snapshotId
+    actionStep.snapshotState = 'executing'
+  }
+
+  let result: ToolExecuteResult
+  try {
+    if (!isToolAllowedByList(toolName, effectiveTools)) {
+      result = { success: false, data: '', error: `工具 "${toolName}" 未在当前 Agent 的启用列表中，已拒绝执行` }
+    } else {
+      const resolved = sessionBundle.resolve(toolName)
+      result = resolved
+        ? await resolved.executor.execute(toolName, args, resolved.sessionCtx, agentSessionCtx)
+        : { success: false, data: '', error: `未找到工具 "${toolName}" 的执行器` }
+    }
+  } catch (error) {
+    result = { success: false, data: '', error: error instanceof Error ? error.message : String(error) }
+  } finally {
+    if (snapshotContext && actionStep.snapshotId && window.electronAPI?.workspace?.actionSnapshot) {
+      actionStep.snapshotState = 'finalizing'
+      const finalized = await window.electronAPI.workspace.actionSnapshot.finalize({
+        ...snapshotContext,
+        snapshotId: actionStep.snapshotId,
+        failureReason: result!?.success === false ? result!.error : undefined,
+      })
+      if (finalized.success) {
+        actionStep.snapshotState = 'ready'
+        actionStep.workspaceChangeSummary = summarizeWorkspaceChanges(finalized.snapshotId, finalized.changes)
+      } else {
+        actionStep.snapshotState = 'failed'
+        result = { success: false, data: '', error: `${result!?.error ?? '工具执行完成'}；但 action 快照封存失败：${finalized.error}` }
+      }
+    }
+  }
+
+  const observationContent = result.success ? result.data : `错误: ${result.error ?? '执行失败'}`
+  const observationStep: AgentStep = {
+    id: crypto.randomUUID(),
+    actionId,
+    actionStepId: actionStep.id,
+    runId: agentSessionCtx.runId,
+    messageId: agentSessionCtx.messageId,
+    globalSequence,
+    type: 'observation',
+    content: observationContent,
+    toolResult: { success: result.success, data: result.data, error: result.error },
+    snapshotId: actionStep.snapshotId,
+    snapshotState: actionStep.snapshotState,
+    workspaceChangeSummary: actionStep.workspaceChangeSummary,
+    sideEffectHints,
+    stepIndex: agentSessionCtx.stepCounter.value++,
+    timestamp: Date.now(),
+  }
+  agentSessionCtx.steps.push(observationStep)
+  callbacks.onStep(observationStep)
+  return { actionStep, observationStep, result }
+}
+
 /**
  * Agent 主循环体
  *
@@ -1275,53 +1419,15 @@ async function agentLoopBody(
           // 空参数
         }
 
-        const actionStep: AgentStep = {
-          id: crypto.randomUUID(),
-          type: 'action',
-          content: `调用工具：${tc.name}(${JSON.stringify(args)})`,
-          toolCall: { name: tc.name, arguments: args },
-          stepIndex: agentSessionCtx.stepCounter.value++,
-          timestamp: Date.now()
-        }
-        steps.push(actionStep)
-        callbacks.onStep(actionStep)
-
-        // 执行前校验：仅允许当前轮 effectiveTools 白名单内的工具
-        let result: ToolExecuteResult
-        if (!isToolAllowedByList(tc.name, effectiveTools)) {
-          result = {
-            success: false,
-            data: '',
-            error: `工具 "${tc.name}" 未在当前 Agent 的启用列表中，已拒绝执行`,
-          }
-        } else {
-          const resolved = sessionBundle.resolve(tc.name)
-          if (resolved) {
-            result = await resolved.executor.execute(tc.name, args, resolved.sessionCtx, agentSessionCtx)
-          } else {
-            result = { success: false, data: '', error: `未找到工具 "${tc.name}" 的执行器` }
-          }
-        }
-
-        // 记录观察步骤
-        const observationContent = result.success
-          ? result.data
-          : `错误: ${result.error ?? '执行失败'}`
-
-        const obsStep: AgentStep = {
-          id: crypto.randomUUID(),
-          type: 'observation',
-          content: observationContent,
-          toolResult: {
-            success: result.success,
-            data: result.data,
-            error: result.error
-          },
-          stepIndex: agentSessionCtx.stepCounter.value++,
-          timestamp: Date.now()
-        }
-        steps.push(obsStep)
-        callbacks.onStep(obsStep)
+        const { observationStep: obsStep, result } = await executeActionWithSnapshot({
+          toolName: tc.name,
+          args,
+          effectiveTools,
+          agentSessionCtx,
+          sessionBundle,
+          callbacks,
+        })
+        const observationContent = result.success ? result.data : `错误: ${result.error ?? '执行失败'}`
 
         // 将工具结果追加到消息列表（使用 tool 角色）
         messages.push({
@@ -1451,53 +1557,15 @@ async function agentLoopBody(
     // 执行每个工具调用
     for (const tc of toolCalls) {
       // 记录行动步骤
-      const actionStep: AgentStep = {
-        id: crypto.randomUUID(),
-        type: 'action',
-        content: `调用工具：${tc.name}(${JSON.stringify(tc.arguments)})`,
-        toolCall: { name: tc.name, arguments: tc.arguments },
-        stepIndex: agentSessionCtx.stepCounter.value++,
-        timestamp: Date.now()
-      }
-      steps.push(actionStep)
-      callbacks.onStep(actionStep)
-
-      // 执行前校验：仅允许当前轮 effectiveTools 白名单内的工具
-      let result: ToolExecuteResult
-      if (!isToolAllowedByList(tc.name, effectiveTools)) {
-        result = {
-          success: false,
-          data: '',
-          error: `工具 "${tc.name}" 未在当前 Agent 的启用列表中，已拒绝执行`,
-        }
-      } else {
-        const resolved = sessionBundle.resolve(tc.name)
-        if (resolved) {
-          result = await resolved.executor.execute(tc.name, tc.arguments, resolved.sessionCtx, agentSessionCtx)
-        } else {
-          result = { success: false, data: '', error: `未找到工具 "${tc.name}" 的执行器` }
-        }
-      }
-
-      // 记录观察步骤
-      const observationContent = result.success
-        ? result.data
-        : `错误: ${result.error ?? '执行失败'}`
-
-      const obsStep: AgentStep = {
-        id: crypto.randomUUID(),
-        type: 'observation',
-        content: observationContent,
-        toolResult: {
-          success: result.success,
-          data: result.data,
-          error: result.error
-        },
-        stepIndex: agentSessionCtx.stepCounter.value++,
-        timestamp: Date.now()
-      }
-      steps.push(obsStep)
-      callbacks.onStep(obsStep)
+      const { result } = await executeActionWithSnapshot({
+        toolName: tc.name,
+        args: tc.arguments,
+        effectiveTools,
+        agentSessionCtx,
+        sessionBundle,
+        callbacks,
+      })
+      const observationContent = result.success ? result.data : `错误: ${result.error ?? '执行失败'}`
 
       // 将工具结果追加到消息列表（使用 tool 角色，与原生 function calling 保持一致）
       const tcId = `${tcIdPrefix}${agentSessionCtx.stepCounter.value}`
@@ -1581,12 +1649,21 @@ export async function runAgent(
   await useSkillStore.getState().ensureSkillsLoaded()
 
   const startTime = Date.now()
-  let stepIndex = 0
+  let stepIndex = resumeOptions?.existingSteps?.reduce((max, step) => Math.max(max, step.stepIndex + 1), 0) ?? 0
   // stepCounter 桥接对象：让 AgentSessionContext.stepCounter 与引擎 stepIndex 保持同步
   // 清理时将移除 stepIndex，统一使用 stepCounter
   const stepCounter: { value: number } = {
     get value() { return stepIndex },
     set value(v: number) { stepIndex = v },
+  }
+  const resumedActionSequence = resumeOptions?.existingSteps?.reduce(
+    (max, step) => Math.max(max, (step.globalSequence ?? -1) + 1),
+    0,
+  ) ?? 0
+  const actionSequence = workspaceContext?.actionSequence ?? { value: resumedActionSequence }
+  actionSequence.value = Math.max(actionSequence.value, resumedActionSequence)
+  if (workspaceContext && !workspaceContext.actionSequence) {
+    workspaceContext.actionSequence = actionSequence
   }
 
   // 过滤出 Agent 启用的工具（统一使用 resolveAgentTools，P2 修复）
@@ -1748,29 +1825,33 @@ export async function runAgent(
             }
             continue
           }
-          // action 步骤作为带 tool_calls 的 assistant 消息
+          const stableToolCallId = step.actionId ?? step.id
+          // action 步骤作为带 tool_calls 的 assistant 消息；action 与 observation 使用同一稳定 ID 配对。
           messages.push({
             role: 'assistant',
             content: step.content || '',
             toolCalls: [{
-              id: step.id,
+              id: stableToolCallId,
               name: step.toolCall.name,
               arguments: JSON.stringify(step.toolCall.arguments)
             }]
           })
-          existingToolCallIds.add(step.id)
-          // 如果下一步是 observation，也添加它
-          if (i + 1 < existingSteps.length && existingSteps[i + 1].type === 'observation') {
-            const obsStep = existingSteps[i + 1]
-            if (obsStep.toolResult && !existingToolResultIds.has(obsStep.id)) {
-              messages.push({
-                role: 'tool',
-                content: obsStep.toolResult.data || obsStep.toolResult.error || '',
-                toolCallId: obsStep.id,
-                toolName: step.toolCall.name
-              })
-              existingToolResultIds.add(obsStep.id)
-            }
+          existingToolCallIds.add(stableToolCallId)
+          const obsStep = existingSteps
+            .slice(i + 1)
+            .find((candidate) => candidate.type === 'observation'
+              && (candidate.actionId === step.actionId || candidate.actionStepId === step.id))
+          if (obsStep?.toolResult && !existingToolResultIds.has(stableToolCallId)) {
+            // 新消息使用 actionId 稳定配对；旧消息没有 actionId 时保持历史 observation id 语义。
+            const observationToolCallId = step.actionId ? stableToolCallId : obsStep.id
+            messages.push({
+              role: 'tool',
+              content: obsStep.toolResult.data || obsStep.toolResult.error || '',
+              toolCallId: observationToolCallId,
+              toolName: step.toolCall.name
+            })
+            existingToolResultIds.add(stableToolCallId)
+            existingToolResultIds.add(obsStep.id)
           }
         } else if (step.type === 'thinking' && step.content) {
           // thinking 步骤作为 assistant 消息
@@ -1868,6 +1949,7 @@ export async function runAgent(
     workspaceId: workspaceContext?.workspaceId,
     callbacks,
     stepCounter,
+    actionSequence,
     steps,
     artifacts: [],
   }

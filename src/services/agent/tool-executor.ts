@@ -53,6 +53,8 @@ export interface AgentSessionContext {
   callbacks: AgentEngineCallbacks
   /** 当前步数计数器引用（与引擎共享，工具可推进步数） */
   stepCounter: { value: number }
+  /** 跨主/子 Agent 共享的 action 单调序号。 */
+  actionSequence: { value: number }
   /** 已执行的步骤数组引用（工具可写入步骤，如 human_input） */
   steps: AgentStep[]
   /** 收集的产物路径（跨工具共享，write_file 等工具写入） */

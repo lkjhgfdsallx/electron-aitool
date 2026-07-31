@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { aiService } from '../services/ai-service'
 import { toolService } from '../services/tool-service'
@@ -21,12 +21,27 @@ import { useWorkspaceStore } from '../stores/workspace-store'
 import { useWorkspaceAgentStore } from '../stores/workspace-agent-store'
 import { useSettingsStore } from '../stores'
 import { useDebugStore } from '../stores/debug-store'
+import { conversationDb } from '../services/conversation-db'
 import { generateTitleFromContent } from '../utils/conversation-utils'
 import { applyWebSearchPolicy, getWebToolsIfEnabled, isWebTool } from '../utils/web-tools'
 import { DEFAULT_POST_WRITE_LINT_CONFIG } from '../types'
-import type { Message, Tool, ToolDefinition, ToolExecuteResult, MessageAttachment, AgentStep, AgentProfile, SiteAnalyzerLiveProgress, ResolvedAIConfig } from '../types'
+import type {
+  Message,
+  Tool,
+  ToolDefinition,
+  ToolExecuteResult,
+  MessageAttachment,
+  AgentStep,
+  AgentProfile,
+  SiteAnalyzerLiveProgress,
+  ResolvedAIConfig,
+  InspectActionRollbackRequest,
+  RollbackConflict,
+  WorkspaceFileChange,
+} from '../types'
 import type { AgentEvent } from '../services/agent/event-bus'
 import type { AiTurnChanges } from '../types/ai-changes'
+import i18n from '../i18n/config'
 
 /** 根据 finishReason 生成截断/中断提示 */
 function getFinishNotice(finishReason?: string): string | null {
@@ -284,9 +299,20 @@ export function hasUsableAIProvider(): boolean {
   return useAIProviderStore.getState().resolveConfig() !== null
 }
 
+export interface ActionRegenerationDialogConfig {
+  title: string
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  alertOnly?: boolean
+  variant?: 'default' | 'danger' | 'warning'
+}
+
 export interface UseChatOptions {
   /** 无可用 AI 源时回调（用于跳转设置等）；未提供时回退为 alert */
   onMissingProvider?: () => void
+  /** 由 React UI 提供的可访问确认/通知对话框。 */
+  showActionDialog?: (config: ActionRegenerationDialogConfig) => Promise<boolean>
 }
 
 /**
@@ -295,7 +321,10 @@ export interface UseChatOptions {
 export function useChat(options: UseChatOptions = {}) {
   const abortControllerRef = useRef<AbortController | null>(null)
   const onMissingProviderRef = useRef(options.onMissingProvider)
+  const showActionDialogRef = useRef(options.showActionDialog)
+  const [isRegeneratingAction, setIsRegeneratingAction] = useState(false)
   onMissingProviderRef.current = options.onMissingProvider
+  showActionDialogRef.current = options.showActionDialog
   // 网站分析开始时间（用于在进度面板中显示耗时）
   const siteAnalyzerStartTimeRef = useRef<number>(0)
   // 流式输出节流缓冲（每帧最多触发一次 store 更新）
@@ -333,6 +362,9 @@ export function useChat(options: UseChatOptions = {}) {
       ...useMCPToolStore.getState().mcpTools,
       ...useCustomToolStore.getState().customTools.filter((t) => t.enabled),
     ].filter((tool) => tool.enabled)
+
+    // Leader 与所有子 Agent 共享同一个 action 序号引用，保证跨 Agent 的回滚顺序稳定。
+    const workspaceActionSequence = { value: 0 }
 
     // 构建子任务分派回调（真正运行子 Agent 并返回结构化结果 JSON）
     // Boomerang: 接收 contextSummary（主 Agent 提供的上下文摘要），作为子 Agent 的背景信息
@@ -386,6 +418,7 @@ export function useChat(options: UseChatOptions = {}) {
             workspaceId: ws.id,
             teamAgents: freshTeamAgents,
             knowledgeBaseIds: ws.knowledgeBaseIds ?? [],
+            actionSequence: workspaceActionSequence,
             // 传递共享计划引用给子 Agent，使其可以访问和更新 Leader 创建的计划
             sharedPlan: sharedPlanRef.current,
           }
@@ -649,6 +682,7 @@ export function useChat(options: UseChatOptions = {}) {
       folderPath: ws.folderPath,
       workspaceId: ws.id,
       teamAgents,
+      actionSequence: workspaceActionSequence,
       agentToolCatalog,
       // 严格模式：仅显式关联集合；空数组表示禁用 RAG
       knowledgeBaseIds: ws.knowledgeBaseIds ?? [],
@@ -2893,13 +2927,257 @@ export function useChat(options: UseChatOptions = {}) {
     ]
   )
 
+  /**
+   * 从指定 action 的执行前状态重新生成。
+   * 工作区模式会预检目标 action 及所有后续 action，并按时间逆序回滚文件快照。
+   */
+  const regenerateFromAction = useCallback(
+    async (messageId: string, actionId: string) => {
+      const convId = currentConversationId
+      if (!convId || isStreamingRef.current || isRegeneratingAction) return
+
+      const showDialog = showActionDialogRef.current
+      if (!showDialog) return
+      setIsRegeneratingAction(true)
+
+      try {
+
+      const visibleMessages = getVisibleMessages(convId)
+      const messageIndex = visibleMessages.findIndex((message) => message.id === messageId)
+      if (messageIndex < 0) return
+      const target = visibleMessages[messageIndex]
+      if (!target.agentSteps?.length) return
+
+      const actionIndex = target.agentSteps.findIndex(
+        (step) => step.type === 'action' && (step.actionId === actionId || step.id === actionId),
+      )
+      if (actionIndex < 0) return
+
+      const removedMessageSteps = visibleMessages.slice(messageIndex).flatMap((message, relativeMessageIndex) => {
+        const steps = message.agentSteps ?? []
+        return (relativeMessageIndex === 0 ? steps.slice(actionIndex) : steps).map((step) => ({
+          step,
+          messageId: message.id,
+        }))
+      })
+      const removedActions = removedMessageSteps.filter(
+        (entry): entry is { step: AgentStep & { type: 'action' }; messageId: string } => entry.step.type === 'action',
+      )
+      const removedMessages = visibleMessages.length - messageIndex - 1
+      const externalHints = removedMessageSteps
+        .flatMap(({ step }) => step.sideEffectHints ?? [])
+        .filter((hint) => !hint.reversible)
+      const conversation = getConversation(convId)
+      const workspace = conversation?.workspaceId
+        ? useWorkspaceStore.getState().workspaces.find((item) => item.id === conversation.workspaceId)
+        : undefined
+
+      const rollbackItems = workspace
+        ? removedActions.flatMap(({ step, messageId: actionMessageId }) => {
+            if (!step.snapshotId || !step.runId || !step.actionId) return []
+            const request: InspectActionRollbackRequest = {
+              folderPath: workspace.folderPath,
+              workspaceId: workspace.id,
+              conversationId: convId,
+              runId: step.runId,
+              actionId: step.actionId,
+              messageId: actionMessageId,
+              snapshotId: step.snapshotId,
+            }
+            return [{ request, step }]
+          })
+        : []
+
+      const inspections: Array<{
+        request: InspectActionRollbackRequest
+        changes: WorkspaceFileChange[]
+        conflicts: RollbackConflict[]
+      }> = []
+      if (workspace) {
+        for (const item of rollbackItems) {
+          const inspected = await window.electronAPI.workspace.actionSnapshot.inspectRollback(item.request)
+          if (!inspected.success) {
+            await showDialog({
+              title: i18n.t('chat.actionRegenerationInspectFailedTitle'),
+              message: i18n.t('chat.actionRegenerationInspectFailedMessage', { error: inspected.error }),
+              confirmLabel: i18n.t('chat.actionRegenerationAcknowledge'),
+              alertOnly: true,
+              variant: 'danger',
+            })
+            return
+          }
+          inspections.push({
+            request: item.request,
+            changes: inspected.changes,
+            conflicts: inspected.conflicts,
+          })
+        }
+
+        // 较早快照与较晚 action 修改同一路径时出现的差异属于合法链式变化；
+        // 仅每个路径最后一次 action 的 after 状态必须与当前工作区一致。
+        const pathsChangedLater = new Set<string>()
+        const blockingConflicts: RollbackConflict[] = []
+        for (let index = inspections.length - 1; index >= 0; index--) {
+          const inspection = inspections[index]
+          blockingConflicts.push(
+            ...inspection.conflicts.filter((conflict) => !pathsChangedLater.has(conflict.path)),
+          )
+          for (const change of inspection.changes) {
+            pathsChangedLater.add(change.path)
+            if (change.previousPath) pathsChangedLater.add(change.previousPath)
+          }
+        }
+        if (blockingConflicts.length > 0) {
+          const conflicts = blockingConflicts
+            .map((item) => `• ${item.path} (${item.reason})`)
+            .join('\n')
+          await showDialog({
+            title: i18n.t('chat.actionRegenerationConflictTitle'),
+            message: i18n.t('chat.actionRegenerationConflictMessage', { conflicts }),
+            confirmLabel: i18n.t('chat.actionRegenerationAcknowledge'),
+            alertOnly: true,
+            variant: 'danger',
+          })
+          return
+        }
+      }
+
+      const changedPaths = Array.from(new Set(
+        inspections.flatMap((inspection) => inspection.changes.flatMap((change) =>
+          change.previousPath ? [change.previousPath, change.path] : [change.path],
+        )),
+      ))
+      const paths = changedPaths.length
+        ? i18n.t('chat.actionRegenerationWorkspacePaths', {
+            count: changedPaths.length,
+            paths: changedPaths.map((path) => `• ${path}`).join('\n'),
+          })
+        : ''
+      const sideEffects = externalHints.length
+        ? i18n.t('chat.actionRegenerationSideEffects', {
+            effects: externalHints.map((hint) => `• ${hint.description}`).join('\n'),
+          })
+        : ''
+      const confirmed = await showDialog({
+        title: i18n.t('chat.actionRegenerationConfirmTitle'),
+        message: i18n.t('chat.actionRegenerationConfirmMessage', {
+          steps: removedMessageSteps.length,
+          messages: removedMessages,
+          workspace: workspace ? paths : '',
+          sideEffects,
+        }),
+        confirmLabel: i18n.t('chat.actionRegenerationConfirm'),
+        cancelLabel: i18n.t('chat.actionRegenerationCancel'),
+        variant: 'danger',
+      })
+      if (!confirmed) return
+
+      // 收集各 rollback 步骤返回的 protection 快照 ID。
+      const protectionSnapshotIds: string[] = []
+
+      // 必须从最新 action 向最早 action 回滚，确保每个快照看到其对应的 after 状态。
+      for (let index = rollbackItems.length - 1; index >= 0; index--) {
+        const rolledBack = await window.electronAPI.workspace.actionSnapshot.rollback(rollbackItems[index].request)
+        if (!rolledBack.success) {
+          const conflicts = rolledBack.conflicts
+            ?.map((item: RollbackConflict) => `• ${item.path}`)
+            .join('\n')
+          await showDialog({
+            title: i18n.t('chat.actionRegenerationRollbackFailedTitle'),
+            message: i18n.t('chat.actionRegenerationRollbackFailedMessage', {
+              error: rolledBack.error,
+              conflicts: conflicts
+                ? i18n.t('chat.actionRegenerationRollbackConflicts', { conflicts })
+                : '',
+            }),
+            confirmLabel: i18n.t('chat.actionRegenerationAcknowledge'),
+            alertOnly: true,
+            variant: 'danger',
+          })
+          return
+        }
+        if (rolledBack.protectionSnapshotId) {
+          protectionSnapshotIds.push(rolledBack.protectionSnapshotId)
+        }
+      }
+
+      // 全部文件回滚成功后，使用单个 IDB 事务保存截断后的目标消息并删除后续消息；
+      // 事务成功后 Zustand 才一次性切换，避免消息历史出现半截断状态。
+      const truncatedMessage: Message = {
+        ...target,
+        agentSteps: target.agentSteps.slice(0, actionIndex),
+        content: '',
+        reasoningContent: undefined,
+        toolCalls: undefined,
+        agentPlan: undefined,
+        isStreaming: false,
+        isError: false,
+        finishReason: undefined,
+        siteAnalyzerProgress: undefined,
+        hasReport: false,
+        continuable: 'agent',
+      }
+      const removedMessageIds = visibleMessages.slice(messageIndex + 1).map((message) => message.id)
+      try {
+        await useConversationStore.getState().truncateMessages(convId, truncatedMessage, removedMessageIds)
+      } catch (error) {
+        // 消息事务失败 → 将工作区恢复到 protection 状态，保证文件/消息一致。
+        for (const protectionId of protectionSnapshotIds) {
+          if (!workspace) continue
+          await window.electronAPI.workspace.actionSnapshot.restoreProtection({
+            folderPath: workspace.folderPath,
+            protectionSnapshotId: protectionId,
+          }).catch(() => undefined)
+        }
+        await showDialog({
+          title: i18n.t('chat.actionRegenerationTruncateFailedTitle'),
+          message: i18n.t('chat.actionRegenerationTruncateFailedMessage', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+          confirmLabel: i18n.t('chat.actionRegenerationAcknowledge'),
+          alertOnly: true,
+          variant: 'danger',
+        })
+        return
+      }
+      const affectedMessageIds = visibleMessages.slice(messageIndex).map((message) => message.id)
+      for (const affectedMessageId of affectedMessageIds) {
+        useDebugStore.getState().clearMessageDebug(affectedMessageId)
+        aiChangesService.discardBuffer(convId, affectedMessageId)
+      }
+      await reportStore.deleteReports(affectedMessageIds).catch(() => undefined)
+
+      // 清理不再被任何消息引用的旧快照（静默失败，清理为非关键路径）。
+      if (workspace) {
+        const allConvIds = [convId, ...useConversationStore.getState().conversations
+          .filter((c) => c.workspaceId === workspace!.id)
+          .map((c) => c.id)]
+        conversationDb.getReferencedActionSnapshotIds(allConvIds).then((retainedIds) => {
+          window.electronAPI.workspace.actionSnapshot.cleanup({
+            folderPath: workspace!.folderPath,
+            workspaceId: workspace!.id,
+            retainedSnapshotIds: retainedIds,
+          }).catch(() => undefined)
+        })
+      }
+
+      await continueGeneration(messageId)
+      } finally {
+        setIsRegeneratingAction(false)
+      }
+    },
+    [currentConversationId, getVisibleMessages, getConversation, continueGeneration, isRegeneratingAction],
+  )
+
   return {
     sendMessage,
     stopGeneration,
     regenerateMessage,
+    regenerateFromAction,
     editAndResend,
     continueGeneration,
     isStreaming: isStreamingRef.current,
+    isRegeneratingAction,
     handleHumanInput,
     approvePlan,
     rejectPlan,

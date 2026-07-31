@@ -1,4 +1,20 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type {
+  BeginActionSnapshotRequest,
+  BeginActionSnapshotResult,
+  CleanupActionSnapshotsRequest,
+  CleanupActionSnapshotsResult,
+  DeleteActionSnapshotRequest,
+  DeleteActionSnapshotResult,
+  FinalizeActionSnapshotRequest,
+  FinalizeActionSnapshotResult,
+  InspectActionRollbackRequest,
+  InspectActionRollbackResult,
+  RestoreProtectionRequest,
+  RestoreProtectionResult,
+  RollbackActionSnapshotRequest,
+  RollbackActionSnapshotResult,
+} from '../../src/types/action-snapshot'
 
 // 搜索结果类型
 export interface SearchResult {
@@ -254,6 +270,16 @@ export interface ElectronAPI {
       /** 删除单个工作区 Agent */
       deleteAgent: (folderPath: string, agentId: string) => Promise<{ success: boolean; error?: string }>
     }
+    /** Agent action 级工作区快照；主进程负责扫描、冲突检查与原子回滚。 */
+    actionSnapshot: {
+      begin: (request: BeginActionSnapshotRequest) => Promise<BeginActionSnapshotResult>
+      finalize: (request: FinalizeActionSnapshotRequest) => Promise<FinalizeActionSnapshotResult>
+      inspectRollback: (request: InspectActionRollbackRequest) => Promise<InspectActionRollbackResult>
+      rollback: (request: RollbackActionSnapshotRequest) => Promise<RollbackActionSnapshotResult>
+      restoreProtection: (request: RestoreProtectionRequest) => Promise<RestoreProtectionResult>
+      delete: (request: DeleteActionSnapshotRequest) => Promise<DeleteActionSnapshotResult>
+      cleanup: (request: CleanupActionSnapshotsRequest) => Promise<CleanupActionSnapshotsResult>
+    }
     /** 文件监控 */
     watcher: {
       /** 开始监控工作区目录文件变更 */
@@ -457,6 +483,22 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.invoke('workspace:search:searchFiles', rootPath, options),
       findSymbols: (rootPath: string, options?: { query?: string; glob?: string; maxResults?: number }) =>
         ipcRenderer.invoke('workspace:search:findSymbols', rootPath, options),
+    },
+    actionSnapshot: {
+      begin: (request: BeginActionSnapshotRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:begin', request),
+      finalize: (request: FinalizeActionSnapshotRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:finalize', request),
+      inspectRollback: (request: InspectActionRollbackRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:inspect-rollback', request),
+      rollback: (request: RollbackActionSnapshotRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:rollback', request),
+      restoreProtection: (request: RestoreProtectionRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:restore-protection', request),
+      delete: (request: DeleteActionSnapshotRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:delete', request),
+      cleanup: (request: CleanupActionSnapshotsRequest) =>
+        ipcRenderer.invoke('workspace:action-snapshot:cleanup', request),
     },
     vcs: {
       init: (folderPath: string) =>

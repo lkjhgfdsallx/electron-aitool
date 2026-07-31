@@ -141,6 +141,8 @@ export interface ConversationStore {
   addMessage: (conversationId: string, input: MessageCreateInput) => Message
   updateMessage: (messageId: string, updates: Partial<Message>) => void
   deleteMessage: (conversationId: string, messageId: string) => void
+  /** 原子保存目标消息并删除其后的消息，IDB 成功后一次性提交内存状态。 */
+  truncateMessages: (conversationId: string, updatedMessage: Message, deletedMessageIds: string[]) => Promise<void>
   getMessages: (conversationId: string) => Message[]
   clearMessages: (conversationId: string) => void
 
@@ -431,6 +433,35 @@ export const useConversationStore = create<ConversationStore>()(
         conversationDb.deleteMessage(messageId).catch((e) =>
           console.warn('[conversation-store] IDB 删除消息失败:', e)
         )
+      },
+
+      truncateMessages: async (conversationId, updatedMessage, deletedMessageIds) => {
+        await conversationDb.truncateMessages(updatedMessage, deletedMessageIds)
+        const deleted = new Set(deletedMessageIds)
+        for (const messageId of deleted) unindexMessage(messageId)
+        indexMessage(updatedMessage.id, conversationId)
+        set((state) => {
+          const current = state.messages[conversationId] ?? []
+          const nextMessages = current
+            .filter((message) => !deleted.has(message.id))
+            .map((message) => message.id === updatedMessage.id ? updatedMessage : message)
+          const preview = nextMessages.length > 0
+            ? generatePreview(nextMessages[nextMessages.length - 1].content || '')
+            : undefined
+          return {
+            messages: { ...state.messages, [conversationId]: nextMessages },
+            conversations: state.conversations.map((conversation) =>
+              conversation.id === conversationId
+                ? {
+                    ...conversation,
+                    messageCount: nextMessages.length,
+                    lastMessagePreview: preview,
+                    updatedAt: Date.now(),
+                  }
+                : conversation
+            ),
+          }
+        })
       },
 
       getMessages: (conversationId) => get().messages[conversationId] ?? [],

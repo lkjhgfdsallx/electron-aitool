@@ -16,6 +16,7 @@ import { setupBrowserConfigHandlers } from './browser-config-handler'
 import { setupCustomToolHandlers } from './custom-tool-handler'
 import { searchWeb, fetchWebpage } from './web-search'
 import { setupWorkspaceVCSHandlers } from './workspace-vcs-handler'
+import { setupWorkspaceActionSnapshotHandlers } from './workspace-action-snapshot-handler'
 import { setupWorkspaceWatcherHandlers } from './workspace-watcher-handler'
 import { setupWorkspaceCommandHandlers } from './workspace-command-handler'
 import { setupWebDAVHandlers } from './webdav-handler'
@@ -77,8 +78,9 @@ app.whenReady().then(() => {
   // 设置自定义工具沙箱执行
   setupCustomToolHandlers()
 
-  // 设置工作区（VCS + 文件监控 + 命令执行 + 代码库检索 + Git SCM）
+  // 设置工作区（VCS + action 快照 + 文件监控 + 命令执行 + 代码库检索 + Git SCM）
   setupWorkspaceVCSHandlers()
+  setupWorkspaceActionSnapshotHandlers()
   setupWorkspaceWatcherHandlers()
   setupWorkspaceCommandHandlers()
   setupWorkspaceSearchHandlers()

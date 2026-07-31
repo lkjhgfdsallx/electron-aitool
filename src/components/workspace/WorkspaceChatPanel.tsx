@@ -18,6 +18,7 @@ import { useChat, hasUsableAIProvider } from '../../hooks/use-chat'
 import { useWorkspaceCompression } from '../../hooks/use-workspace-compression'
 import type { Workspace, Message, MessageAttachment, PromptRuntimeContext } from '../../types'
 import { useAppTranslation } from '../../i18n/hooks'
+import { useConfirmDialog } from '../settings/ui/ConfirmDialog'
 
 type MessageAlignment = 'left-right' | 'all-left' | 'all-right' | 'full-width'
 
@@ -36,6 +37,7 @@ interface WorkspaceChatPanelProps {
 
 export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatPanelProps) {
   const { t } = useAppTranslation()
+  const { confirm: showActionDialog, Dialog: ActionDialog } = useConfirmDialog()
 
   const getVisibleMessages = useConversationStore((s) => s.getVisibleMessages)
   const getMessages = useConversationStore((s) => s.getMessages)
@@ -63,13 +65,16 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
     sendMessage,
     stopGeneration,
     regenerateMessage,
+    regenerateFromAction,
     editAndResend,
     continueGeneration,
     handleHumanInput,
     approvePlan,
     rejectPlan,
+    isRegeneratingAction,
   } = useChat({
     onMissingProvider: handleMissingProvider,
+    showActionDialog,
   })
 
   const hasAIProvider = hasUsableAIProvider()
@@ -348,6 +353,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
   }, [])
 
   return (
+    <>
     <ChatViewCore
       conversationId={conversationId}
       messages={messages}
@@ -357,6 +363,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       onSwitchBranch={handleSwitchBranch}
       getActiveBranchIndex={getActiveBranchIndex}
       onRegenerate={regenerateMessage}
+      onRegenerateFromAction={regenerateFromAction}
       onEditAndResend={editAndResend}
       onContinueGeneration={continueGeneration}
       onHumanInput={handleHumanInput}
@@ -364,7 +371,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       onRejectPlan={rejectPlan}
       onSend={handleSend}
       onStop={stopGeneration}
-      isStreaming={isStreaming}
+      isStreaming={isStreaming || isRegeneratingAction}
       showTimestamp={showTimestamp}
       showTokenUsage={showTokenUsage}
       showAvatar={showAvatar}
@@ -376,5 +383,7 @@ export function WorkspaceChatPanel({ workspace, onOpenSettings }: WorkspaceChatP
       workspace={workspace}
       inputClassName="flex-shrink-0 border-t border-surface-200 dark:border-surface-700/60"
     />
+    <ActionDialog />
+    </>
   )
 }

@@ -49,6 +49,7 @@ interface MessageItemProps {
   showAvatar?: boolean
   messageAlignment?: 'left-right' | 'all-left' | 'all-right' | 'full-width'
   onRegenerate?: (messageId: string) => void
+  onRegenerateFromAction?: (messageId: string, actionId: string) => void
   onEdit?: (messageId: string, content: string) => void
   /** 编辑并重新发送（创建对话分支） */
   onEditAndResend?: (messageId: string, content: string) => void
@@ -81,6 +82,7 @@ export const MessageItem = memo(function MessageItem({
   showAvatar = true,
   messageAlignment = 'left-right',
   onRegenerate,
+  onRegenerateFromAction,
   onEdit,
   onEditAndResend,
   onContinueGeneration,
@@ -323,6 +325,9 @@ export const MessageItem = memo(function MessageItem({
               steps={message.agentSteps!}
               isRunning={message.isStreaming}
               onHumanInput={onHumanInput}
+              onRegenerateFromAction={onRegenerateFromAction
+                ? (actionId) => onRegenerateFromAction(message.id, actionId)
+                : undefined}
               isError={message.isError}
             />
           </SelectionBoundary>
@@ -520,6 +525,7 @@ export const MessageItem = memo(function MessageItem({
     prevProps.messageAlignment === nextProps.messageAlignment &&
     prevProps.activeBranchIndex === nextProps.activeBranchIndex &&
     prevProps.onRegenerate === nextProps.onRegenerate &&
+    prevProps.onRegenerateFromAction === nextProps.onRegenerateFromAction &&
     prevProps.onEditAndResend === nextProps.onEditAndResend &&
     prevProps.onHumanInput === nextProps.onHumanInput &&
     prevProps.onApprovePlan === nextProps.onApprovePlan &&

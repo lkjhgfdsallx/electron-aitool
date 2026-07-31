@@ -16,6 +16,7 @@ import { WEBSITE_ANALYZER_AGENT_ID } from '../../constants/default-agents'
 import type { Message, MessageAttachment, PromptRuntimeContext } from '../../types'
 import type { SettingsSection } from '../settings/SettingsNavRail'
 import { useAppTranslation } from '@/i18n/hooks'
+import { useConfirmDialog } from '../settings/ui/ConfirmDialog'
 
 /** ⚡ 稳定的空数组引用，避免每次渲染创建新的 [] 导致 useMemo 失效 */
 const EMPTY_MESSAGES: Message[] = []
@@ -31,6 +32,7 @@ interface ChatWindowProps {
 
 export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSettings }: ChatWindowProps) {
   const { t } = useAppTranslation()
+  const { confirm: showActionDialog, Dialog: ActionDialog } = useConfirmDialog()
   const {
     currentConversationId,
     getVisibleMessages,
@@ -55,8 +57,9 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
     }
   }, [onOpenSettings])
 
-  const { sendMessage, stopGeneration, regenerateMessage, editAndResend, continueGeneration, handleHumanInput, approvePlan, rejectPlan } = useChat({
-    onMissingProvider: handleMissingProvider
+  const { sendMessage, stopGeneration, regenerateMessage, regenerateFromAction, editAndResend, continueGeneration, handleHumanInput, approvePlan, rejectPlan, isRegeneratingAction } = useChat({
+    onMissingProvider: handleMissingProvider,
+    showActionDialog,
   })
 
   /** 欢迎页/快捷问题前置校验：无 AI 源时不创建空对话 */
@@ -525,6 +528,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
   )
 
   return (
+    <>
     <ChatViewCore
       conversationId={currentConversationId}
       messages={messages}
@@ -533,6 +537,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       onSwitchBranch={handleSwitchBranch}
       getActiveBranchIndex={getActiveBranchIndex}
       onRegenerate={regenerateMessage}
+      onRegenerateFromAction={regenerateFromAction}
       onEditAndResend={editAndResend}
       onContinueGeneration={continueGeneration}
       onHumanInput={handleHumanInput}
@@ -540,7 +545,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       onRejectPlan={rejectPlan}
       onSend={handleSend}
       onStop={stopGeneration}
-      isStreaming={isStreaming}
+      isStreaming={isStreaming || isRegeneratingAction}
       showTimestamp={showTimestamp}
       showTokenUsage={showTokenUsage}
       showAvatar={showAvatar}
@@ -548,5 +553,7 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
       runtimeContext={runtimeContext}
       onOpenPromptManager={onOpenPromptManager}
     />
+    <ActionDialog />
+    </>
   )
 }

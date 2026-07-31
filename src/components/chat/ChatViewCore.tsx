@@ -28,6 +28,7 @@ export interface ChatViewCoreProps {
   onSwitchBranch: (forkMessageId: string, branchIndex: number) => void
   getActiveBranchIndex: (forkMessageId: string) => number
   onRegenerate: (messageId: string) => void
+  onRegenerateFromAction?: (messageId: string, actionId: string) => void
   onEditAndResend?: (messageId: string, content: string) => void
   onContinueGeneration?: (messageId: string) => void
   onHumanInput?: (stepId: string, value: string | string[]) => void
@@ -63,6 +64,7 @@ export function ChatViewCore({
   onSwitchBranch,
   getActiveBranchIndex,
   onRegenerate,
+  onRegenerateFromAction,
   onEditAndResend,
   onContinueGeneration,
   onHumanInput,
@@ -165,6 +167,7 @@ export function ChatViewCore({
                   showAvatar={showAvatar}
                   messageAlignment={messageAlignment}
                   onRegenerate={onRegenerate}
+                  onRegenerateFromAction={onRegenerateFromAction}
                   onEditAndResend={onEditAndResend}
                   onContinueGeneration={onContinueGeneration}
                   onHumanInput={onHumanInput}
