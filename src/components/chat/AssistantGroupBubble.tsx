@@ -23,6 +23,8 @@ interface AssistantGroupBubbleProps {
   onRegenerate?: (messageId: string) => void
   /** 继续生成（普通对话续写 / Agent 继续执行） */
   onContinueGeneration?: (messageId: string) => void
+  /** Phase 5: 是否为工作区模式 */
+  isWorkspaceMode?: boolean
 }
 
 /**
@@ -36,7 +38,8 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
   showAvatar = true,
   messageAlignment = 'left-right',
   onRegenerate,
-  onContinueGeneration
+  onContinueGeneration,
+  isWorkspaceMode = false
 }: AssistantGroupBubbleProps) {
   const { t, i18n } = useAppTranslation()
   const [copied, setCopied] = useState(false)
@@ -157,6 +160,12 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             AI
           </span>
+          {isWorkspaceMode && (
+            <span className="inline-flex items-center gap-1 text-xs bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400 border border-teal-200/60 dark:border-teal-800/40 rounded-full px-2 py-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+              {t('chat.aiLeaderBadge', { defaultValue: 'AI 领导' })}
+            </span>
+          )}
           {showTimestamp && (
             <span className="text-xs text-muted">
               {formatTime(timestamp, i18n.resolvedLanguage ?? i18n.language)}
@@ -168,7 +177,7 @@ export const AssistantGroupBubble = memo(function AssistantGroupBubble({
             </span>
           )}
           {isStreaming && (
-            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />{t('chat.thinking')}</span>
+            <span className={`inline-flex items-center gap-1 text-xs ${isWorkspaceMode ? 'text-teal-500' : 'text-accent-500'}`}><span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isWorkspaceMode ? 'bg-teal-500' : 'bg-accent-500'}`} />{isWorkspaceMode ? t('chat.orchestrating', { defaultValue: '编排中' }) : t('chat.thinking')}</span>
           )}
         </div>
 

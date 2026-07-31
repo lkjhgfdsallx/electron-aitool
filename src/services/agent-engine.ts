@@ -29,6 +29,7 @@ import type {
   PromptVariable,
   AgentWorkflow,
 } from '../types'
+import type { AgentPlan } from '../types/agent-plan'
 import { aiService, type DebugRequestInfo } from './ai-service'
 import { toolService } from './tool-service'
 import { memoryService } from './memory-service'
@@ -205,6 +206,20 @@ export interface WorkspaceContext {
   createAgent?: (input: CreateAgentInput) => Promise<string>
   /** 子 Agent 活动回调（将子 Agent 的执行步骤实时上报给 UI） */
   onSubAgentActivity?: (event: SubAgentActivityEvent) => void
+
+  /**
+   * 共享的计划引用（用于多 Agent 协作）
+   * 当 Leader 创建计划后，将计划对象存储在此处，
+   * 子 Agent 可以通过此引用访问和更新计划。
+   */
+  sharedPlan?: {
+    /** 计划对象引用 */
+    plan: AgentPlan
+    /** 计划所属的 Leader Agent ID */
+    leaderAgentId: string
+    /** 计划关联的消息 ID（用于 UI 更新） */
+    messageId: string
+  }
 
   // ---- 自动审批（阶段 1 新增，参考 ROO CODE Auto-Approve） ----
 
@@ -460,7 +475,7 @@ function buildAgentSystemPrompt(
         prompt += `1. **你绝不亲自编写代码、创建文件或执行命令。** 你只做分析、规划与协调，实际工作交给团队成员。\n`
       }
       prompt += `2. **绝对禁止在回复中输出代码块（\`\`\`）。** 你的回复只包含分析、计划、说明和指挥指令。\n`
-      prompt += `3. **只使用「可用工具」中列出的工具。** 不要假设或尝试任何未列出的工具。\n`
+      prompt += `3. **只使用 function calling 提供的工具。** 不要假设或尝试任何未授权的工具。\n`
       if (hasTool('workspace_list_files')) {
         prompt += `4. 需要了解文件内容或目录结构时，使用 \`workspace_list_files\` 浏览，或派一个 Agent 去读取并汇报。\n`
       } else {
@@ -531,7 +546,7 @@ function buildAgentSystemPrompt(
         workspaceRules.push(`${ruleNo}. **必须使用** \`workspace_execute_command\` 来运行构建、测试等命令。`)
         ruleNo++
       }
-      workspaceRules.push(`${ruleNo}. **只使用「可用工具」中列出的工具**，不要假设或尝试任何未列出的工具。`)
+      workspaceRules.push(`${ruleNo}. **只使用 function calling 提供的工具**，不要假设或尝试任何未授权的工具。`)
 
       prompt += `\n### ⚠️ 工具使用强制规则\n`
       prompt += workspaceRules.join('\n')
@@ -539,31 +554,28 @@ function buildAgentSystemPrompt(
     }
   }
 
-  // 添加工具描述（仅当前 effectiveTools）
+  // 工具定义仅通过 API 的 tools 字段提供（function calling），不在 system prompt 中重复完整 schema。
+  // Leader 创建成员所需的全量工具目录已在上方「可授权给新团队成员的工具目录」注入（仅 id/name/用途）。
   if (tools.length > 0) {
-    prompt += '\n\n## 可用工具\n你可以使用以下工具来完成任务：\n'
-    for (const tool of tools) {
-      prompt += `\n### ${tool.name}\n描述：${tool.description}\n参数：${JSON.stringify(tool.parameters, null, 2)}\n`
-    }
-    prompt += `\n要调用工具，请使用提供的 function calling 功能。\n`
-    prompt += `\n**重要：你只能使用上方「可用工具」中列出的工具。不要假设、编造或尝试调用任何未列出的工具。**\n`
     if (isLeader) {
-      // Leader：仅正向列举已启用工具，不点名未启用的执行类工具
+      // Leader：仅正向列举已启用工具名与指挥规则，不点名未启用的执行类工具，不写入参数 schema
       const commandTools = formatToolList(['workspace_dispatch_task', 'workspace_create_agent', 'workspace_dispatch_parallel'])
       const scoutTools = formatToolList(['workspace_list_files', 'web_search', 'fetch_webpage', 'remember', 'recall'])
-      prompt += `\n### 重要：指挥者工具使用规则\n`
+      prompt += `\n\n### 重要：指挥者工具使用规则\n`
+      prompt += `- 你自身可调用的工具已通过 function calling 接口提供，请直接调用；不要在回复中编造工具格式。\n`
       if (commandTools) {
         prompt += `- 优先使用指挥类工具：${commandTools}。\n`
       }
       if (scoutTools) {
         prompt += `- 侦察/辅助类可用工具：${scoutTools}。\n`
       }
-      prompt += `- 只使用「可用工具」中列出的工具，不要尝试任何未列出的工具。\n`
+      prompt += `- 只使用当前已授权的工具，不要尝试任何未授权的工具。\n`
       prompt += `- 收到分派结果后，检查质量。不达标的重新分派并补充更详细的指导。\n`
       prompt += `- 所有子任务都完成后，向用户总结执行结果。\n`
     } else {
-      // 子 Agent 的通用工具使用规则
-      prompt += `\n### 重要：工具使用规则\n`
+      // 普通 / 子 Agent：不把工具 schema 写入提示词，仅保留使用规则
+      prompt += `\n\n### 重要：工具使用规则\n`
+      prompt += `- 你的工具已通过 function calling 接口提供，请直接调用；参数定义不在提示词中，不要编造或假设未授权的工具。\n`
       prompt += `- 当任务涉及计算、数学推导、数据分析、或需要精确结果时，你必须调用相关工具来完成，不要尝试自行计算或推导。\n`
       prompt += `- 工具提供的结果是精确的，你的推理和最终回答应基于工具返回的结果。\n`
       prompt += `- 你可以且应该连续调用多个工具来完成复杂任务，不要在第一步之后就停止。\n`
@@ -660,7 +672,7 @@ function buildAgentSystemPrompt(
         prompt += '\n\n## 执行策略（ReAct）\n请按照"思考-行动-观察"的模式逐步解决问题：\n'
         prompt += '1. **思考**：分析当前情况，决定下一步行动\n'
         if (tools.length > 0) {
-          prompt += '2. **行动**：仅调用「可用工具」中合适的工具执行操作\n'
+          prompt += '2. **行动**：仅调用 function calling 提供的合适工具执行操作\n'
         } else {
           prompt += '2. **行动**：基于分析采取合适的下一步（当前无可用工具时直接推理回答）\n'
         }
@@ -707,7 +719,7 @@ function buildAgentSystemPrompt(
       case 'trial-and-error':
         prompt += '\n\n## 执行策略（Trial-and-Error）\n请大胆尝试：\n'
         if (tools.length > 0) {
-          prompt += '1. 尝试使用「可用工具」中的工具解决问题\n'
+          prompt += '1. 尝试使用 function calling 提供的工具解决问题\n'
         } else {
           prompt += '1. 尝试多种推理路径解决问题\n'
         }
@@ -733,8 +745,21 @@ function buildAgentSystemPrompt(
 
   // 剥离 agent.systemPrompt / 工作流段落中对未启用工具的硬编码引用
   //（引擎生成的段落已按 hasTool 条件写入，此处主要覆盖用户自定义与默认 Agent 提示词）
+  // Leader 的「可授权工具目录」中的工具名/ID 必须保留：它们不是自身可调用工具，而是创建成员时的授权参考。
   const extraKnownFromTools = tools.map((t) => t.name)
-  return redactDisabledToolMentions(prompt, availableToolNames, extraKnownFromTools)
+  const protectedNames = new Set(availableToolNames)
+  if (isLeader && workspaceContext?.agentToolCatalog) {
+    for (const tool of workspaceContext.agentToolCatalog) {
+      if (tool?.name) protectedNames.add(tool.name)
+      // 防止工具 id 中嵌入的 name 片段（如 builtin:calculate）被标识符边界规则误伤
+      if (tool?.id) {
+        const idTail = tool.id.includes(':') ? tool.id.split(':').pop() : tool.id
+        if (idTail) protectedNames.add(idTail)
+        protectedNames.add(tool.id)
+      }
+    }
+  }
+  return redactDisabledToolMentions(prompt, protectedNames, extraKnownFromTools)
 }
 
 /**

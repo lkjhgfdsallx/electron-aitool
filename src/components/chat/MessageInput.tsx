@@ -401,18 +401,14 @@ export function MessageInput({ onSend, onStop, isStreaming = false, disabled = f
           </div>
         </div>
 
-        {/* 提示文字 */}
-        <div className="text-xs text-muted mt-2.5 text-center">
-          {sendWithEnter ? t('chat.sendShortcut') : t('chat.sendShortcutCtrl')}
-          {' · '}
-          {t('chat.openPromptPanel')}
-          {isWorkspaceMode && (
-            <>
-              {' · '}
-              {t('chat.openCommandPanel')}
-            </>
-          )}
-        </div>
+        {/* 提示文字：工作区模式隐藏以节省垂直空间（快捷键仍可用，见 placeholder/aria） */}
+        {!isWorkspaceMode && (
+          <div className="text-xs text-muted mt-2.5 text-center">
+            {sendWithEnter ? t('chat.sendShortcut') : t('chat.sendShortcutCtrl')}
+            {' · '}
+            {t('chat.openPromptPanel')}
+          </div>
+        )}
       </div>
 
       {/* 提示词面板（/ 触发，全局可用） */}

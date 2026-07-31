@@ -4,6 +4,9 @@ import { writeFile, readFile, readdir, stat } from 'fs/promises'
 import https from 'https'
 import http from 'http'
 import { is } from '@electron-toolkit/utils'
+// 必须在任何中文 console 输出之前切换 Windows 控制台为 UTF-8，避免乱码
+import { setupConsoleUtf8 } from './console-encoding'
+setupConsoleUtf8()
 import { setupMCPHandlers } from './mcp-proxy'
 import { generateTitleFromContent } from './title-generator'
 import { extractPdfText } from './pdf-extractor'

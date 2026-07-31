@@ -119,7 +119,7 @@ export function AiChangesCard({ turnChanges }: AiChangesCardProps) {
   }, [workspace?.folderPath, restoring, restored, restorable, summary.filesChanged, turnChanges, t])
 
   return (
-    <div className="mt-3 rounded-xl border border-teal-200/70 dark:border-teal-800/50 bg-teal-50/50 dark:bg-teal-950/20 overflow-hidden">
+    <div className="ai-changes-card mt-3 rounded-xl border border-teal-200/70 dark:border-teal-800/50 bg-teal-50/50 dark:bg-teal-950/20 overflow-hidden">
       {/* 摘要栏 */}
       <div className="flex items-center gap-2 px-3 py-2">
         <button

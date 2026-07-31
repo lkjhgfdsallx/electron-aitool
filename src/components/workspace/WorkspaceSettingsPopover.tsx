@@ -37,6 +37,8 @@ interface WorkspaceSettingsPopoverProps {
   onOpenFullSettings: () => void
   /** 触发按钮的 ref，用于 fixed 定位计算 */
   anchorRef?: React.RefObject<HTMLButtonElement | null>
+  /** 锚点方位：右上（旧顶栏）或左下（左栏底部入口） */
+  placement?: 'right-top' | 'left-bottom'
 }
 
 // ---- 元数据驱动设置工具 ----
@@ -70,23 +72,44 @@ function buildWorkspaceSettingPatch(item: SettingItemMeta, value: unknown, works
 
 // ---- 组件 ----
 
-export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSettings, anchorRef }: WorkspaceSettingsPopoverProps) {
+export function WorkspaceSettingsPopover({
+  workspace,
+  onClose,
+  onOpenFullSettings,
+  anchorRef,
+  placement = 'right-top',
+}: WorkspaceSettingsPopoverProps) {
   const { t } = useAppTranslation()
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
   const updateAutoApproval = useWorkspaceStore((s) => s.updateAutoApproval)
   const ref = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<{ top: number; right: number } | null>(null)
+  const [position, setPosition] = useState<{ top?: number; bottom?: number; left?: number; right?: number } | null>(null)
 
-  // 根据 anchor 按钮计算 fixed 定位
+  // 根据 anchor 按钮 + placement 计算 fixed 定位
   useEffect(() => {
-    if (anchorRef?.current) {
-      const rect = anchorRef.current.getBoundingClientRect()
+    if (!anchorRef?.current) return
+    const rect = anchorRef.current.getBoundingClientRect()
+    const gap = 6
+    const popoverWidth = 320 // w-80
+    const viewportPad = 8
+
+    if (placement === 'left-bottom') {
+      // 从左栏底部向上弹出，贴左对齐并防止溢出
+      let left = rect.left
+      if (left + popoverWidth > window.innerWidth - viewportPad) {
+        left = Math.max(viewportPad, window.innerWidth - popoverWidth - viewportPad)
+      }
       setPosition({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right,
+        bottom: window.innerHeight - rect.top + gap,
+        left,
+      })
+    } else {
+      setPosition({
+        top: rect.bottom + gap,
+        right: Math.max(viewportPad, window.innerWidth - rect.right),
       })
     }
-  }, [anchorRef])
+  }, [anchorRef, placement])
 
   // 知识库数据
   const collections = useKnowledgeCollectionStore((s) => s.collections)
@@ -235,7 +258,12 @@ export function WorkspaceSettingsPopover({ workspace, onClose, onOpenFullSetting
     <div
       ref={ref}
       className="fixed w-80 rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-lg shadow-black/10 dark:shadow-black/30 z-[9999] overflow-hidden max-h-[80vh] flex flex-col pointer-events-auto"
-      style={position ? { top: position.top, right: position.right } : undefined}
+      style={position ? {
+        top: position.top,
+        bottom: position.bottom,
+        left: position.left,
+        right: position.right,
+      } : undefined}
     >
       {/* 头部 */}
       <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-700 flex-shrink-0">

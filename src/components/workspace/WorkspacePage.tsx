@@ -13,7 +13,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useConversationStore } from '../../stores/conversation-store'
-import { Settings, ChevronLeft, X, Plus, Download, Clock, Star, StarOff, Search, Trash2, Folder, Users, Terminal, GitBranch } from 'lucide-react'
+import { ChevronLeft, X, Plus, Clock, Star, StarOff, Search, Trash2, Folder, Users, Terminal, GitBranch } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useWorkspaceGitStore } from '../../stores/workspace-git-store'
 import { workspaceFileWatcher } from '../../services/workspace-file-watcher'
@@ -66,6 +66,26 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
   const [pendingPreviewAction, setPendingPreviewAction] = useState<(() => void) | null>(null)
   const previewRef = useRef<FilePreviewHandle>(null)
   const setHasUnsavedPreviewEdits = useWorkspaceStore((s) => s.setHasUnsavedPreviewEdits)
+
+  // Phase 2：预览作为右栏与聊天并排，不再替换中栏
+  const [previewPanelWidth, setPreviewPanelWidth] = useState(480)
+  const [previewPanelCollapsed, setPreviewPanelCollapsed] = useState(false)
+  // 小屏 fallback：窄于阈值时仍-cover 覆盖中栏（保留可用性）
+  const [previewNarrowMode, setPreviewNarrowMode] = useState(false)
+  const previewNarrowBreakpoint = 1100 // 总内容区宽度 < 此值时使用覆盖式预览
+  const containerMeasureRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!previewFile) return
+    const el = containerMeasureRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0
+      setPreviewNarrowMode(w < previewNarrowBreakpoint)
+    })
+    ro.observe(el)
+    setPreviewNarrowMode(el.getBoundingClientRect().width < previewNarrowBreakpoint)
+    return () => ro.disconnect()
+  }, [previewFile])
 
   // 未保存编辑时：同步 store 并取消待执行的自动存档
   useEffect(() => {
@@ -481,11 +501,12 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative">
-      {/* C1: Tab 标签栏（始终显示） */}
-      <div className="flex items-center h-9 px-1 border-b border-surface-200 dark:border-surface-700/60 bg-surface-50 dark:bg-surface-900/80 select-none overflow-x-auto scrollbar-thin"
+      {/* Phase B: 合并 Tab 栏 + 工具栏为单行壳层 */}
+      <div
+        className="flex items-center h-11 px-1 border-b border-surface-200 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 glass-heavy select-none"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        {/* 返回对话按钮 */}
+        {/* 返回对话 */}
         <button
           onClick={onBackToChat}
           className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
@@ -495,51 +516,93 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
           <ChevronLeft size={14} />
         </button>
         <div className="w-px h-4 bg-surface-200 dark:bg-surface-700/60 flex-shrink-0" />
-        {tabWorkspaces.map((ws) => {
-          const isActive = ws.id === activeWorkspaceId
-          const isDefault = ws.id === defaultWorkspaceId
-          return (
-            <button
-              key={ws.id}
-              onClick={() => switchTab(ws.id)}
-              onContextMenu={(e) => handleTabContextMenu(e, ws.id)}
-              className={`group/tab flex items-center gap-1.5 px-3 h-full text-xs font-medium transition-all border-r border-surface-200 dark:border-surface-700/40 flex-shrink-0 max-w-[180px] ${
-                isActive
-                  ? 'bg-white dark:bg-surface-800 text-teal-600 dark:text-teal-400 border-b-2 border-b-teal-500'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            >
-              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                isActive ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
-              }`} />
-              <span className="truncate">{ws.name}</span>
-              {isDefault && (
-                <Star size={10} className="text-amber-400 flex-shrink-0 fill-amber-400" />
-              )}
-              {/* 关闭按钮 */}
+
+        {/* 工作区 Tabs */}
+        <div className="flex items-center min-w-0 flex-1 overflow-x-auto scrollbar-thin">
+          {tabWorkspaces.map((ws) => {
+            const isActive = ws.id === activeWorkspaceId
+            const isDefault = ws.id === defaultWorkspaceId
+            return (
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  closeTab(ws.id)
-                }}
-                className="p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-600 transition-opacity flex-shrink-0"
-                title={t('workspace.closeTab')}
+                key={ws.id}
+                onClick={() => switchTab(ws.id)}
+                onContextMenu={(e) => handleTabContextMenu(e, ws.id)}
+                className={`group/tab flex items-center gap-1.5 px-3 h-11 text-xs font-medium transition-all border-r border-surface-200 dark:border-surface-700/40 flex-shrink-0 max-w-[180px] ${
+                  isActive
+                    ? 'bg-white dark:bg-surface-800 text-teal-600 dark:text-teal-400 border-b-2 border-b-teal-500'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
               >
-                <X size={11} />
+                <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                  isActive ? 'bg-teal-500' : 'bg-gray-300 dark:bg-gray-600'
+                }`} />
+                <span className="truncate">{ws.name}</span>
+                {isDefault && (
+                  <Star size={10} className="text-amber-400 flex-shrink-0 fill-amber-400" />
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTab(ws.id)
+                  }}
+                  className="p-0.5 rounded opacity-0 group-hover/tab:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-600 transition-opacity flex-shrink-0"
+                  title={t('workspace.closeTab')}
+                >
+                  <X size={11} />
+                </button>
               </button>
-            </button>
-          )
-        })}
-        {/* 新建 Tab 按钮 */}
-        <button
-          onClick={() => setShowCreateWorkspace(true)}
-          className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
-          title={t('workspace.newWorkspace')}
+            )
+          })}
+          <button
+            onClick={() => setShowCreateWorkspace(true)}
+            className="p-1.5 mx-1 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-all flex-shrink-0"
+            title={t('workspace.newWorkspace')}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            <Plus size={13} />
+          </button>
+        </div>
+
+        {/* 路径摘要 + 视图开关（设置已迁左栏底部） */}
+        <div
+          className="flex items-center gap-1.5 flex-shrink-0 pl-2 pr-2"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <Plus size={13} />
-        </button>
+          <span
+            className="hidden md:inline text-[11px] text-gray-400 dark:text-gray-500 truncate max-w-[220px]"
+            title={activeWorkspace.folderPath}
+          >
+            {activeWorkspace.folderPath}
+          </span>
+          <button
+            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+            className={`p-1.5 rounded-lg transition-all ${
+              leftPanelCollapsed
+                ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
+                : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+            }`}
+            title={leftPanelCollapsed ? t('workspace.expandProjectExplorer') : t('workspace.collapseProjectExplorer')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setBottomPanelCollapsed(!bottomPanelCollapsed)}
+            className={`p-1.5 rounded-lg transition-all ${
+              bottomPanelCollapsed
+                ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
+                : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
+            }`}
+            title={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
+            aria-label={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
+            aria-pressed={!bottomPanelCollapsed}
+          >
+            <Terminal size={16} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       {/* C1: Tab 右键菜单 */}
@@ -584,107 +647,19 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
         </div>
       )}
 
-      {/* 顶部栏 */}
-      <div
-        className="flex items-center justify-between px-4 h-12 border-b border-surface-200 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 glass-heavy select-none"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      >
-        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          <div className="w-2 h-2 rounded-full bg-teal-500" />
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[200px]">
-            {activeWorkspace.name}
-          </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500 truncate hidden sm:inline">
-            {activeWorkspace.folderPath}
-          </span>
-          {/* C7: 默认工作区标记 */}
-          {activeWorkspaceId === defaultWorkspaceId && (
-            <span title={t('workspace.defaultWorkspace')}><Star size={12} className="text-amber-400 fill-amber-400 flex-shrink-0" /></span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {/* 切换左栏 */}
-          <button
-            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-            className={`p-1.5 rounded-lg transition-all ${
-              leftPanelCollapsed
-                ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
-                : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
-            }`}
-            title={leftPanelCollapsed ? t('workspace.expandProjectExplorer') : t('workspace.collapseProjectExplorer')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <line x1="9" y1="3" x2="9" y2="21" />
-            </svg>
-          </button>
-
-          {/* 切换终端面板 */}
-          <button
-            onClick={() => setBottomPanelCollapsed(!bottomPanelCollapsed)}
-            className={`p-1.5 rounded-lg transition-all ${
-              bottomPanelCollapsed
-                ? 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
-                : 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
-            }`}
-            title={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
-            aria-label={bottomPanelCollapsed ? t('workspace.expandTerminalPanel') : t('workspace.collapseTerminalPanel')}
-            aria-pressed={!bottomPanelCollapsed}
-          >
-            <Terminal size={16} aria-hidden="true" />
-          </button>
-
-          {/* C6: 上下文时间线 */}
-          <button
-            onClick={() => setShowContextTimeline(!showContextTimeline)}
-            className={`p-1.5 rounded-lg transition-all ${
-              showContextTimeline
-                ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
-                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
-            }`}
-            title={t('workspace.contextTimeline')}
-          >
-            <Clock size={16} />
-          </button>
-
-          {/* 导出工作区 */}
-          <button
-            onClick={handleExport}
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-all"
-            title={t('workspace.exportWorkspace')}
-          >
-            <Download size={16} />
-          </button>
-
-          {/* 工作区设置 */}
-          <div>
-            <button
-              ref={settingsButtonRef}
-              onClick={() => setShowSettingsPopover(!showSettingsPopover)}
-              className={`p-1.5 rounded-lg transition-all ${
-                showSettingsPopover
-                  ? 'bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400'
-                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-surface-100 dark:hover:bg-surface-800'
-              }`}
-              title={t('workspace.workspaceSettings')}
-            >
-              <Settings size={16} />
-            </button>
-            {showSettingsPopover && (
-              <WorkspaceSettingsPopover
-                workspace={activeWorkspace}
-                anchorRef={settingsButtonRef}
-                onClose={() => setShowSettingsPopover(false)}
-                onOpenFullSettings={() => {
-                  setShowSettingsPopover(false)
-                  onOpenSettings?.('workspace')
-                }}
-              />
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Phase B: 设置浮层（锚点在左栏底部） */}
+      {showSettingsPopover && (
+        <WorkspaceSettingsPopover
+          workspace={activeWorkspace}
+          anchorRef={settingsButtonRef}
+          placement="left-bottom"
+          onClose={() => setShowSettingsPopover(false)}
+          onOpenFullSettings={() => {
+            setShowSettingsPopover(false)
+            onOpenSettings?.('workspace')
+          }}
+        />
+      )}
 
       {/* C6: 上下文时间线面板（叠加层） */}
       {showContextTimeline && (
@@ -708,6 +683,12 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
                 workspace={activeWorkspace}
                 onFileSelect={handleFileSelect}
                 selectedFile={previewFile || undefined}
+                settingsButtonRef={settingsButtonRef}
+                showSettingsPopover={showSettingsPopover}
+                onSettingsClick={() => setShowSettingsPopover((v) => !v)}
+                onOpenSettings={onOpenSettings}
+                onOpenTimeline={() => setShowContextTimeline(true)}
+                onExportWorkspace={handleExport}
               />
             </div>
           )}
@@ -724,23 +705,66 @@ export function WorkspacePage({ onBackToChat, onOpenSettings }: WorkspacePagePro
             />
           )}
 
-          {/* 中栏：AI 领导控制台 或 文件预览 */}
+          {/* 中栏：AI 领导控制台（常驻）+ 右栏文件预览（可并排） */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
-            {previewFile ? (
-              <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                <FilePreview
-                  ref={previewRef}
-                  filePath={previewFile}
-                  onClose={handleClosePreview}
-                  onDirtyChange={setPreviewDirty}
+            <div
+              ref={containerMeasureRef}
+              className="flex-1 flex min-h-0 overflow-hidden relative"
+            >
+              {/* 聊天面板常驻：必须 min-h-0 + flex 列，否则 ChatViewCore 内部 overflow-y-auto 无法滚动 */}
+              <div
+                className={`flex-1 min-w-0 min-h-0 h-full overflow-hidden flex flex-col transition-all duration-200 ${
+                  previewFile && !previewNarrowMode ? 'pr-1' : ''
+                }`}
+              >
+                <WorkspaceChatPanel
+                  workspace={activeWorkspace}
+                  onOpenSettings={onOpenSettings}
                 />
               </div>
-            ) : (
-              <WorkspaceChatPanel
-                workspace={activeWorkspace}
-                onOpenSettings={onOpenSettings}
-              />
-            )}
+
+              {/* 右栏：文件预览抽屉（并排模式） */}
+              {previewFile && !previewNarrowMode && !previewPanelCollapsed && (
+                <>
+                  <ResizeHandle
+                    direction="horizontal"
+                    size={previewPanelWidth}
+                    // 右栏位于聊天右侧：拖拽手柄向右移 → 右栏应变窄
+                    // ResizeHandle 默认 onResize(size + delta)，这里反转 delta
+                    onResize={(next) => {
+                      const delta = next - previewPanelWidth
+                      setPreviewPanelWidth(Math.max(300, Math.min(800, previewPanelWidth - delta)))
+                    }}
+                    min={300}
+                    max={800}
+                    className="relative z-10 w-1 hover:bg-teal-400/20"
+                  />
+                  <div
+                    className="flex flex-col min-w-0 overflow-hidden border-l border-surface-200 dark:border-surface-700/60 bg-surface-50/50 dark:bg-surface-950/50"
+                    style={{ width: previewPanelWidth }}
+                  >
+                    <FilePreview
+                      ref={previewRef}
+                      filePath={previewFile}
+                      onClose={handleClosePreview}
+                      onDirtyChange={setPreviewDirty}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* 窄屏覆盖模式：预览覆盖聊天区域；FilePreview 自带关闭按钮 */}
+              {previewFile && previewNarrowMode && (
+                <div className="absolute inset-0 z-20 flex flex-col min-h-0 overflow-hidden bg-surface-0 dark:bg-surface-950">
+                  <FilePreview
+                    ref={previewRef}
+                    filePath={previewFile}
+                    onClose={handleClosePreview}
+                    onDirtyChange={setPreviewDirty}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { ChildProcess, spawn } from 'child_process'
+import { decodeBufferToString, getUtf8ChildEnv } from './console-encoding'
 
 // ==================== 类型定义 ====================
 
@@ -58,7 +59,7 @@ class MCPServerProcess {
     if (this.process) return
 
     return new Promise<void>((resolve, reject) => {
-      const env = { ...process.env, ...this.config.env }
+      const env = { ...process.env, ...getUtf8ChildEnv(), ...this.config.env }
       this.startupReject = reject
       this.stderrOutput = ''
 
@@ -75,12 +76,12 @@ class MCPServerProcess {
       }
 
       this.process.stdout?.on('data', (data: Buffer) => {
-        this.buffer += data.toString()
+        this.buffer += decodeBufferToString(data)
         this.processBuffer()
       })
 
       this.process.stderr?.on('data', (data: Buffer) => {
-        const text = data.toString()
+        const text = decodeBufferToString(data)
         this.stderrOutput += text
         console.error(`[MCP:${this.config.name}] stderr:`, text)
       })

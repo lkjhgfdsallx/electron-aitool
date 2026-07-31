@@ -10,6 +10,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { platform } from 'os'
+import { decodeBufferToString, getUtf8ChildEnv, wrapPowerShellUtf8 } from './console-encoding'
 
 // ---- 命令执行状态管理 ----
 
@@ -56,7 +57,8 @@ function getShellConfig(command: string): { shell: string; args: string[] } {
   if (isWindows) {
     // Windows 上使用 powershell.exe
     // 使用 -NoProfile 快速启动，-EncodedCommand 执行 Base64 编码的命令
-    const encodedCmd = encodePowerShellCommand(command)
+    // 前置 UTF-8 输出设置，避免中文 stdout/stderr 在 CP936 下乱码
+    const encodedCmd = encodePowerShellCommand(wrapPowerShellUtf8(command))
     return {
       shell: 'powershell.exe',
       args: ['-NoProfile', '-EncodedCommand', encodedCmd],
@@ -95,8 +97,8 @@ async function executeCommand(
     const startTime = Date.now()
     const { shell, args } = getShellConfig(command)
 
-    // 合并环境变量
-    const processEnv = { ...process.env, ...env }
+    // 合并环境变量（注入 UTF-8 相关变量，便于子进程正确输出中文）
+    const processEnv = { ...process.env, ...getUtf8ChildEnv(), ...env }
 
     let stdoutChunks: string[] = []
     let stderrChunks: string[] = []
@@ -134,9 +136,9 @@ async function executeCommand(
       }
       runningCommands.set(commandId, runningCmd)
 
-      // stdout 流式推送
+      // stdout 流式推送（按 UTF-8 解码；PowerShell 已强制 UTF-8 输出）
       childProcess.stdout?.on('data', (data: Buffer) => {
-        const chunk = data.toString('utf-8')
+        const chunk = decodeBufferToString(data)
         stdoutChunks.push(chunk)
         totalOutputSize += chunk.length
 
@@ -153,7 +155,7 @@ async function executeCommand(
 
       // stderr 流式推送
       childProcess.stderr?.on('data', (data: Buffer) => {
-        const chunk = data.toString('utf-8')
+        const chunk = decodeBufferToString(data)
         stderrChunks.push(chunk)
         totalOutputSize += chunk.length
 

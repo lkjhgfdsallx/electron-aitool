@@ -63,6 +63,8 @@ interface MessageItemProps {
   activeBranchIndex?: number
   /** 切换分支回调 */
   onSwitchBranch?: (forkMessageId: string, branchIndex: number) => void
+  /** Phase 5: 是否为工作区模式（用于显示 AI 领导徽章） */
+  isWorkspaceMode?: boolean
 }
 
 const roleConfig = {
@@ -86,7 +88,8 @@ export const MessageItem = memo(function MessageItem({
   onApprovePlan,
   onRejectPlan,
   activeBranchIndex = 0,
-  onSwitchBranch
+  onSwitchBranch,
+  isWorkspaceMode = false
 }: MessageItemProps) {
   const { t, i18n } = useAppTranslation()
   const [copied, setCopied] = useState(false)
@@ -259,7 +262,13 @@ export const MessageItem = memo(function MessageItem({
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {t(role.labelKey)}
           </span>
-          {hasAgentSteps && (
+          {isWorkspaceMode && message.role === 'assistant' && hasAgentSteps && (
+            <span className="inline-flex items-center gap-1 text-xs bg-teal-50 dark:bg-teal-950/30 text-teal-600 dark:text-teal-400 border border-teal-200/60 dark:border-teal-800/40 rounded-full px-2 py-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+              {t('chat.aiLeaderBadge', { defaultValue: 'AI 领导' })}
+            </span>
+          )}
+          {hasAgentSteps && !isWorkspaceMode && (
             <span className="text-xs bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full px-2 py-0.5">
               Agent
             </span>
@@ -275,14 +284,14 @@ export const MessageItem = memo(function MessageItem({
             </span>
           )}
           {message.isStreaming && (
-            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />{t('chat.thinking')}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-teal-500"><span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />{t('chat.orchestrating', { defaultValue: '编排中' })}</span>
           )}
         </div>
         )}
         {/* 翻转布局时流式指示器仍显示在内容区 */}
         {reverseLayout && message.isStreaming && (
           <div className="flex items-center gap-1 mb-1">
-            <span className="inline-flex items-center gap-1 text-xs text-accent-500"><span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />{t('chat.thinking')}</span>
+            <span className={`inline-flex items-center gap-1 text-xs ${isWorkspaceMode ? 'text-teal-500' : 'text-accent-500'}`}><span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isWorkspaceMode ? 'bg-teal-500' : 'bg-accent-500'}`} />{isWorkspaceMode ? t('chat.orchestrating', { defaultValue: '编排中' }) : t('chat.thinking')}</span>
           </div>
         )}
 
@@ -305,6 +314,8 @@ export const MessageItem = memo(function MessageItem({
           </SelectionBoundary>
         )}
 
+        {/* 执行计划已移至顶部 ChatRunStrip / WorkspaceRunStrip，此处不再重复显示 */}
+
         {/* Agent 执行步骤 */}
         {hasAgentSteps && (
           <SelectionBoundary>
@@ -313,9 +324,6 @@ export const MessageItem = memo(function MessageItem({
               isRunning={message.isStreaming}
               onHumanInput={onHumanInput}
               isError={message.isError}
-              plan={message.agentPlan}
-              onApprovePlan={onApprovePlan}
-              onRejectPlan={onRejectPlan}
             />
           </SelectionBoundary>
         )}
@@ -501,6 +509,7 @@ export const MessageItem = memo(function MessageItem({
     prevProps.message.finishReason === nextProps.message.finishReason &&
     prevProps.message.hasReport === nextProps.message.hasReport &&
     prevProps.message.toolCalls === nextProps.message.toolCalls &&
+    prevProps.message.agentPlan === nextProps.message.agentPlan &&
     agentStepsEqual && !hasHumanInputChange &&
     prevProps.message.continuable === nextProps.message.continuable &&
     prevProps.message.attachments === nextProps.message.attachments &&
@@ -513,6 +522,8 @@ export const MessageItem = memo(function MessageItem({
     prevProps.onRegenerate === nextProps.onRegenerate &&
     prevProps.onEditAndResend === nextProps.onEditAndResend &&
     prevProps.onHumanInput === nextProps.onHumanInput &&
+    prevProps.onApprovePlan === nextProps.onApprovePlan &&
+    prevProps.onRejectPlan === nextProps.onRejectPlan &&
     prevProps.onSwitchBranch === nextProps.onSwitchBranch
   )
 })

@@ -4,6 +4,7 @@ import { ChatViewCore } from './ChatViewCore'
 import { AgentSelector } from './AgentSelector'
 import { SiteAnalyzerForm } from './SiteAnalyzerForm'
 import type { SiteAnalyzerFormData } from './SiteAnalyzerForm'
+import { ChatRunStrip } from './ChatRunStrip'
 import { BrandLogo } from '../brand'
 import { BRAND } from '../../constants/brand'
 import { useConversationStore } from '../../stores/conversation-store'
@@ -305,139 +306,150 @@ export function ChatWindow({ onOpenPromptManager, onOpenAgentManager, onOpenSett
   }
 
   const headerSlot = (
-    <div className="relative z-10 flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
-      <AgentSelector
-        selectedAgentId={currentConversation?.agentId}
-        onSelect={handleAgentSelect}
-        onOpenAgentManager={onOpenAgentManager}
-        onEditAgent={onOpenAgentManager}
-      />
-      {currentAgent && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-2.5 py-0.5 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full font-medium">
-            {t('chat.featureAgentMode')}
-          </span>
-          <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
-        </div>
-      )}
-
-      {/* 长期记忆注入：本对话暂停/恢复 */}
-      {currentAgent?.memoryConfig?.longTermEnabled && currentConversationId && (
-        <button
-          type="button"
-          onClick={() =>
-            setMemoryInjectionPaused(
-              currentConversationId,
-              !currentConversation?.memoryInjectionPaused
-            )
-          }
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-            currentConversation?.memoryInjectionPaused
-              ? 'bg-surface-100 dark:bg-surface-800 text-muted border-surface-200 dark:border-surface-700'
-              : 'bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 border-violet-200/60 dark:border-violet-800/40'
-          }`}
-          title={
-            currentConversation?.memoryInjectionPaused
-              ? t('chat.memoryPausedTitle')
-              : t('chat.memoryActiveTitle')
-          }
-        >
-          {currentConversation?.memoryInjectionPaused ? (
-            <>
-              <Brain size={13} />
-              <span className="hidden sm:inline">{t('chat.memoryPaused')}</span>
-            </>
-          ) : (
-            <>
-              <BrainCircuit size={13} />
-              <span className="hidden sm:inline">
-                {t('chat.memoryScope', {
-                  scope: currentAgent.memoryConfig.crossSession
-                    ? t('chat.memoryCrossSession')
-                    : t('chat.memoryCurrentSession')
-                })}
-              </span>
-            </>
-          )}
-        </button>
-      )}
-
-      {/* 右侧弹性间隔 */}
-      <div className="flex-1" />
-
-      {/* 知识库集合快速切换 */}
-      {collections.length > 0 && currentConversationId && (() => {
-        const selectedIds = currentConversation?.activeKnowledgeBaseIds ?? []
-        const selectedNames = collections
-          .filter((c) => selectedIds.includes(c.id))
-          .map((c) => c.icon + c.name)
-
-        return (
-          <div className="relative flex-shrink-0" ref={kbDropdownRef}>
-            <button
-              onClick={() => setKbDropdownOpen(!kbDropdownOpen)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                selectedIds.length > 0
-                  ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40'
-                  : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
-              }`}
-              title={t('chat.selectKnowledgeBases')}
-            >
-              <BookOpen size={14} />
-              <span className="hidden sm:inline max-w-[120px] truncate">
-                {selectedIds.length > 0
-                  ? selectedNames.length > 1
-                    ? t('chat.selectedKnowledgeBases', { name: selectedNames[0], count: selectedNames.length - 1 })
-                    : selectedNames[0]
-                  : t('chat.knowledgeBase')}
-              </span>
-              <ChevronDown size={12} className={`transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {kbDropdownOpen && (
-              <div className="dropdown-panel absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
-                <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
-                  <p className="text-xs font-medium text-surface-600 dark:text-surface-400">{t('chat.knowledgeBasePickerTitle')}</p>
-                  <p className="text-[10px] text-muted mt-0.5">{t('chat.knowledgeBasePickerHint')}</p>
-                </div>
-                <div className="max-h-48 overflow-y-auto py-1">
-                  {collections.map((col) => {
-                    const isSelected = selectedIds.includes(col.id)
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => {
-                          const newIds = isSelected
-                            ? selectedIds.filter((id) => id !== col.id)
-                            : [...selectedIds, col.id]
-                          setConversationKnowledgeBases(currentConversationId, newIds.length > 0 ? newIds : undefined)
-                        }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
-                          isSelected
-                            ? 'bg-accent-50/50 dark:bg-accent-950/20 text-accent-700 dark:text-accent-300'
-                            : 'text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700'
-                        }`}
-                      >
-                        <span className="text-base flex-shrink-0">{col.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <span className="font-medium">{col.name}</span>
-                          {col.description && (
-                            <p className="text-xs text-muted truncate">{col.description}</p>
-                          )}
-                        </div>
-                        {isSelected && (
-                          <Check size={14} className="text-accent-500 flex-shrink-0" />
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+    <>
+      {/* Agent 选择栏 */}
+      <div className="relative z-10 flex items-center gap-3 px-4 py-2.5 border-b border-surface-200/80 dark:border-surface-700/60 bg-white/80 dark:bg-surface-900/80 backdrop-blur-sm">
+        <AgentSelector
+          selectedAgentId={currentConversation?.agentId}
+          onSelect={handleAgentSelect}
+          onOpenAgentManager={onOpenAgentManager}
+          onEditAgent={onOpenAgentManager}
+        />
+        {currentAgent && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-2.5 py-0.5 bg-accent-50 dark:bg-accent-950/30 text-accent-600 dark:text-accent-400 border border-accent-200/60 dark:border-accent-800/40 rounded-full font-medium">
+              {t('chat.featureAgentMode')}
+            </span>
+            <span className="text-gray-400 dark:text-gray-500 truncate max-w-[200px]">{currentAgent.description}</span>
           </div>
-        )
-      })()}
-    </div>
+        )}
+
+        {/* 长期记忆注入：本对话暂停/恢复 */}
+        {currentAgent?.memoryConfig?.longTermEnabled && currentConversationId && (
+          <button
+            type="button"
+            onClick={() =>
+              setMemoryInjectionPaused(
+                currentConversationId,
+                !currentConversation?.memoryInjectionPaused
+              )
+            }
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+              currentConversation?.memoryInjectionPaused
+                ? 'bg-surface-100 dark:bg-surface-800 text-muted border-surface-200 dark:border-surface-700'
+                : 'bg-violet-50 dark:bg-violet-950/30 text-violet-600 dark:text-violet-400 border-violet-200/60 dark:border-violet-800/40'
+            }`}
+            title={
+              currentConversation?.memoryInjectionPaused
+                ? t('chat.memoryPausedTitle')
+                : t('chat.memoryActiveTitle')
+            }
+          >
+            {currentConversation?.memoryInjectionPaused ? (
+              <>
+                <Brain size={13} />
+                <span className="hidden sm:inline">{t('chat.memoryPaused')}</span>
+              </>
+            ) : (
+              <>
+                <BrainCircuit size={13} />
+                <span className="hidden sm:inline">
+                  {t('chat.memoryScope', {
+                    scope: currentAgent.memoryConfig.crossSession
+                      ? t('chat.memoryCrossSession')
+                      : t('chat.memoryCurrentSession')
+                  })}
+                </span>
+              </>
+            )}
+          </button>
+        )}
+
+        {/* 右侧弹性间隔 */}
+        <div className="flex-1" />
+
+        {/* 知识库集合快速切换 */}
+        {collections.length > 0 && currentConversationId && (() => {
+          const selectedIds = currentConversation?.activeKnowledgeBaseIds ?? []
+          const selectedNames = collections
+            .filter((c) => selectedIds.includes(c.id))
+            .map((c) => c.icon + c.name)
+
+          return (
+            <div className="relative flex-shrink-0" ref={kbDropdownRef}>
+              <button
+                onClick={() => setKbDropdownOpen(!kbDropdownOpen)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  selectedIds.length > 0
+                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/40'
+                    : 'text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800'
+                }`}
+                title={t('chat.selectKnowledgeBases')}
+              >
+                <BookOpen size={14} />
+                <span className="hidden sm:inline max-w-[120px] truncate">
+                  {selectedIds.length > 0
+                    ? selectedNames.length > 1
+                      ? t('chat.selectedKnowledgeBases', { name: selectedNames[0], count: selectedNames.length - 1 })
+                      : selectedNames[0]
+                    : t('chat.knowledgeBase')}
+                </span>
+                <ChevronDown size={12} className={`transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {kbDropdownOpen && (
+                <div className="dropdown-panel absolute right-0 top-full mt-1 w-64 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="px-3 py-2 border-b border-surface-200/80 dark:border-surface-700/60">
+                    <p className="text-xs font-medium text-surface-600 dark:text-surface-400">{t('chat.knowledgeBasePickerTitle')}</p>
+                    <p className="text-[10px] text-muted mt-0.5">{t('chat.knowledgeBasePickerHint')}</p>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto py-1">
+                    {collections.map((col) => {
+                      const isSelected = selectedIds.includes(col.id)
+                      return (
+                        <button
+                          key={col.id}
+                          onClick={() => {
+                            const newIds = isSelected
+                              ? selectedIds.filter((id) => id !== col.id)
+                              : [...selectedIds, col.id]
+                            setConversationKnowledgeBases(currentConversationId, newIds.length > 0 ? newIds : undefined)
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+                            isSelected
+                              ? 'bg-accent-50/50 dark:bg-accent-950/20 text-accent-700 dark:text-accent-300'
+                              : 'text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700'
+                          }`}
+                        >
+                          <span className="text-base flex-shrink-0">{col.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium">{col.name}</span>
+                            {col.description && (
+                              <p className="text-xs text-muted truncate">{col.description}</p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <Check size={14} className="text-accent-500 flex-shrink-0" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* 可折叠运行进度条 */}
+      <ChatRunStrip
+        messages={messages}
+        onStop={stopGeneration}
+        onApprovePlan={approvePlan}
+        onRejectPlan={rejectPlan}
+      />
+    </>
   )
 
   const emptyStateSlot = showAnalyzerForm ? (

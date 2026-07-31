@@ -139,11 +139,21 @@ export class PlannerToolExecutor implements ToolExecutor {
 
     ctx.currentPlan = plan
 
-    // 发布 plan_created 事件
+    // 将计划共享到 WorkspaceContext（用于多 Agent 协作）
+    // 这样子 Agent 可以访问和更新 Leader 创建的计划
+    if (agentSessionCtx.workspace) {
+      agentSessionCtx.workspace.sharedPlan = {
+        plan,
+        leaderAgentId: agentSessionCtx.agentId,
+        messageId: agentSessionCtx.messageId ?? '',
+      }
+    }
+
+    // 发布 plan_created 事件（携带 messageId 以便 UI 更新正确的消息）
     agentEventBus.emit('plan_created', {
       payload: { plan },
+      messageId: agentSessionCtx.messageId,
     })
-    void agentSessionCtx // 标记参数已使用（runId 在事件中由 EventBus 自动填充）
 
     // 构建返回给 LLM 的信息
     // ⚠️ 关键修复：必须返回每个任务的 id，否则 update_task 无法指定 taskId
@@ -167,7 +177,11 @@ export class PlannerToolExecutor implements ToolExecutor {
     ctx: PlannerSessionContext,
     agentSessionCtx: AgentSessionContext,
   ): ToolExecuteResult {
-    if (!ctx.currentPlan) {
+    // 优先从 sharedPlan 获取计划（子 Agent 场景），否则使用本地计划
+    const sharedPlan = agentSessionCtx.workspace?.sharedPlan
+    const effectivePlan = sharedPlan?.plan ?? ctx.currentPlan
+
+    if (!effectivePlan) {
       return { success: false, data: '', error: '当前没有活跃的计划，请先调用 create_plan 创建计划' }
     }
 
@@ -176,9 +190,9 @@ export class PlannerToolExecutor implements ToolExecutor {
       return { success: false, data: '', error: 'update_task 工具需要 taskId 参数' }
     }
 
-    const task = ctx.currentPlan.tasks.find((t) => t.id === taskId || t.id === `task-${taskId}`)
+    const task = effectivePlan.tasks.find((t) => t.id === taskId || t.id === `task-${taskId}`)
     if (!task) {
-      const availableTasks = ctx.currentPlan.tasks.map((t) => `${t.title}(${t.id})`).join('、')
+      const availableTasks = effectivePlan.tasks.map((t) => `${t.title}(${t.id})`).join('、')
       return {
         success: false,
         data: '',
@@ -213,7 +227,7 @@ export class PlannerToolExecutor implements ToolExecutor {
     task.updatedAt = Date.now()
 
     // 更新计划整体状态
-    const plan = ctx.currentPlan
+    const plan = effectivePlan
     plan.updatedAt = Date.now()
     // draft 和 approved 都应在首次执行时进入 executing 状态
     if (plan.status === 'draft' || plan.status === 'approved') {
@@ -225,11 +239,20 @@ export class PlannerToolExecutor implements ToolExecutor {
       plan.status = 'failed'
     }
 
+    // 同步更新本地计划（如果是子 Agent 操作 sharedPlan）
+    if (sharedPlan && ctx.currentPlan !== sharedPlan.plan) {
+      // 子 Agent 场景：sharedPlan 已被直接修改（对象引用），无需额外同步
+      // 但需要确保本地 ctx.currentPlan 也指向 sharedPlan，以便 get_plan 能读到
+      ctx.currentPlan = sharedPlan.plan
+    }
+
     // 发布 task_updated 事件
+    // 使用 sharedPlan 的 messageId（如果存在），以便 UI 更新 Leader 的消息
+    const targetMessageId = sharedPlan?.messageId ?? agentSessionCtx.messageId
     agentEventBus.emit('task_updated', {
       payload: { task, plan },
+      messageId: targetMessageId,
     })
-    void agentSessionCtx
 
     const progress = getPlanProgress(plan)
     const statusLabel = this.getStatusLabel(task.status)

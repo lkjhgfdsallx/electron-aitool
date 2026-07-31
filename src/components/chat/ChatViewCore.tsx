@@ -49,6 +49,8 @@ export interface ChatViewCoreProps {
   isWorkspaceMode?: boolean
   onOpenPromptManager?: () => void
   inputClassName?: string
+  /** 消息列最大宽度 class；默认 max-w-3xl，工作区可用 max-w-4xl 等 */
+  contentMaxWidthClass?: string
 }
 
 export function ChatViewCore({
@@ -80,6 +82,7 @@ export function ChatViewCore({
   isWorkspaceMode,
   onOpenPromptManager,
   inputClassName,
+  contentMaxWidthClass,
 }: ChatViewCoreProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -122,7 +125,12 @@ export function ChatViewCore({
         {messages.length === 0 ? (
           emptyStateSlot ?? null
         ) : (
-          <div className="max-w-3xl mx-auto py-4 flex flex-col overflow-hidden">
+          <div
+            className={`${
+              contentMaxWidthClass
+                ?? (isWorkspaceMode ? 'max-w-4xl' : 'max-w-3xl')
+            } mx-auto py-4 flex flex-col overflow-hidden w-full px-2 sm:px-3`}
+          >
             {renderGroups.map((group) => {
               if (group.type === 'assistant-group') {
                 return (
@@ -135,6 +143,7 @@ export function ChatViewCore({
                     messageAlignment={messageAlignment}
                     onRegenerate={onRegenerate}
                     onContinueGeneration={onContinueGeneration}
+                    isWorkspaceMode={isWorkspaceMode}
                   />
                 )
               }
@@ -163,6 +172,7 @@ export function ChatViewCore({
                   onRejectPlan={onRejectPlan}
                   activeBranchIndex={getActiveBranchIndex(msg.id)}
                   onSwitchBranch={onSwitchBranch}
+                  isWorkspaceMode={isWorkspaceMode}
                 />
               )
             })}

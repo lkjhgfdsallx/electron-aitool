@@ -123,6 +123,12 @@ interface AgentTodoPanelProps {
   onReject?: (plan: AgentPlan, reason?: string) => void
   /** 默认是否展开所有任务详情 */
   defaultExpanded?: boolean
+  /**
+   * Phase 1.3：是否「钉住」面板。
+   * - true：执行中（executing/draft）不允许折叠，进度常驻可见；done/failed 仍可折叠。
+   * - false/undefined：保持原行为。
+   */
+  pinned?: boolean
 }
 
 // ==================== 主组件 ====================
@@ -132,12 +138,23 @@ export function AgentTodoPanel({
   onApprove,
   onReject,
   defaultExpanded = false,
+  pinned = false,
 }: AgentTodoPanelProps) {
   const { t } = useAppTranslation()
   const [collapsed, setCollapsed] = useState(false)
-  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(
-    () => new Set(defaultExpanded ? plan.tasks.map((t) => t.id) : []),
-  )
+  const isExecutableState = plan.status === 'executing' || plan.status === 'draft'
+  /** 执行中 / 草稿：钉住时强制展开，保证进度常驻可见 */
+  const effectivelyCollapsed = pinned && isExecutableState ? false : collapsed
+  const toggleCollapsed = () => {
+    if (pinned && isExecutableState) return
+    setCollapsed((c) => !c)
+  }
+
+  /** 初始展开：defaultExpanded 或当前 in_progress 任务 */
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(() => {
+    if (defaultExpanded) return new Set(plan.tasks.map((t) => t.id))
+    return new Set(plan.tasks.filter((t) => t.status === 'in_progress').map((t) => t.id))
+  })
   const [rejecting, setRejecting] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
 
@@ -146,6 +163,9 @@ export function AgentTodoPanel({
   const failed = hasPlanFailed(plan)
   const isDraft = plan.status === 'draft'
   const completedCount = plan.tasks.filter((t) => t.status === 'completed').length
+  const inProgressCount = plan.tasks.filter((t) => t.status === 'in_progress').length
+  const failedCount = plan.tasks.filter((t) => t.status === 'failed').length
+  const blockedCount = plan.tasks.filter((t) => t.status === 'blocked').length
 
   const toggleTask = (taskId: string) => {
     setExpandedTasks((prev) => {
@@ -186,68 +206,119 @@ export function AgentTodoPanel({
   const badge = planStatusBadgeConfig[plan.status]
 
   return (
-    <div className="my-2 rounded-lg border border-violet-200 bg-violet-50/50 text-sm dark:border-violet-800 dark:bg-violet-950/20">
+    <div
+      className={`agent-todo-panel my-2.5 rounded-xl border text-sm shadow-sm transition-shadow ${
+        isExecutableState
+          ? 'border-violet-300 bg-gradient-to-b from-violet-50/90 to-violet-50/40 dark:border-violet-700 dark:from-violet-950/40 dark:to-violet-950/15 shadow-violet-100/50 dark:shadow-none'
+          : failed
+            ? 'border-danger-200 bg-danger-50/40 dark:border-danger-800 dark:bg-danger-950/20'
+            : done
+              ? 'border-emerald-200 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20'
+              : 'border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20'
+      }`}
+      data-plan-status={plan.status}
+      data-plan-id={plan.id}
+      role="region"
+      aria-label={t('chat.executionPlan')}
+    >
       {/* 头部：目标 + 状态徽章 + 折叠 */}
       <div className="flex items-start gap-2 p-3">
         <button
           type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          className="mt-0.5 shrink-0 rounded p-0.5 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/40"
-          aria-label={collapsed ? t('common.expand') : t('common.collapse')}
-          aria-expanded={!collapsed}
+          onClick={toggleCollapsed}
+          className={`mt-0.5 shrink-0 rounded p-0.5 text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50 ${
+            pinned && isExecutableState ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+          aria-label={effectivelyCollapsed ? t('common.expand') : t('common.collapse')}
+          aria-expanded={!effectivelyCollapsed}
+          disabled={pinned && isExecutableState}
+          title={
+            pinned && isExecutableState
+              ? t('chat.planStatusExecuting')
+              : effectivelyCollapsed
+                ? t('common.expand')
+                : t('common.collapse')
+          }
         >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+          {effectivelyCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
         </button>
-        <ListChecks size={16} className="mt-0.5 shrink-0 text-violet-500" />
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-violet-100 dark:bg-violet-900/50">
+          <ListChecks size={14} className="text-violet-600 dark:text-violet-300" />
+        </span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium text-violet-900 dark:text-violet-100">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-semibold text-violet-900 dark:text-violet-100">
               {t('chat.executionPlan')}
             </span>
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${badge.className}`}
             >
               {t(badge.labelKey)}
             </span>
-            <span className="text-xs text-violet-500 dark:text-violet-400">
+            <span className="text-[11px] tabular-nums text-violet-500 dark:text-violet-400">
               {t('chat.taskProgress', { completed: completedCount, total: plan.tasks.length, progress })}
             </span>
           </div>
-          <p className="mt-1 break-words text-xs text-violet-700 dark:text-violet-300">
+          <p className="mt-1 break-words text-xs leading-relaxed text-violet-700/90 dark:text-violet-300/90">
             {plan.goal}
           </p>
+          {/* 状态微摘要：折叠时也可见关键计数 */}
+          {effectivelyCollapsed && (inProgressCount > 0 || failedCount > 0 || blockedCount > 0) && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {inProgressCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+                  {inProgressCount}
+                </span>
+              )}
+              {failedCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-danger-100 px-1.5 py-0.5 text-[10px] font-medium text-danger-700 dark:bg-danger-900/40 dark:text-danger-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-danger-500" />
+                  {failedCount}
+                </span>
+              )}
+              {blockedCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                  {blockedCount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        {!collapsed && plan.tasks.length > 1 && (
+        {!effectivelyCollapsed && plan.tasks.length > 1 && (
           <button
             type="button"
             onClick={toggleAll}
-            className="shrink-0 rounded px-1.5 py-0.5 text-xs text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/40"
+            className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] text-violet-500 hover:bg-violet-100 dark:hover:bg-violet-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/50"
           >
             {expandedTasks.size === plan.tasks.length ? t('chat.collapseAll') : t('chat.expandAll')}
           </button>
         )}
       </div>
 
-      {/* 进度条 */}
-      {!collapsed && (
-        <div className="px-3 pb-2">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-violet-200/60 dark:bg-violet-900/40">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                failed
-                  ? 'bg-danger-500'
-                  : done
-                    ? 'bg-emerald-500'
-                    : 'bg-violet-500'
-              }`}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+      {/* 进度条：折叠时也显示细条，保持进度感知 */}
+      <div className={`px-3 ${effectivelyCollapsed ? 'pb-2.5' : 'pb-2'}`}>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-violet-200/60 dark:bg-violet-900/40">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ease-out ${
+              failed
+                ? 'bg-danger-500'
+                : done
+                  ? 'bg-emerald-500'
+                  : 'bg-violet-500'
+            }`}
+            style={{ width: `${Math.max(progress, progress > 0 ? 2 : 0)}%` }}
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          />
         </div>
-      )}
+      </div>
 
       {/* 任务列表 */}
-      {!collapsed && (
+      {!effectivelyCollapsed && (
         <div className="space-y-1.5 px-3 pb-3">
           {plan.tasks.map((task, index) => (
             <TaskCard
@@ -263,7 +334,7 @@ export function AgentTodoPanel({
       )}
 
       {/* 草稿确认操作区 */}
-      {!collapsed && isDraft && !rejecting && (
+      {!effectivelyCollapsed && isDraft && !rejecting && (
         <div className="flex items-center justify-end gap-2 border-t border-violet-200 px-3 py-2 dark:border-violet-800">
           <button
             type="button"
@@ -285,7 +356,7 @@ export function AgentTodoPanel({
       )}
 
       {/* 拒绝（重新规划）输入区 */}
-      {!collapsed && isDraft && rejecting && (
+      {!effectivelyCollapsed && isDraft && rejecting && (
         <div className="border-t border-violet-200 px-3 py-2 dark:border-violet-800">
           <textarea
             value={rejectReason}
@@ -348,31 +419,52 @@ function TaskCard({ task, index, plan, expanded, onToggle }: TaskCardProps) {
 
   return (
     <div
-      className={`rounded-md border ${cfg.borderColor} ${cfg.bgColor} transition-colors`}
+      className={`rounded-xl border ${cfg.borderColor} ${cfg.bgColor} transition-all hover:shadow-sm ${
+        spinning ? 'ring-1 ring-blue-300/60 dark:ring-blue-700/50' : ''
+      }`}
+      data-task-id={task.id}
+      data-task-status={task.status}
     >
       <div className="flex items-start gap-2 p-2">
-        <Icon
-          size={16}
-          className={`mt-0.5 shrink-0 ${cfg.color} ${spinning ? 'animate-spin' : ''}`}
-        />
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-900/50">
+          <Icon
+            size={15}
+            className={`${cfg.color} ${spinning ? 'animate-spin motion-reduce:animate-none' : ''}`}
+          />
+        </span>
         <button
           type="button"
           onClick={hasDetails ? onToggle : undefined}
-          className="min-w-0 flex-1 text-left"
+          className={`min-w-0 flex-1 text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 ${
+            hasDetails ? 'cursor-pointer' : 'cursor-default'
+          }`}
           disabled={!hasDetails}
+          aria-expanded={hasDetails ? expanded : undefined}
         >
           <div className="flex items-center gap-1.5">
             {hasDetails && (
-              expanded ? <ChevronDown size={12} className="shrink-0 text-slate-400" /> :
-              <ChevronRight size={12} className="shrink-0 text-slate-400" />
+              expanded
+                ? <ChevronDown size={12} className="shrink-0 text-slate-400" />
+                : <ChevronRight size={12} className="shrink-0 text-slate-400" />
             )}
-            <span className="text-xs text-slate-400">#{index + 1}</span>
-            <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+            <span className="text-[11px] tabular-nums text-slate-400">#{index + 1}</span>
+            <span
+              className={`truncate text-sm font-medium ${
+                task.status === 'completed'
+                  ? 'text-slate-500 line-through decoration-slate-300 dark:text-slate-400 dark:decoration-slate-600'
+                  : 'text-slate-700 dark:text-slate-200'
+              }`}
+            >
               {task.title}
             </span>
           </div>
         </button>
-        <span className={`shrink-0 text-xs ${cfg.color}`}>{t(cfg.labelKey)}</span>
+        <span
+          className={`shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${cfg.color} ${cfg.bgColor}`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${cfg.dotColor} ${spinning ? 'animate-pulse' : ''}`} />
+          {t(cfg.labelKey)}
+        </span>
       </div>
 
       {/* 展开详情 */}

@@ -11,14 +11,18 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import {
   FileText, Users, Plus, X, Zap, ToggleLeft, ToggleRight, GitBranch, Search,
+  Loader2, CheckCircle2, AlertCircle, Clock, Settings, MessageSquare,
 } from 'lucide-react'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useAgentStore } from '../../stores/agent-store'
 import { useWorkspaceAgentStore } from '../../stores/workspace-agent-store'
 import { useSkillStore } from '../../stores/skill-store'
 import { useWorkspaceGitStore, selectGitChangeCount } from '../../stores/workspace-git-store'
+import { useConversationStore } from '../../stores/conversation-store'
+import { useWorkspaceRunState } from '../../hooks/use-workspace-run-state'
 import { FileTree } from './FileTree'
 import { WorkspaceSearchPanel } from './WorkspaceSearchPanel'
+import { WorkspaceConversationPanel } from './WorkspaceConversationPanel'
 import { GitPanel } from './git'
 import { AgentManager } from '../settings/AgentManager'
 import { WORKSPACE_LEADER_AGENT_ID } from '../../constants/default-agents'
@@ -31,11 +35,33 @@ interface ProjectExplorerProps {
   onFileSelect?: (filePath: string, line?: number) => void
   /** 当前选中的文件路径 */
   selectedFile?: string
+  /** 工作区设置按钮 ref（左栏底部入口） */
+  settingsButtonRef?: React.RefObject<HTMLButtonElement | null>
+  /** 是否显示设置浮层 */
+  showSettingsPopover?: boolean
+  /** 点击设置入口 */
+  onSettingsClick?: () => void
+  /** 打开完整设置（供对话面板配置 AI 源） */
+  onOpenSettings?: (section?: string, editId?: string) => void
+  /** 打开上下文时间线 */
+  onOpenTimeline?: () => void
+  /** 导出工作区 */
+  onExportWorkspace?: () => void
 }
 
-type ExplorerTab = 'files' | 'search' | 'git' | 'agents' | 'skills'
+type ExplorerTab = 'files' | 'conversations' | 'search' | 'git' | 'agents' | 'skills'
 
-export function ProjectExplorer({ workspace, onFileSelect, selectedFile }: ProjectExplorerProps) {
+export function ProjectExplorer({
+  workspace,
+  onFileSelect,
+  selectedFile,
+  settingsButtonRef,
+  showSettingsPopover = false,
+  onSettingsClick,
+  onOpenSettings,
+  onOpenTimeline,
+  onExportWorkspace,
+}: ProjectExplorerProps) {
   const { t } = useAppTranslation()
   const [activeTab, setActiveTab] = useState<ExplorerTab>('files')
   const [searchFolderPath, setSearchFolderPath] = useState<string | undefined>(undefined)
@@ -52,8 +78,13 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile }: Proje
     void ensureSkillsLoaded()
   }, [ensureSkillsLoaded])
 
+  const workspaceConversationCount = useConversationStore((s) =>
+    s.conversations.filter((conversation) => conversation.workspaceId === workspace.id).length
+  )
+
   const tabs: { key: ExplorerTab; label: string; icon: typeof FileText; count?: number }[] = [
     { key: 'files', label: t('workspace.files'), icon: FileText },
+    { key: 'conversations', label: t('workspace.conversations', { defaultValue: '对话' }), icon: MessageSquare, count: workspaceConversationCount },
     { key: 'search', label: t('workspace.search', { defaultValue: 'Search' }), icon: Search },
     { key: 'git', label: t('workspace.git', { defaultValue: 'Git' }), icon: GitBranch, count: gitChangeCount > 0 ? gitChangeCount : undefined },
     { key: 'agents', label: t('workspace.team'), icon: Users, count: workspace.teamAgentIds.length + (workspace.leaderAgentId ? 1 : 0) },
@@ -61,49 +92,76 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile }: Proje
   ]
 
   return (
-    <div className="flex h-full">
-      {/* VSCode 风格竖直侧边栏标签 */}
+    <div className="flex h-full min-h-0">
+      {/* VSCode 风格竖直侧边栏标签 + 底部设置入口 */}
       <div className="flex flex-col items-center py-2 bg-surface-50 dark:bg-surface-900/50 border-r border-surface-200/80 dark:border-surface-700/60 flex-shrink-0 w-[48px]">
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          const isActive = activeTab === tab.key
-          const hasCount = tab.count !== undefined && tab.count > 0
-          return (
+        <div className="flex-1 flex flex-col items-center min-h-0">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.key
+            const hasCount = tab.count !== undefined && tab.count > 0
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                title={hasCount ? `${tab.label} (${tab.count})` : tab.label}
+                className={`relative flex items-center justify-center w-10 h-10 mb-1 rounded-lg transition-all duration-150 group ${
+                  isActive
+                    ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
+                    : 'text-gray-400 dark:text-gray-500 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-600 dark:hover:text-gray-300'
+                }`}
+              >
+                <Icon size={18} className="flex-shrink-0" />
+                {hasCount && tab.count !== undefined && (
+                  <span className={`absolute -top-0.5 -right-0.5 text-[9px] min-w-[14px] h-[14px] px-0.5 rounded-full flex items-center justify-center font-medium ${
+                    isActive
+                      ? 'bg-teal-500 text-white'
+                      : 'bg-surface-300 dark:bg-surface-600 text-gray-600 dark:text-gray-300'
+                  }`}>
+                    {tab.count > 99 ? '99+' : tab.count}
+                  </span>
+                )}
+                {/* 活跃指示条 - VSCode 风格左侧竖线 */}
+                {isActive && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-teal-500 rounded-r-full" />
+                )}
+                {/* 悬浮提示 */}
+                <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                  {hasCount ? `${tab.label} (${tab.count})` : tab.label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* 工作区设置：左栏底部入口 */}
+        {onSettingsClick && (
+          <div className="mt-auto pt-2 border-t border-surface-200/80 dark:border-surface-700/60 w-full flex justify-center">
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              title={hasCount ? `${tab.label} (${tab.count})` : tab.label}
-              className={`relative flex items-center justify-center w-10 h-10 mb-1 rounded-lg transition-all duration-150 group ${
-                isActive
+              ref={settingsButtonRef}
+              type="button"
+              onClick={onSettingsClick}
+              className={`relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-150 group ${
+                showSettingsPopover
                   ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'
                   : 'text-gray-400 dark:text-gray-500 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-gray-600 dark:hover:text-gray-300'
               }`}
+              title={t('workspace.workspaceSettings')}
+              aria-label={t('workspace.workspaceSettings')}
+              aria-haspopup="dialog"
+              aria-expanded={showSettingsPopover}
             >
-              <Icon size={18} className="flex-shrink-0" />
-              {hasCount && tab.count !== undefined && (
-                <span className={`absolute -top-0.5 -right-0.5 text-[9px] min-w-[14px] h-[14px] px-0.5 rounded-full flex items-center justify-center font-medium ${
-                  isActive
-                    ? 'bg-teal-500 text-white'
-                    : 'bg-surface-300 dark:bg-surface-600 text-gray-600 dark:text-gray-300'
-                }`}>
-                  {tab.count > 99 ? '99+' : tab.count}
-                </span>
-              )}
-              {/* 活跃指示条 - VSCode 风格左侧竖线 */}
-              {isActive && (
-                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-teal-500 rounded-r-full" />
-              )}
-              {/* 悬浮提示 */}
+              <Settings size={18} className="flex-shrink-0" />
               <span className="absolute left-full ml-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                {hasCount ? `${tab.label} (${tab.count})` : tab.label}
+                {t('workspace.workspaceSettings')}
               </span>
             </button>
-          )
-        })}
+          </div>
+        )}
       </div>
 
       {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {/* 文件树 */}
         {activeTab === 'files' && (
           <div className="py-1">
@@ -117,6 +175,16 @@ export function ProjectExplorer({ workspace, onFileSelect, selectedFile }: Proje
               }}
             />
           </div>
+        )}
+
+        {/* 工作区对话树与相关操作 */}
+        {activeTab === 'conversations' && (
+          <WorkspaceConversationPanel
+            workspace={workspace}
+            onOpenSettings={onOpenSettings}
+            onOpenTimeline={() => onOpenTimeline?.()}
+            onExportWorkspace={() => onExportWorkspace?.()}
+          />
         )}
 
         {/* 搜索面板 */}
@@ -167,6 +235,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   const { getAgent, agents } = useAgentStore()
   const workspaceAgents = useWorkspaceAgentStore((s) => s.workspaceAgents)
   const updateWorkspace = useWorkspaceStore((s) => s.updateWorkspace)
+  const getVisibleMessages = useConversationStore((s) => s.getVisibleMessages)
 
   /** 合并查找：优先全局 Agent，再查工作区 Agent */
   const findAgent = useCallback((id: string) => {
@@ -179,6 +248,24 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
   const teamAgents = useMemo(
     () => workspace.teamAgentIds.map((id) => findAgent(id)).filter(Boolean),
     [workspace.teamAgentIds, findAgent]
+  )
+
+  // 获取当前活跃工作区对话的消息（通过 workspaceId 查找最新对话）
+  const activeConvId = useConversationStore((s) => {
+    // 找到该工作区的对话，取最新的一个
+    const convs = s.conversations.filter((c) => c.workspaceId === workspace.id)
+    return convs.length > 0 ? convs[convs.length - 1].id : undefined
+  })
+  const messages = useMemo(
+    () => activeConvId ? getVisibleMessages(activeConvId) : [],
+    [activeConvId, getVisibleMessages]
+  )
+
+  // Phase 3：团队运行时状态
+  const runState = useWorkspaceRunState(
+    messages,
+    effectiveLeaderId,
+    teamAgents as NonNullable<typeof teamAgents[number]>[]
   )
 
   // 自动修复：如果工作区缺少 leaderAgentId，自动补上
@@ -243,6 +330,61 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
     })
   }, [workspace.id, workspace.teamAgentIds, updateWorkspace])
 
+  // 运行时状态指示器
+  const leaderStatusBadge = (() => {
+    if (!runState.hasActiveRun) return null
+    const phase = runState.leaderStatus
+    if (phase === 'idle') return null
+    const config: { icon: typeof Loader2; color: string; label: string } = (() => {
+      switch (phase) {
+        case 'planning':
+          return { icon: Clock, color: 'text-amber-500', label: t('workspace.leaderPhasePlanning', { defaultValue: '规划中' }) }
+        case 'dispatching':
+          return { icon: Loader2, color: 'text-blue-500', label: t('workspace.leaderPhaseDispatching', { defaultValue: '分派中' }) }
+        case 'running':
+          return { icon: Loader2, color: 'text-teal-500', label: t('workspace.leaderPhaseRunning', { defaultValue: '运行中' }) }
+        case 'summarizing':
+          return { icon: Loader2, color: 'text-violet-500', label: t('workspace.leaderPhaseSummarizing', { defaultValue: '汇总中' }) }
+        case 'success':
+          return { icon: CheckCircle2, color: 'text-green-500', label: t('workspace.leaderPhaseSuccess', { defaultValue: '已完成' }) }
+        case 'error':
+          return { icon: AlertCircle, color: 'text-red-500', label: t('workspace.leaderPhaseError', { defaultValue: '出错' }) }
+        default:
+          return { icon: Clock, color: 'text-gray-400', label: phase }
+      }
+    })()
+    const Icon = config.icon
+    return (
+      <span className={`inline-flex items-center gap-1 text-[9px] ${config.color}`}>
+        <Icon size={10} className={phase === 'running' || phase === 'dispatching' || phase === 'summarizing' ? 'animate-spin' : ''} />
+        {config.label}
+      </span>
+    )
+  })()
+
+  const memberStatusBadge = (agentId: string) => {
+    const ms = runState.memberStates.find((m) => m.agentId === agentId)
+    if (!ms || ms.status === 'idle') return null
+    const config: { icon: typeof Loader2; color: string } = (() => {
+      switch (ms.status) {
+        case 'running':
+          return { icon: Loader2, color: 'text-blue-500' }
+        case 'success':
+          return { icon: CheckCircle2, color: 'text-green-500' }
+        case 'error':
+          return { icon: AlertCircle, color: 'text-red-500' }
+        default:
+          return { icon: Clock, color: 'text-gray-400' }
+      }
+    })()
+    const Icon = config.icon
+    return (
+      <span className={config.color}>
+        <Icon size={12} className={ms.status === 'running' ? 'animate-spin' : ''} />
+      </span>
+    )
+  }
+
   return (
     <div className="p-3 space-y-2">
       {/* AI 领导 */}
@@ -264,6 +406,7 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
               <span className="text-[9px] px-1 rounded bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 flex-shrink-0">
                 {t('workspace.leader')}
               </span>
+              {leaderStatusBadge}
             </div>
             <p className="text-[10px] text-teal-500/70 dark:text-teal-400/70 truncate mt-0.5">
               {leaderAgent.description || t('workspace.defaultLeaderDescription')}
@@ -282,35 +425,59 @@ function AgentTeamPanel({ workspace }: AgentTeamPanelProps) {
       {/* 团队成员列表 */}
       {teamAgents.length > 0 && (
         <div className="space-y-0.5">
-          {teamAgents.map((agent) => (
-            <div
-              key={agent!.id}
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors group cursor-pointer"
-              onClick={() => setEditingAgentId(agent!.id)}
-            >
-              <div className="w-7 h-7 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center text-xs flex-shrink-0">
-                {agent!.avatar || '🤖'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-700 dark:text-gray-300 truncate">
-                  {agent!.name}
-                </p>
-                {agent!.description && (
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
-                    {agent!.description}
-                  </p>
-                )}
-              </div>
-              {/* 移除按钮 */}
-              <button
-                onClick={(e) => { e.stopPropagation(); handleRemoveAgent(agent!.id) }}
-                className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
-                title={t('workspace.remove')}
+          {teamAgents.map((agent) => {
+            const ms = runState.memberStates.find((m) => m.agentId === agent!.id)
+            return (
+              <div
+                key={agent!.id}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors group cursor-pointer"
+                onClick={() => setEditingAgentId(agent!.id)}
               >
-                <X size={11} />
-              </button>
-            </div>
-          ))}
+                <div className="w-7 h-7 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center text-xs flex-shrink-0">
+                  {agent!.avatar || '🤖'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate">
+                      {agent!.name}
+                    </p>
+                    {memberStatusBadge(agent!.id)}
+                  </div>
+                  {ms?.currentTask ? (
+                    <p className="text-[10px] text-blue-500/70 dark:text-blue-400/70 truncate mt-0.5">
+                      {ms.currentTask}
+                    </p>
+                  ) : agent!.description ? (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-0.5">
+                      {agent!.description}
+                    </p>
+                  ) : null}
+                  {ms && (ms.artifactCount > 0 || ms.errorCount > 0) && (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {ms.artifactCount > 0 && (
+                        <span className="text-[9px] text-green-500">
+                          {t('workspace.artifactsCount', { defaultValue: '{{count}} 产物', count: ms.artifactCount })}
+                        </span>
+                      )}
+                      {ms.errorCount > 0 && (
+                        <span className="text-[9px] text-red-500">
+                          {t('workspace.errorsCount', { defaultValue: '{{count}} 错误', count: ms.errorCount })}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* 移除按钮 */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleRemoveAgent(agent!.id) }}
+                  className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition-all flex-shrink-0"
+                  title={t('workspace.remove')}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 

@@ -742,8 +742,11 @@ describe('runAgent - 正常模式', () => {
       expect(prompt).not.toContain('create_plan')
       expect(prompt).not.toContain('update_task')
       expect(prompt).not.toContain('list_skills')
-      // 已启用工具应出现
+      // 已启用工具可在工作区强制规则中被点名；但不得把完整 schema 注入 system prompt
       expect(prompt).toContain('workspace_list_files')
+      expect(prompt).not.toContain('## 可用工具')
+      expect(prompt).not.toMatch(/### workspace_list_files\n描述：/)
+      expect(prompt).not.toMatch(/参数：\{/)
     })
 
     it('plan-and-execute 应自动并入规划三件套并出现在 tools 中', async () => {
@@ -881,6 +884,125 @@ describe('runAgent - 正常模式', () => {
 
       // 验证 streamChat 被调用（Leader Agent 应该能正常运行）
       expect(streamCallCount).toBeGreaterThan(0)
+    })
+
+    it('Leader 应将工具目录注入提示词，但不得注入完整工具 schema', async () => {
+      const leaderAgent = createMockAgent({
+        id: 'workspace-leader',
+        enabledToolIds: [
+          'workspace:list_files',
+          'workspace:create_agent',
+          'workspace:dispatch_task',
+        ],
+        tags: ['workspace', 'leader'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+        agentToolCatalog: [
+          {
+            id: 'workspace:write_file',
+            name: 'workspace_write_file',
+            description: '写入文件',
+            enabled: true,
+            isBuiltIn: true,
+            isMCP: false,
+            parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+          },
+          {
+            id: 'builtin:calculate',
+            name: 'calculate',
+            description: '数学计算',
+            enabled: true,
+            isBuiltIn: true,
+            isMCP: false,
+            parameters: { type: 'object', properties: { expression: { type: 'string' } }, required: ['expression'] },
+          },
+        ],
+      }
+
+      await runAgent(
+        leaderAgent,
+        '创建成员',
+        [],
+        [],
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext as any,
+      )
+
+      expect(capturedSystemPrompt).toBeTruthy()
+      const prompt = capturedSystemPrompt as string
+      // 创建 Agent 时需要的目录：仅 id/name/用途
+      expect(prompt).toContain('可授权给新团队成员的工具目录')
+      expect(prompt).toContain('workspace:write_file')
+      expect(prompt).toContain('workspace_write_file')
+      expect(prompt).toContain('builtin:calculate')
+      expect(prompt).toContain('calculate')
+      // 不得把完整 schema 重复塞进 system prompt
+      expect(prompt).not.toContain('## 可用工具')
+      expect(prompt).not.toMatch(/### calculate\n描述：/)
+      expect(prompt).not.toMatch(/参数：\{[\s\S]*"expression"/)
+      // 目录用途说明保留，且不得被脱敏成「当前未启用」
+      expect(prompt).toContain('用途：写入文件')
+      expect(prompt).toContain('用途：数学计算')
+      expect(prompt).not.toMatch(/名称：（当前未启用）/)
+    })
+
+    it('非 Leader Agent 不得注入工具目录与完整 schema', async () => {
+      const memberAgent = createMockAgent({
+        id: 'member-1',
+        enabledToolIds: ['workspace:list_files', 'workspace:write_file'],
+        tags: ['workspace'],
+        termination: { maxSteps: 1, timeoutSeconds: 0, autoStopOnGoal: true },
+      })
+      const callbacks = createMockCallbacks()
+      const signal = new AbortController().signal
+      const workspaceContext = {
+        folderPath: '/test/workspace',
+        workspaceId: 'ws-1',
+        teamAgents: [],
+        agentToolCatalog: [
+          {
+            id: 'builtin:calculate',
+            name: 'calculate',
+            description: '数学计算',
+            enabled: true,
+            isBuiltIn: true,
+            isMCP: false,
+            parameters: { type: 'object', properties: { expression: { type: 'string' } }, required: ['expression'] },
+          },
+        ],
+      }
+
+      await runAgent(
+        memberAgent,
+        '执行任务',
+        [],
+        [],
+        { model: 'test-model', apiKey: 'test-key', provider: 'openai', baseUrl: '', temperature: 0.7, maxTokens: 4096, streamEnabled: true } as ResolvedAIConfig,
+        signal,
+        callbacks,
+        workspaceContext as any,
+      )
+
+      expect(capturedSystemPrompt).toBeTruthy()
+      const prompt = capturedSystemPrompt as string
+      expect(prompt).not.toContain('可授权给新团队成员的工具目录')
+      expect(prompt).not.toContain('## 可用工具')
+      expect(prompt).not.toMatch(/### workspace_list_files\n描述：/)
+      expect(prompt).not.toMatch(/参数：\{/)
+      // tools 字段仍应通过 function calling 提供
+      const { toolService } = require('../services/tool-service')
+      const toToolDefsSpy = toolService.toToolDefinitions as jest.Mock
+      expect(toToolDefsSpy).toHaveBeenCalled()
+      const passedTools = toToolDefsSpy.mock.calls[toToolDefsSpy.mock.calls.length - 1][0] as Tool[]
+      expect(passedTools.map((t) => t.name)).toEqual(expect.arrayContaining(['workspace_list_files', 'workspace_write_file']))
     })
   })
 

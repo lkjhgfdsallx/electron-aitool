@@ -12,12 +12,12 @@ import {
   Timer,
   RotateCcw,
   MessageSquarePlus,
-  Users
+  Users,
+  Ban,
+  FilePenLine
 } from 'lucide-react'
 import type { AgentStep } from '../../types'
-import type { AgentPlan } from '../../types/agent-plan'
 import { useAppTranslation } from '@/i18n/hooks'
-import { AgentTodoPanel } from './AgentTodoPanel'
 import { SkillCallDisplay } from './SkillCallDisplay'
 import { isUseSkillCall } from '../../utils/skill-call'
 
@@ -32,12 +32,6 @@ interface AgentStepDisplayProps {
   onHumanInput?: (stepId: string, value: string | string[]) => void
   /** 消息是否处于错误状态 */
   isError?: boolean
-  /** 结构化执行计划（plan-and-execute 策略产出） */
-  plan?: AgentPlan
-  /** 用户确认计划回调（接受后开始执行） */
-  onApprovePlan?: (plan: AgentPlan) => void
-  /** 用户拒绝计划回调（要求重新规划） */
-  onRejectPlan?: (plan: AgentPlan, reason?: string) => void
 }
 
 const stepTypeConfig = {
@@ -92,7 +86,7 @@ const stepTypeConfig = {
   }
 }
 
-export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan, onApprovePlan, onRejectPlan }: AgentStepDisplayProps) {
+export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError }: AgentStepDisplayProps) {
   const { t } = useAppTranslation()
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
   const [isAllExpanded, setIsAllExpanded] = useState(false)
@@ -225,10 +219,69 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
     return ids
   }, [processSteps])
 
+  /**
+   * Phase 1.2：每个子 Agent 分组的运行时摘要。
+   * 折叠时也能看到：步数 / 最近工具 / 状态 / 是否有产物。
+   */
+  const subAgentSummaries = useMemo(() => {
+    const map = new Map<string, {
+      agentId: string
+      agentName: string
+      agentAvatar?: string
+      stepCount: number
+      lastToolName?: string
+      status: 'running' | 'success' | 'error' | 'idle'
+      hasArtifacts: boolean
+      errorMessage?: string
+      taskLabel?: string
+    }>()
+    for (const s of processSteps) {
+      if (!s.sourceAgentId) continue
+      const id = s.sourceAgentId
+      let entry = map.get(id)
+      if (!entry) {
+        entry = {
+          agentId: id,
+          agentName: s.sourceAgentName || t('chat.childAgent'),
+          agentAvatar: s.sourceAgentAvatar,
+          stepCount: 0,
+          status: 'idle',
+          hasArtifacts: false,
+        }
+        map.set(id, entry)
+      }
+      entry.stepCount++
+      if (s.type === 'action' && s.toolCall?.name) entry.lastToolName = s.toolCall.name
+      if (s.type === 'subtask_result' && s.subtaskResult) {
+        entry.status =
+          s.subtaskResult.status === 'success' ? 'success'
+          : s.subtaskResult.status === 'error' ? 'error'
+          : 'success'
+        if (s.subtaskResult.artifacts && s.subtaskResult.artifacts.length > 0) entry.hasArtifacts = true
+        if (s.subtaskResult.error) entry.errorMessage = s.subtaskResult.error
+        entry.taskLabel = s.subtaskResult.task
+      }
+      if (s.type === 'error' && entry.status !== 'success') {
+        entry.status = 'error'
+        entry.errorMessage = s.content
+      }
+    }
+    // 整体 streaming 中且无最终态 → running
+    if (isRunning) {
+      for (const entry of map.values()) {
+        if (entry.status === 'idle') entry.status = 'running'
+      }
+    }
+    return map
+  }, [processSteps, isRunning, t])
+
   // 子 Agent 步骤分组折叠状态
   const [collapsedAgentGroups, setCollapsedAgentGroups] = useState<Set<string>>(new Set())
 
-  // 子 Agent 步骤默认折叠（仅对首次出现的 Agent ID 折叠，不影响用户手动操作）
+  // Phase 1.2：默认折叠策略调整
+  // - 已完成的子 Agent（出现 subtask_result 且成功/失败）→ 默认折叠
+  // - 仍在运行中的子 Agent → 默认展开
+  // 仍然只对首次出现的 Agent ID 生效，不影响用户手动操作。
   useEffect(() => {
     const newIds: string[] = []
     for (const id of subAgentIds) {
@@ -241,12 +294,16 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
       setCollapsedAgentGroups((prev) => {
         const next = new Set(prev)
         for (const id of newIds) {
-          next.add(id)
+          const summary = subAgentSummaries.get(id)
+          // 仅对「已完成」的子 Agent 默认折叠；运行中或无摘要的保持展开
+          if (summary && (summary.status === 'success' || summary.status === 'error')) {
+            next.add(id)
+          }
         }
         return next
       })
     }
-  }, [subAgentIds])
+  }, [subAgentIds, subAgentSummaries])
 
   if (processSteps.length === 0) return null
 
@@ -299,15 +356,6 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
         </button>
       </div>
 
-      {/* 结构化执行计划面板（plan-and-execute 策略） */}
-      {plan && (
-        <AgentTodoPanel
-          plan={plan}
-          onApprove={onApprovePlan}
-          onReject={onRejectPlan}
-        />
-      )}
-
       {/* 步骤列表（timeline 风格） */}
       <div className="relative">
         {processSteps.map((step, index) => {
@@ -346,42 +394,101 @@ export function AgentStepDisplay({ steps, isRunning, onHumanInput, isError, plan
           return (
             <div key={step.id} className="relative">
               {/* 子 Agent 分组头（仅在该 Agent 第一个步骤前显示） */}
-              {isSubAgent && shouldShowAgentHeader(step, index) && (
-                <button
-                  onClick={() => {
-                    setCollapsedAgentGroups((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(step.sourceAgentId!)) {
-                        next.delete(step.sourceAgentId!)
-                      } else {
-                        next.add(step.sourceAgentId!)
-                      }
-                      return next
-                    })
-                  }}
-                  className="flex items-center gap-2 w-full px-3 py-1.5 mx-2 mt-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40 cursor-pointer hover:bg-indigo-100/80 dark:hover:bg-indigo-950/50 transition-colors"
-                  aria-label={step.sourceAgentName || t('chat.childAgent')}
-                  aria-expanded={!agentGroupCollapsed}
-                >
-                  <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0 text-xs">
-                    {step.sourceAgentAvatar || '🤖'}
-                  </div>
-                  <Users size={12} className="text-indigo-500" />
-                  <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
-                    {step.sourceAgentName || t('chat.childAgent')}
-                  </span>
-                  <span className="text-xs text-indigo-400 dark:text-indigo-500">
-                    {t('chat.childAgentExecutingTask')}
-                  </span>
-                  <div className="ml-auto flex-shrink-0">
-                    {agentGroupCollapsed ? (
-                      <ChevronRight size={14} className="text-indigo-400" />
-                    ) : (
-                      <ChevronDown size={14} className="text-indigo-400" />
-                    )}
-                  </div>
-                </button>
-              )}
+              {isSubAgent && shouldShowAgentHeader(step, index) && (() => {
+                const agentId = step.sourceAgentId!
+                const summary = subAgentSummaries.get(agentId)
+                const agentGroupCollapsed = collapsedAgentGroups.has(agentId)
+                const status = summary?.status ?? 'idle'
+                const stepCount = summary?.stepCount ?? 0
+                const lastTool = summary?.lastToolName
+                const hasArtifacts = summary?.hasArtifacts
+                const errorMsg = summary?.errorMessage
+                const taskLabel = summary?.taskLabel
+
+                const statusColors = {
+                  running: 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30',
+                  success: 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30',
+                  error: 'text-danger-600 dark:text-danger-400 bg-danger-100 dark:bg-danger-900/30',
+                  idle: 'text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/30',
+                } as const
+                const statusIcons = {
+                  running: <Loader2 size={10} className="animate-spin" />,
+                  success: <CheckCircle2 size={10} />,
+                  error: <AlertCircle size={10} />,
+                  idle: <Ban size={10} />,
+                } as const
+                const statusTitle = errorMsg
+                  || (status === 'running' ? t('workspace.runOverview.statusRunning')
+                    : status === 'success' ? t('workspace.runOverview.statusSuccess')
+                    : status === 'error' ? t('workspace.runOverview.statusError')
+                    : t('workspace.runOverview.statusIdle'))
+
+                return (
+                  <button
+                    onClick={() => {
+                      setCollapsedAgentGroups((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(agentId)) next.delete(agentId)
+                        else next.add(agentId)
+                        return next
+                      })
+                    }}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 mx-2 mt-1.5 rounded-lg bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/60 dark:border-indigo-800/40 cursor-pointer hover:bg-indigo-100/80 dark:hover:bg-indigo-950/50 transition-colors"
+                    aria-label={step.sourceAgentName || t('chat.childAgent')}
+                    aria-expanded={!agentGroupCollapsed}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0 text-xs">
+                      {step.sourceAgentAvatar || '🤖'}
+                    </div>
+                    <Users size={12} className="text-indigo-500" />
+                    <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300 max-w-[120px] truncate">
+                      {step.sourceAgentName || t('chat.childAgent')}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium ${statusColors[status]}`}
+                      title={statusTitle}
+                    >
+                      {statusIcons[status]}
+                    </span>
+                    <span className="text-[10px] text-indigo-400 dark:text-indigo-500 flex items-center gap-1 flex-shrink-0 min-w-0">
+                      {stepCount > 0 && (
+                        <span className="whitespace-nowrap" title={t('workspace.runOverview.stepCount', { count: stepCount })}>
+                          {stepCount} {t('workspace.runOverview.steps')}
+                        </span>
+                      )}
+                      {lastTool && (
+                        <span className="whitespace-nowrap opacity-80 truncate max-w-[100px]" title={lastTool}>
+                          <FilePenLine size={9} className="inline-block align-middle mr-0.5" />
+                          {lastTool}
+                        </span>
+                      )}
+                      {hasArtifacts && (
+                        <span className="whitespace-nowrap text-amber-500" title={t('workspace.runOverview.hasArtifacts')}>
+                          <FilePenLine size={9} />
+                        </span>
+                      )}
+                      {taskLabel && !agentGroupCollapsed && (
+                        <span className="whitespace-nowrap truncate max-w-[160px] opacity-70" title={taskLabel}>
+                          {taskLabel}
+                        </span>
+                      )}
+                    </span>
+                    <div className="ml-auto flex-shrink-0 flex items-center gap-1">
+                      {status === 'running' && !agentGroupCollapsed && (
+                        <span className="text-[10px] text-blue-500 flex items-center gap-0.5" title={t('workspace.runOverview.expandedForRunning')}>
+                          <Loader2 size={9} className="animate-spin" />
+                          {t('workspace.runOverview.runningExpanded')}
+                        </span>
+                      )}
+                      {agentGroupCollapsed ? (
+                        <ChevronRight size={14} className="text-indigo-400" />
+                      ) : (
+                        <ChevronDown size={14} className="text-indigo-400" />
+                      )}
+                    </div>
+                  </button>
+                )
+              })()}
 
               {/* 子 Agent 步骤折叠时跳过渲染 */}
               {isSubAgent && agentGroupCollapsed ? null : (

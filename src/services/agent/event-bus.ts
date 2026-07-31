@@ -39,6 +39,11 @@ export interface AgentEvent {
   content?: string
   /** 自定义负载 */
   payload?: unknown
+  /**
+   * 关联的消息 ID（用于 UI 更新正确的消息）
+   * 在多 Agent 场景中，子 Agent 的事件可能需要更新 Leader 的消息
+   */
+  messageId?: string
 }
 
 /** 事件订阅器 */

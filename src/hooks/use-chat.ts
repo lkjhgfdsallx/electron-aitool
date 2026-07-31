@@ -300,6 +300,8 @@ export function useChat(options: UseChatOptions = {}) {
   const siteAnalyzerStartTimeRef = useRef<number>(0)
   // 流式输出节流缓冲（每帧最多触发一次 store 更新）
   const streamingBufferRef = useRef<StreamingBuffer>(new StreamingBuffer())
+  // 共享计划引用（用于多 Agent 协作场景，子 Agent 可以访问和更新 Leader 的计划）
+  const sharedPlanRef = useRef<WorkspaceContext['sharedPlan'] | undefined>(undefined)
 
   /** 根据对话的工作区关联，构建 WorkspaceContext 传递给 agent-engine */
   const buildWorkspaceContext = useCallback((
@@ -384,6 +386,8 @@ export function useChat(options: UseChatOptions = {}) {
             workspaceId: ws.id,
             teamAgents: freshTeamAgents,
             knowledgeBaseIds: ws.knowledgeBaseIds ?? [],
+            // 传递共享计划引用给子 Agent，使其可以访问和更新 Leader 创建的计划
+            sharedPlan: sharedPlanRef.current,
           }
         : undefined
 
@@ -937,14 +941,26 @@ export function useChat(options: UseChatOptions = {}) {
         const plan = (event.payload as { plan?: AgentPlan } | undefined)?.plan
         if (plan) {
           currentPlan = plan
-          updateMessage(assistantMsg.id, { agentPlan: plan, isStreaming: true })
+          // 更新共享计划引用，供子 Agent 使用
+          sharedPlanRef.current = {
+            plan,
+            leaderAgentId: agent.id,
+            messageId: event.messageId ?? assistantMsg.id,
+          }
+          // 使用 event.messageId（如果存在）来确定要更新的消息
+          // 这在多 Agent 场景中很重要，子 Agent 的事件可能需要更新 Leader 的消息
+          const targetMessageId = event.messageId ?? assistantMsg.id
+          updateMessage(targetMessageId, { agentPlan: plan, isStreaming: true })
         }
       })
       const taskUnsub = agentEventBus.on('task_updated', (event: AgentEvent) => {
         const plan = (event.payload as { plan?: AgentPlan } | undefined)?.plan
         if (plan) {
           currentPlan = plan
-          updateMessage(assistantMsg.id, { agentPlan: plan, isStreaming: true })
+          // 使用 event.messageId（如果存在）来确定要更新的消息
+          // 子 Agent 更新计划时，event.messageId 指向 Leader 的消息
+          const targetMessageId = event.messageId ?? assistantMsg.id
+          updateMessage(targetMessageId, { agentPlan: plan, isStreaming: true })
         }
       })
 

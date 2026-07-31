@@ -11,6 +11,7 @@ import { platform } from 'os'
 import { resolve, normalize, sep, isAbsolute } from 'path'
 import { access } from 'fs/promises'
 import { constants as fsConstants } from 'fs'
+import { decodeBufferToString, getUtf8ChildEnv } from './console-encoding'
 
 // ---- 类型（与渲染进程 src/types/git.ts 对齐，主进程内联避免跨层路径问题） ----
 
@@ -257,10 +258,12 @@ async function runGit(
         cwd,
         env: {
           ...process.env,
+          ...getUtf8ChildEnv(),
           ...options.env,
           // 避免交互式 pager / 本地化干扰解析
           GIT_TERMINAL_PROMPT: '0',
           GIT_OPTIONAL_LOCKS: '0',
+          // Git 自身仍用 C locale 解析 porcelain 输出，但子进程 stdout 仍为 UTF-8
           LANG: 'C',
           LC_ALL: 'C',
         },
@@ -308,7 +311,7 @@ async function runGit(
     }
 
     const append = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
-      const text = chunk.toString('utf8')
+      const text = decodeBufferToString(chunk)
       totalSize += chunk.length
       if (totalSize > MAX_OUTPUT_BUFFER) {
         if (!killed) {

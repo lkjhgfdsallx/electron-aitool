@@ -39,7 +39,12 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const { t } = useAppTranslation()
   const [isOpen, setIsOpen] = useState(false)
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; maxHeight: number }>({
+    top: 0,
+    left: 0,
+    width: 320,
+    maxHeight: 320,
+  })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -66,15 +71,31 @@ export function ModelSelector({
     return model?.name || currentProvider.defaultModelId
   }, [currentProvider, t])
 
-  // 计算下拉面板位置
+  // 计算下拉面板位置：左对齐触发器，并夹紧到视口内（左栏场景尤其重要）
   const updateDropdownPos = useCallback(() => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect()
-      setDropdownPos({
-        top: rect.bottom - 2,
-        right: window.innerWidth - rect.right
-      })
+    if (!triggerRef.current) return
+    const rect = triggerRef.current.getBoundingClientRect()
+    const pad = 8
+    const preferredWidth = 320
+    const width = Math.min(preferredWidth, Math.max(rect.width, 220), window.innerWidth - pad * 2)
+
+    // 优先与触发器左对齐；若右侧溢出则右对齐触发器；仍溢出则贴视口右缘
+    let left = rect.left
+    if (left + width > window.innerWidth - pad) {
+      left = Math.max(pad, rect.right - width)
     }
+    if (left < pad) left = pad
+
+    const gap = 4
+    const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - pad - gap)
+    const spaceAbove = Math.max(0, rect.top - pad - gap)
+    const preferBelow = spaceBelow >= 160 || spaceBelow >= spaceAbove
+    const maxHeight = Math.max(120, Math.min(320, preferBelow ? spaceBelow : spaceAbove))
+    const top = preferBelow
+      ? rect.bottom + gap
+      : Math.max(pad, rect.top - gap - maxHeight)
+
+    setDropdownPos({ top, left, width, maxHeight })
   }, [])
 
   // 点击外部关闭 & 滚动关闭
@@ -148,10 +169,15 @@ export function ModelSelector({
   const dropdownPanel = isOpen ? createPortal(
     <div
       ref={dropdownRef}
-      className="fixed z-[9999] w-80 bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden"
-      style={{ top: dropdownPos.top, right: dropdownPos.right }}
+      className="fixed z-[9999] bg-white dark:bg-surface-800 border border-surface-200/80 dark:border-surface-700/60 rounded-xl shadow-xl backdrop-blur-sm animate-scale-in overflow-hidden"
+      style={{
+        top: dropdownPos.top,
+        left: dropdownPos.left,
+        width: dropdownPos.width,
+        maxHeight: dropdownPos.maxHeight,
+      }}
     >
-      <div className="max-h-80 overflow-y-auto">
+      <div className="overflow-y-auto" style={{ maxHeight: Math.max(80, dropdownPos.maxHeight - (onOpenSettings ? 40 : 0)) }}>
         {providers.map((provider) => {
           const isActive = currentProvider?.id === provider.id
           const defaultModel = provider.defaultModelId
