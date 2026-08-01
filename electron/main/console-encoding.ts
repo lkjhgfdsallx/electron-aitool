@@ -39,19 +39,11 @@ export function setupConsoleUtf8(): void {
 
   if (!isWindows) return
 
-  try {
-    // 切换当前控制台输出代码页为 UTF-8
-    // 使用 cmd.exe 显式执行，兼容 @types/node 对 shell 参数的类型约束
-    execSync('chcp 65001 >NUL', {
-      stdio: 'ignore',
-      windowsHide: true,
-      shell: process.env.ComSpec || 'cmd.exe',
-    })
-  } catch {
-    // 忽略：非交互控制台 / 受限环境可能失败
-  }
+  // Windows: 尝试通过多种方式设置 UTF-8 编码
+  // 注意：由于 Node.js 的限制，在 Windows 上无法在运行时改变当前进程的控制台代码页
+  // 因此我们主要依赖 dev.cjs 中的 chcp 65001 设置
 
-  // 尝试设置 Node 流默认编码（旧版 Node 支持；新版无害）
+  // 方法1：尝试设置 stdout/stderr 的编码
   try {
     const stdout = process.stdout as NodeJS.WriteStream & {
       setDefaultEncoding?: (enc: BufferEncoding) => void
@@ -64,6 +56,15 @@ export function setupConsoleUtf8(): void {
   } catch {
     // ignore
   }
+
+  // 方法2：设置环境变量提示子进程使用 UTF-8
+  process.env.NODE_OPTIONS = mergeNodeOptions(process.env.NODE_OPTIONS, '--no-warnings')
+}
+
+function mergeNodeOptions(existing: string | undefined, extra: string): string {
+  if (!existing || !existing.trim()) return extra
+  if (existing.includes(extra)) return existing
+  return `${existing} ${extra}`
 }
 
 /**
@@ -84,12 +85,6 @@ export function getUtf8ChildEnv(): Record<string, string> {
           LC_ALL: process.env.LC_ALL || 'C.UTF-8',
         }),
   }
-}
-
-function mergeNodeOptions(existing: string | undefined, extra: string): string {
-  if (!existing || !existing.trim()) return extra
-  if (existing.includes(extra)) return existing
-  return `${existing} ${extra}`
 }
 
 /**

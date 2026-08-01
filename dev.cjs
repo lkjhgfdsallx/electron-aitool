@@ -12,7 +12,9 @@ const isWin = process.platform === 'win32';
 // （默认 CP936/GBK 会把 UTF-8 字节显示成「澶辫触」这类乱码）
 if (isWin) {
   try {
-    execSync('chcp 65001 > NUL', { stdio: 'ignore', windowsHide: true, shell: true });
+    // 使用 cmd /c 执行 chcp，确保当前进程的控制台代码页被修改
+    // 注意：这只影响当前 cmd 会话，不影响 spawn 创建的子进程
+    execSync('chcp 65001 > NUL', { stdio: 'ignore', shell: true });
   } catch {
     // ignore
   }
@@ -21,6 +23,8 @@ if (isWin) {
 const env = {
   ...process.env,
   PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
+  // Windows: 设置 NODE_OPTIONS 确保子进程使用 UTF-8
+  ...(isWin ? { NODE_OPTIONS: '--no-warnings' } : {}),
 };
 
 if (!isWin) {
@@ -28,9 +32,21 @@ if (!isWin) {
   env.LC_ALL = process.env.LC_ALL || 'C.UTF-8';
 }
 
-const child = spawn('npx', ['electron-vite', 'dev'], {
+// Windows: 使用 cmd /c chcp 65001 && command 确保子进程在 UTF-8 环境下运行
+let command, args;
+if (isWin) {
+  // 关键修复：在同一个 cmd 会话中先执行 chcp 65001，再执行 npx
+  // 这样 npx 及其子进程都会继承 UTF-8 代码页
+  command = 'cmd.exe';
+  args = ['/c', 'chcp 65001 >NUL 2>&1 && npx electron-vite dev'];
+} else {
+  command = 'npx';
+  args = ['electron-vite', 'dev'];
+}
+
+const child = spawn(command, args, {
   stdio: 'inherit',
-  shell: isWin,
+  shell: false, // 已经通过 cmd /c 处理，不需要额外 shell
   env,
   cwd: __dirname
 });
